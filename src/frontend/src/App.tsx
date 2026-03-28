@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { TrendingUp, Newspaper, BarChart3, Wallet, Trophy, Activity, User, MessageSquare } from 'lucide-react'
+import { TrendingUp, Newspaper, BarChart3, Wallet, Trophy, Activity, User, MessageSquare, Zap, Brain, DollarSign } from 'lucide-react'
 import { MarketList } from './components/MarketList'
 import PriceChart from './components/PriceChart'
 import { NewsFeed } from './components/NewsFeed'
@@ -11,14 +11,37 @@ import { SearchBar } from './components/SearchBar'
 import DebateFloor from './components/DebateFloor'
 import UserDashboard from './components/UserDashboard'
 import { useMarketStore } from './stores/marketStore'
+import { useRAGGodWS } from './hooks/useRAGGodWS'
 
 function App() {
     const { selectedMarket } = useMarketStore()
+    const { isConnected, data: ragGodData, lastAlert } = useRAGGodWS()
     const [activeTab, setActiveTab] = useState<'news' | 'whales' | 'holders' | 'stats' | 'debate'>('news')
     const [activeView, setActiveView] = useState<'markets' | 'user'>('markets')
 
+    // Mode color mapping
+    const getModeColor = (mode: number) => {
+        switch (mode) {
+            case 0: return 'bg-gray-500/30 text-gray-300'
+            case 1: return 'bg-blue-500/30 text-blue-300'
+            case 2: return 'bg-yellow-500/30 text-yellow-300'
+            case 3: return 'bg-red-500/30 text-red-300 animate-pulse'
+            default: return 'bg-gray-500/30 text-gray-300'
+        }
+    }
+
     return (
         <div className="min-h-screen bg-surface-950">
+            {/* Whale Alert Banner */}
+            {lastAlert && (
+                <div className="bg-gradient-to-r from-emerald-600/20 via-emerald-500/30 to-emerald-600/20 border-b border-emerald-500/30">
+                    <div className="max-w-[1920px] mx-auto px-4 py-2 flex items-center justify-center gap-2">
+                        <Zap className="w-4 h-4 text-emerald-400 animate-pulse" />
+                        <span className="text-sm text-emerald-300 font-medium">{lastAlert}</span>
+                    </div>
+                </div>
+            )}
+
             {/* Header */}
             <header className="glass border-b border-white/10 sticky top-0 z-50">
                 <div className="max-w-[1920px] mx-auto px-4 py-4 flex flex-col md:flex-row items-center justify-between gap-4">
@@ -37,6 +60,30 @@ function App() {
                     </div>
 
                     <div className="flex-1 flex flex-col md:flex-row items-center justify-end gap-3 w-full">
+                        {/* RAG_GOD Status */}
+                        <div className="flex items-center gap-2 bg-surface-900/70 border border-white/10 rounded-xl px-3 py-2">
+                            <Brain className={`w-4 h-4 ${isConnected ? 'text-emerald-400' : 'text-red-400'}`} />
+                            <span className="text-xs font-semibold text-surface-200">RAG_GOD</span>
+                            {ragGodData && (
+                                <>
+                                    <div className="w-px h-3 bg-white/20" />
+                                    <span className={`text-xs px-2 py-0.5 rounded-lg font-medium ${getModeColor(ragGodData.mode)}`}>
+                                        {ragGodData.mode_name || `MODE ${ragGodData.mode}`}
+                                    </span>
+                                    <div className="w-px h-3 bg-white/20" />
+                                    <div className="flex items-center gap-1">
+                                        <DollarSign className={`w-3 h-3 ${ragGodData.paper_pnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`} />
+                                        <span className={`text-xs font-mono font-bold ${ragGodData.paper_pnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                                            {ragGodData.paper_pnl >= 0 ? '+' : ''}{ragGodData.paper_pnl.toFixed(2)}
+                                        </span>
+                                    </div>
+                                </>
+                            )}
+                            {!isConnected && (
+                                <Zap className="w-3 h-3 text-yellow-400 animate-pulse" />
+                            )}
+                        </div>
+
                         <div className="flex items-center gap-1 bg-surface-900/70 border border-white/10 rounded-xl p-1">
                             <button
                                 onClick={() => setActiveView('markets')}

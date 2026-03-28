@@ -1,6 +1,6 @@
 services:
   backend:
-    build: 
+    build:
       context: .
       dockerfile: Dockerfile.backend
     image: polymarket-backend:latest
@@ -13,9 +13,11 @@ services:
       - "8000:8000"
     networks:
       - pnet
+    depends_on:
+      - qdrant
 
   frontend:
-    build: 
+    build:
       context: .
       dockerfile: Dockerfile.frontend
     image: polymarket-frontend:latest
@@ -25,8 +27,22 @@ services:
     networks:
       - pnet
 
+  qdrant:
+    image: qdrant/qdrant:latest
+    restart: unless-stopped
+    volumes:
+      - qdrant_data:/qdrant/storage
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    environment:
+      - QDRANT__SERVICE__GRPC_PORT=6334
+    networks:
+      - pnet
+
 volumes:
   polymarket_db:
+  qdrant_data:
 
 networks:
   pnet:
