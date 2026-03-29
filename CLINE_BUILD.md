@@ -1,4 +1,4 @@
-# CLINE BUILD MANIFEST — rag-god-polymarket-intelligence
+# CLINE BUILD MANIFEST — POLYGOD
 
 **STATUS**: Ready for Cline to execute
 **BRANCH**: Initialize as `main`
@@ -13,7 +13,7 @@
 ```bash
 # Already done: git init + local config
 # Now clone the base repo:
-cd /home/thinkpad/projects/rag-god-polymarket-intelligence
+cd /home/thinkpad/projects/POLYGOD
 git clone https://github.com/luuisotorres/polymarket-intelligence.git .
 
 # Copy environment template
@@ -133,7 +133,7 @@ echo "Build complete!"
 ### ✅ Phase 5: Git Commit & Ready for Push
 
 ```bash
-cd /home/thinkpad/projects/Goldngoose/rag-god-polymarket-intelligence
+cd /home/thinkpad/projects/POLYGOD
 git add -A
 git commit -m "feat: initialize rag-god-polymarket with RAG_GOD brain integration
 
@@ -176,8 +176,8 @@ git branch -m master main
 
 ## NEXT STEPS (after Cline completes this)
 
-1. Create GitHub repo: `rag-god-polymarket-intelligence`
-2. Add remote: `git remote add origin https://github.com/YOUR_ORG/rag-god-polymarket-intelligence.git`
+1. GitHub repo created: `POLYGOD`
+2. Remote configured: `https://github.com/sudo-prog/POLYGOD.git`
 3. Push: `git push -u origin main`
 4. Update `COORDINATION_BOARD.md` with branch + PR link
 

@@ -1,4 +1,4 @@
-# Polymarket Intelligence
+# POLYGOD
 
 Real-time market tracking dashboard for Polymarket with live price charts, news feeds, whale order tracking, and price movement analysis.
 
@@ -26,8 +26,8 @@ Real-time market tracking dashboard for Polymarket with live price charts, news 
 
 1. Clone the repository
    ```bash
-   git clone https://github.com/luuisotorres/polymarket-intelligence.git
-   cd polymarket-intelligence
+   git clone https://github.com/sudo-prog/POLYGOD.git
+   cd POLYGOD
    ```
 
 2. Set up environment variables
@@ -227,7 +227,7 @@ flowchart TD
 ## Project Structure
 
 ```
-Polymarket-News-Tracker/
+POLYGOD/
 ├── src/
 │   ├── backend/
 │   │   ├── main.py              # FastAPI application entry point
