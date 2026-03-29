@@ -2,7 +2,7 @@
 
 **STATUS**: Ready for Cline to execute
 **BRANCH**: Initialize as `main`
-**GOAL**: Complete, tested, production-ready polymarket terminal with RAG_GOD brain
+**GOAL**: Complete, tested, production-ready polymarket terminal with POLYGOD brain
 
 ---
 
@@ -23,7 +23,7 @@ cp .env.example .env 2>/dev/null || echo "# Create .env manually with keys below
 **ENV VARS TO ADD** (append to .env):
 
 ```
-RAG_GOD_MODE=0
+POLYGOD_MODE=0
 TELEGRAM_BOT_TOKEN=your_bot_token_here
 TELEGRAM_CHAT_ID=your_chat_id_here
 DEXTER_PATH=../dexter
@@ -46,9 +46,9 @@ npm install
 
 ---
 
-### ✅ Phase 3: Create RAG_GOD Brain Files
+### ✅ Phase 3: Create POLYGOD Brain Files
 
-**FILE: `backend/src/rag_god_graph.py`**
+**FILE: `backend/src/polygod_graph.py`**
 
 - Full LangGraph swarm with:
   - Research node (web search, news, whale alerts)
@@ -63,8 +63,8 @@ npm install
 
 **FILE: `backend/main.py` (UPGRADE existing)**
 
-- Import RAG_GOD graph app
-- Add WebSocket route: `/ws/rag-god`
+- Import POLYGOD graph app
+- Add WebSocket route: `/ws/polygod`
 - Stream: `paper_pnl`, `mode`, `whale_alerts`, `strategy_state`
 - Graceful error handling + fallback to paper trading
 
@@ -77,13 +77,13 @@ GEMINI_API_KEY=
 TAVILY_API_KEY=
 TELEGRAM_BOT_TOKEN=
 TELEGRAM_CHAT_ID=
-RAG_GOD_MODE=0
+POLYGOD_MODE=0
 DEXTER_PATH=../dexter
 ```
 
-**FILE: `frontend/src/RAGGodDashboard.tsx`**
+**FILE: `frontend/src/PolyGodDashboard.tsx`**
 
-- Real-time WebSocket connection to `/ws/rag-god`
+- Real-time WebSocket connection to `/ws/polygod`
 - Display: mode indicator (Sim/Paper/Live), P&L curve, whale alerts
 - Strategy selector dropdown
 - Risk limits panel (max per bot, global kill switch)
@@ -135,10 +135,10 @@ echo "Build complete!"
 ```bash
 cd /home/thinkpad/projects/POLYGOD
 git add -A
-git commit -m "feat: initialize rag-god-polymarket with RAG_GOD brain integration
+git commit -m "feat: initialize polymarket with POLYGOD brain integration
 
 - Clone polymarket-intelligence base repo
-- Integrate LangGraph RAG_GOD swarm (research, mode router, execute, paper mirror)
+- Integrate LangGraph POLYGOD swarm (research, mode router, execute, paper mirror)
 - Add WebSocket live state streaming
 - Build React dashboard with P&L tracking and whale alerts
 - Paper-trading-first safety model
@@ -167,7 +167,7 @@ git branch -m master main
 - ✅ Dependencies install without errors
 - ✅ Backend starts on `localhost:8000`
 - ✅ `/health` endpoint returns `{"status": "ok"}`
-- ✅ `/ws/rag-god` WebSocket connects
+- ✅ `/ws/polygod` WebSocket connects
 - ✅ Frontend builds without errors
 - ✅ Git repo initialized with clean history on `main` branch
 - ✅ Ready for `git push origin main` (once remote is configured)

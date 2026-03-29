@@ -25,7 +25,7 @@ class AgentState(TypedDict):
 
 def research_node(state: AgentState):
     dexter_insight = consult_dexter(f"Analyze impact on {state.get('market_data', {})}")
-    memory.add(f"Research + Dexter: {dexter_insight}", agent_id="rag_god")
+    memory.add(f"Research + Dexter: {dexter_insight}", agent_id="polygod")
     state["market_data"] = {"prob": 0.65}
     return state
 
@@ -54,11 +54,11 @@ def execute_node(state: AgentState):
     if state["mode"] >= 2:
         clob.create_market_order(order)
     state["paper_pnl"] = paper.pnls[-1]
-    memory.add(f"Executed in Mode {state['mode']}", agent_id="rag_god")
+    memory.add(f"Executed in Mode {state['mode']}", agent_id="polygod")
     return state
 
 def critic_node(state: AgentState):
-    memory.add("Reflection: tighten Kelly on low liquidity", agent_id="rag_god")
+    memory.add("Reflection: tighten Kelly on low liquidity", agent_id="polygod")
     return state
 
 workflow = StateGraph(AgentState)

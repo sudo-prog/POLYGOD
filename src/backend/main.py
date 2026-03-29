@@ -27,7 +27,7 @@ from src.backend.polymarket.client import polymarket_client
 from src.backend.news.aggregator import news_aggregator
 from src.backend.routes import markets, news, debate, users
 from src.backend.tasks.update_markets import get_scheduler, update_top_markets
-from rag_god_graph import rag_god_app, paper, MODE
+from polygod_graph import rag_god_app, paper, MODE
 
 # Configure logging
 logging.basicConfig(
@@ -96,23 +96,23 @@ app.include_router(news.router)
 app.include_router(debate.router)
 app.include_router(users.router)
 
-# Mount RAG_GOD sub-application
-app.mount("/rag-god", rag_god_app)
+# Mount POLYGOD sub-application
+app.mount("/polygod", rag_god_app)
 
 
-@app.websocket("/ws/rag-god")
-async def rag_god_ws(websocket: WebSocket):
+@app.websocket("/ws/polygod")
+async def polygod_ws(websocket: WebSocket):
     await websocket.accept()
     while True:
         await websocket.send_json({
             "paper_pnl": paper.pnls[-1] if paper.pnls else 0,
             "mode": MODE,
-            "whale_alert": "HorizonSplendidView just loaded 150k YES — RAG_GOD analyzing edge"
+            "whale_alert": "HorizonSplendidView just loaded 150k YES — POLYGOD analyzing edge"
         })
         await asyncio.sleep(2)
 
 
-@app.post("/rag-god/switch-mode")
+@app.post("/polygod/switch-mode")
 async def switch_mode(new_mode: int):
     global MODE
     MODE = new_mode
