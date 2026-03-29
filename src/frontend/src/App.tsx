@@ -13,11 +13,20 @@ import UserDashboard from './components/UserDashboard'
 import { useMarketStore } from './stores/marketStore'
 import { useRAGGodWS } from './hooks/useRAGGodWS'
 
+interface RAGGodData {
+  mode?: number;
+  mode_name?: string;
+  paper_pnl?: number;
+}
+
 function App() {
     const { selectedMarket } = useMarketStore()
-    const { isConnected, data: ragGodData, lastAlert } = useRAGGodWS()
+    const { isConnected, data: rawRagGodData, lastAlert } = useRAGGodWS()
     const [activeTab, setActiveTab] = useState<'news' | 'whales' | 'holders' | 'stats' | 'debate'>('news')
     const [activeView, setActiveView] = useState<'markets' | 'user'>('markets')
+
+    // Safely cast ragGodData
+    const ragGodData: RAGGodData | null = rawRagGodData as RAGGodData | null
 
     // Mode color mapping
     const getModeColor = (mode: number) => {
@@ -28,6 +37,13 @@ function App() {
             case 3: return 'bg-red-500/30 text-red-300 animate-pulse'
             default: return 'bg-gray-500/30 text-gray-300'
         }
+    }
+
+    // Check if ragGodData has the expected properties
+    const hasValidRAGGodData = (data: RAGGodData | null): data is RAGGodData => {
+        return data !== null && typeof data === 'object' && (
+            'mode' in data || 'mode_name' in data || 'paper_pnl' in data
+        );
     }
 
     return (
@@ -64,17 +80,17 @@ function App() {
                         <div className="flex items-center gap-2 bg-surface-900/70 border border-white/10 rounded-xl px-3 py-2">
                             <Brain className={`w-4 h-4 ${isConnected ? 'text-emerald-400' : 'text-red-400'}`} />
                             <span className="text-xs font-semibold text-surface-200">RAG_GOD</span>
-                            {ragGodData && (
+                            {ragGodData && hasValidRAGGodData(ragGodData) && (
                                 <>
                                     <div className="w-px h-3 bg-white/20" />
-                                    <span className={`text-xs px-2 py-0.5 rounded-lg font-medium ${getModeColor(ragGodData.mode)}`}>
-                                        {ragGodData.mode_name || `MODE ${ragGodData.mode}`}
+                                    <span className={`text-xs px-2 py-0.5 rounded-lg font-medium ${getModeColor(ragGodData.mode || 0)}`}>
+                                        {ragGodData.mode_name || `MODE ${ragGodData.mode || 0}`}
                                     </span>
                                     <div className="w-px h-3 bg-white/20" />
                                     <div className="flex items-center gap-1">
-                                        <DollarSign className={`w-3 h-3 ${ragGodData.paper_pnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`} />
-                                        <span className={`text-xs font-mono font-bold ${ragGodData.paper_pnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                                            {ragGodData.paper_pnl >= 0 ? '+' : ''}{ragGodData.paper_pnl.toFixed(2)}
+                                        <DollarSign className={`w-3 h-3 ${(ragGodData.paper_pnl ?? 0) >= 0 ? 'text-emerald-400' : 'text-red-400'}`} />
+                                        <span className={`text-xs font-mono font-bold ${(ragGodData.paper_pnl ?? 0) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                                            {(ragGodData.paper_pnl ?? 0) >= 0 ? '+' : ''}{(ragGodData.paper_pnl ?? 0).toFixed(2)}
                                         </span>
                                     </div>
                                 </>
