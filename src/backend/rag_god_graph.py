@@ -664,6 +664,32 @@ async def get_status():
     }
 
 
+@rag_god_app.post("/switch-mode")
+async def switch_mode(new_mode: int):
+    """Switch RAG_GOD risk mode (0-3)."""
+    global MODE
+
+    if new_mode < 0 or new_mode > 3:
+        raise HTTPException(status_code=400, detail="Mode must be between 0 and 3")
+
+    MODE = new_mode
+
+    mode_names = {
+        0: "OBSERVE",
+        1: "CONSERVATIVE",
+        2: "MODERATE",
+        3: "BEAST MODE"
+    }
+
+    logger.info(f"[RAG_GOD] Mode switched to {new_mode} ({mode_names.get(new_mode, 'UNKNOWN')})")
+
+    return {
+        "status": f"Mode {new_mode} — {mode_names.get(new_mode, 'UNKNOWN')}",
+        "mode": new_mode,
+        "mode_name": mode_names.get(new_mode, "UNKNOWN")
+    }
+
+
 @rag_god_app.post("/analyze")
 async def analyze_market(request: TradeRequest):
     """
