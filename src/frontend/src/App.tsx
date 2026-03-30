@@ -11,7 +11,7 @@ import { SearchBar } from './components/SearchBar'
 import DebateFloor from './components/DebateFloor'
 import UserDashboard from './components/UserDashboard'
 import { useMarketStore } from './stores/marketStore'
-import { usePolyGodWS } from './hooks/usePolyGodWS'
+import { useRAGGodWS } from './hooks/useRAGGodWS'
 
 interface PolyGodData {
   mode?: number;
@@ -21,12 +21,33 @@ interface PolyGodData {
 
 function App() {
     const { selectedMarket } = useMarketStore()
-    const { isConnected, data: rawPolyGodData, lastAlert } = usePolyGodWS()
+    const { isConnected, data: rawPolyGodData, lastAlert } = useRAGGodWS()
     const [activeTab, setActiveTab] = useState<'news' | 'whales' | 'holders' | 'stats' | 'debate'>('news')
     const [activeView, setActiveView] = useState<'markets' | 'user'>('markets')
 
-    // Safely cast polyGodData
-    const polyGodData: PolyGodData | null = rawPolyGodData as PolyGodData | null
+    // Safely parse polyGodData with proper type checking
+    const polyGodData: PolyGodData | null = (() => {
+        if (!rawPolyGodData) return null;
+
+        try {
+            // If it's already an object, use it directly
+            if (typeof rawPolyGodData === 'object' && rawPolyGodData !== null) {
+                return rawPolyGodData as PolyGodData;
+            }
+
+            // If it's a string, try to parse it
+            if (typeof rawPolyGodData === 'string') {
+                const parsed = JSON.parse(rawPolyGodData);
+                if (typeof parsed === 'object' && parsed !== null) {
+                    return parsed as PolyGodData;
+                }
+            }
+        } catch (error) {
+            console.warn('Failed to parse polyGodData:', error);
+        }
+
+        return null;
+    })()
 
     // Mode color mapping
     const getModeColor = (mode: number) => {

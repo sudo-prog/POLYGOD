@@ -127,8 +127,8 @@ const DebateFloor: React.FC<DebateFloorProps> = ({ marketId }) => {
             const data: DebateResponse = await response.json();
             setMessages(data.messages);
             setVerdict(data.verdict);
-        } catch (err: any) {
-            setError(err.message);
+            } catch (err) {
+            setError(err instanceof Error ? err.message : 'An error occurred');
         } finally {
             setIsLoading(false);
         }

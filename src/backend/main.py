@@ -17,6 +17,7 @@ def new_getaddrinfo(*args, **kwargs):
     return [response for response in responses if response[0] == socket.AF_INET]
 socket.getaddrinfo = new_getaddrinfo
 
+import uvicorn
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -27,7 +28,7 @@ from src.backend.polymarket.client import polymarket_client
 from src.backend.news.aggregator import news_aggregator
 from src.backend.routes import markets, news, debate, users
 from src.backend.tasks.update_markets import get_scheduler, update_top_markets
-from polygod_graph import rag_god_app, paper, MODE
+from src.backend.polygod_graph import polygod_app, paper, MODE
 
 # Configure logging
 logging.basicConfig(
@@ -97,7 +98,7 @@ app.include_router(debate.router)
 app.include_router(users.router)
 
 # Mount POLYGOD sub-application
-app.mount("/polygod", rag_god_app)
+app.mount("/polygod", polygod_app, name="polygod")
 
 
 @app.websocket("/ws/polygod")

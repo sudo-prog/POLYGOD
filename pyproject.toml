@@ -1,5 +1,5 @@
 [project]
-name = "polymarket-news-tracker"
+name = "polygod"
 version = "0.1.0"
 description = "Real-time market tracking dashboard for Polymarket with TradingView charts and live news feeds"
 readme = "README.md"

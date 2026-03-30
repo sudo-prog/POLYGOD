@@ -78,7 +78,7 @@ def extract_keywords(title: str) -> str:
 
     if not top_keywords:
         return ""
-    
+
     # If fewer than 2 keywords, try to just return what we have
     # If 0 keywords, we updated standard stopwords so maybe it was all stopwords?
     # In that case, fallback to original title limited

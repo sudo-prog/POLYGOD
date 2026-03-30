@@ -7,8 +7,7 @@ Uses APScheduler to run periodic updates.
 import logging
 from datetime import datetime, timedelta
 
-from sqlalchemy import select, delete
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import delete, select
 
 from src.backend.database import async_session_factory
 from src.backend.models import AppState, Market, PriceHistory

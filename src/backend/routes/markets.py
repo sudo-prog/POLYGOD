@@ -362,27 +362,27 @@ class MarketStats(BaseModel):
     """Comprehensive market statistics and signals."""
     market_id: str
     current_price: float
-    
+
     # Price changes
     change_24h: float
     change_24h_percent: float
     change_7d: float
     change_7d_percent: float
-    
+
     # High/Low
     high_24h: float
     low_24h: float
     high_7d: float
     low_7d: float
-    
+
     # Volume
     volume_24h: float
     volume_7d: float
-    
+
     # Overall sentiment
     overall_signal: str  # "bullish", "bearish", "neutral"
     overall_strength: int  # 1-5
-    
+
     # Individual signals
     signals: list[MarketSignal]
 
@@ -401,22 +401,22 @@ async def get_market_stats(
     # Get market
     result = await db.execute(select(Market).where(Market.id == market_id))
     market = result.scalar_one_or_none()
-    
+
     if not market:
         result = await db.execute(select(Market).where(Market.slug == market_id))
         market = result.scalar_one_or_none()
-    
+
     if not market:
         raise HTTPException(status_code=404, detail="Market not found")
-    
+
     current_price = market.yes_percentage
     volume_24h = market.volume_24h or 0
     volume_7d = market.volume_7d or 0
-    
+
     # Fetch price history for 24h and 7d
     history_24h = []
     history_7d = []
-    
+
     if market.clob_token_ids:
         try:
             token_ids = json.loads(market.clob_token_ids)
@@ -429,7 +429,7 @@ async def get_market_stats(
                 )
         except Exception as e:
             logger.warning(f"Failed to fetch history for stats: {e}")
-    
+
     def normalize_history(history: list[dict]) -> list[tuple[int, float]]:
         points: list[tuple[int, float]] = []
         for item in history:
@@ -471,7 +471,7 @@ async def get_market_stats(
         first_24h = current_price
         change_24h = 0
         change_24h_percent = 0
-    
+
     # Calculate 7d stats
     if len(history_7d_points) > 1:
         prices_7d = [price for _, price in history_7d_points]
@@ -487,12 +487,12 @@ async def get_market_stats(
         first_7d = current_price
         change_7d = 0
         change_7d_percent = 0
-    
+
     # Generate signals
     signals = []
     bullish_score = 0
     bearish_score = 0
-    
+
     # Signal 1: 24h Price Momentum
     if abs(change_24h_percent) > 1:
         if change_24h_percent > 0:
@@ -523,7 +523,7 @@ async def get_market_stats(
             description="Price stable in 24h",
             value=change_24h_percent
         ))
-    
+
     # Signal 2: 7d Trend
     if abs(change_7d_percent) > 3:
         if change_7d_percent > 0:
@@ -554,7 +554,7 @@ async def get_market_stats(
             description="No significant weekly trend",
             value=change_7d_percent
         ))
-    
+
     # Signal 3: Price Position (relative to range)
     if history_7d and len(history_7d) > 5:
         range_7d = high_7d - low_7d
@@ -586,7 +586,7 @@ async def get_market_stats(
                     description=f"Mid-range ({position*100:.0f}% of range)",
                     value=position * 100
                 ))
-    
+
     # Signal 4: Volume Analysis
     if volume_7d > 0:
         daily_avg = volume_7d / 7
@@ -610,7 +610,7 @@ async def get_market_stats(
                 description="Below average volume - low conviction",
                 value=volume_24h / daily_avg if daily_avg > 0 else 0
             ))
-    
+
     # Signal 5: Volatility
     if history_24h and len(history_24h) > 10:
         prices = [h["p"] * 100 for h in history_24h]
@@ -631,7 +631,7 @@ async def get_market_stats(
                 description=f"24h range: {volatility:.1f}% - consolidating",
                 value=volatility
             ))
-    
+
     # Calculate overall signal
     total_score = bullish_score - bearish_score
     if total_score > 3:
@@ -643,7 +643,7 @@ async def get_market_stats(
     else:
         overall_signal = "neutral"
         overall_strength = 2
-    
+
     return MarketStats(
         market_id=market_id,
         current_price=round(current_price, 2),
@@ -690,7 +690,7 @@ async def get_market(market_id: str, db: AsyncSession = Depends(get_db)) -> Mark
             if api_market:
                 # Map API response to MarketOut
                 # Logic similar to get_top_markets_by_volume processing
-                
+
                 # Parse yes percentage
                 yes_percentage = 50.0
                 if api_market.outcome_prices:
@@ -702,7 +702,7 @@ async def get_market(market_id: str, db: AsyncSession = Depends(get_db)) -> Mark
                                 yes_percentage = price_val * 100
                     except Exception:
                         pass
-                
+
                 # Parse end date
                 end_date = None
                 if api_market.end_date_iso:
@@ -720,7 +720,7 @@ async def get_market(market_id: str, db: AsyncSession = Depends(get_db)) -> Mark
                 volume_7d_val = api_market.volume_1wk or api_market.volume_num or 0.0
                 if volume_7d_val == 0 and volume_24h_val > 0:
                     volume_7d_val = volume_24h_val
-                
+
                 liquidity_val = api_market.liquidity_num or 0.0
 
                 # Create Market model instance
@@ -789,13 +789,13 @@ async def get_market(market_id: str, db: AsyncSession = Depends(get_db)) -> Mark
                             yes_percentage = price_val * 100
                 except Exception:
                     pass
-            
+
             # Parse volumes
             volume_24h_val = api_market.volume_24hr or api_market.volume_num or 0.0
             volume_7d_val = api_market.volume_1wk or api_market.volume_num or 0.0
             if volume_7d_val == 0 and volume_24h_val > 0:
                  volume_7d_val = volume_24h_val
-            
+
             liquidity_val = api_market.liquidity_num or 0.0
 
             # Update DB record
@@ -804,12 +804,12 @@ async def get_market(market_id: str, db: AsyncSession = Depends(get_db)) -> Mark
             market.volume_7d = volume_7d_val
             market.liquidity = liquidity_val
             market.last_updated = datetime.utcnow()
-            
+
             # Commit updates
             await db.commit()
             await db.refresh(market)
             logger.info(f"Refreshed market data for {market.slug}: {market.yes_percentage}%")
-            
+
     except Exception as e:
         logger.warning(f"Failed to refresh market data from API (using cached): {e}")
 
@@ -818,7 +818,7 @@ async def get_market(market_id: str, db: AsyncSession = Depends(get_db)) -> Mark
 
 @router.get("/{market_id}/trades")
 async def get_market_trades(
-    market_id: str, 
+    market_id: str,
     min_volume: float = 100.0,
     limit: int = 2000,
     days: int = Query(default=7, ge=1, le=30),
@@ -907,7 +907,7 @@ async def get_market_trades(
         whale_trades = []
         seen_trade_keys: set[str] = set()
         cutoff = datetime.utcnow() - timedelta(days=days)
-        
+
         for trade in trades:
             try:
                 if not isinstance(trade, dict):
@@ -921,7 +921,7 @@ async def get_market_trades(
                 ts_val = trade.get("timestamp")
                 if not ts_val:
                     continue
-                    
+
                 trade_time = None
                 if isinstance(ts_val, (int, float)):
                     ts_int = int(ts_val)
@@ -933,7 +933,7 @@ async def get_market_trades(
                         trade_time = datetime.fromisoformat(str(ts_val).replace("Z", "+00:00"))
                     except ValueError:
                         continue
-                    
+
                 if trade_time < cutoff:
                     continue
 
@@ -943,7 +943,7 @@ async def get_market_trades(
                     continue
 
                 outcome = trade.get("outcome", "")
-                
+
                 try:
                     size = float(trade.get("size", 0))
                     price = float(trade.get("price", 0))
@@ -951,7 +951,7 @@ async def get_market_trades(
                     continue
 
                 volume = parse_trade_value(trade, size, price)
-                
+
                 # Filter by min_volume
                 if volume < min_volume:
                     continue
@@ -962,7 +962,7 @@ async def get_market_trades(
                 outcome_lower = outcome.lower() if outcome else ""
                 is_yes = outcome_lower in ("yes", "up")
                 is_no = outcome_lower in ("no", "down")
-                
+
                 if side == "BUY":
                     is_bullish = is_yes
                 else:  # SELL
@@ -988,7 +988,7 @@ async def get_market_trades(
                 if dedupe_key in seen_trade_keys:
                     continue
                 seen_trade_keys.add(dedupe_key)
-                
+
                 whale_trades.append({
                     "trade_id": str(raw_id)[:16] if raw_id else dedupe_key[:16],
                     "address": address,
@@ -1112,7 +1112,7 @@ async def get_market_trades(
 
         # Sort by timestamp (newest first)
         whale_trades.sort(key=lambda x: x["timestamp"], reverse=True)
-        
+
         return whale_trades[:50]
 
     except HTTPException:
@@ -1124,7 +1124,7 @@ async def get_market_trades(
 
 @router.get("/{market_id}/holders")
 async def get_market_holders(
-    market_id: str, 
+    market_id: str,
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -1137,27 +1137,27 @@ async def get_market_holders(
     if not market:
         result = await db.execute(select(Market).where(Market.slug == market_id))
         market = result.scalar_one_or_none()
-        
+
     if not market:
         raise HTTPException(status_code=404, detail="Market not found")
 
     try:
         condition_id = market.id
         market_slug = market.slug
-        
+
         async with httpx.AsyncClient(timeout=15.0) as client:
             # 1. Fetch Holders
             response = await client.get(
                 "https://data-api.polymarket.com/holders",
                 params={"market": condition_id}
             )
-            
+
             if response.status_code != 200:
                 logger.warning(f"Failed to fetch holders: {response.status_code}")
                 return {"yes_holders": [], "no_holders": []}
-                
+
             data = response.json()
-            
+
             # Extract unique addresses to fetch specific stats
             # We focus on the top holders to minimize API calls
             all_holders = []

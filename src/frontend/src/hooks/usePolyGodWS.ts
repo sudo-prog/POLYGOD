@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useStore } from '../store';
 
-export function useRAGGodWS() {
+export function usePolyGodWS() {
   const [isConnected, setIsConnected] = useState(false);
   const [data, setData] = useState(null);
   const [lastAlert, setLastAlert] = useState<string | null>(null);

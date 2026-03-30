@@ -1,15 +1,15 @@
 """Debate Floor Agent System - Multi-agent debate for market analysis."""
 
-from typing import Annotated, List, TypedDict, Dict, Any, Optional
 import datetime
-import os
 import math
-from langgraph.graph import StateGraph, END
-from langgraph.graph.message import add_messages
-from langchain_core.messages import HumanMessage, SystemMessage, BaseMessage
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_community.tools.tavily_search import TavilySearchResults
+from typing import Annotated, Any, Dict, List, Optional, TypedDict
+
 from dotenv import load_dotenv
+from langchain_community.tools.tavily_search import TavilySearchResults
+from langchain_core.messages import BaseMessage, HumanMessage
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langgraph.graph import END, StateGraph
+from langgraph.graph.message import add_messages
 
 load_dotenv()
 
@@ -67,17 +67,17 @@ def calculate_expected_value(yes_price: float, estimated_prob: float) -> Dict[st
     # Normalize to 0-1 scale
     price = yes_price / 100
     prob = estimated_prob / 100
-    
+
     # EV = (Probability of Win * Profit) - (Probability of Loss * Loss)
     # For YES bet: Win pays (1-price)/price, lose pays 1
     yes_profit = (1 - price) / price if price > 0 else 0
     yes_ev = (prob * yes_profit) - ((1 - prob) * 1)
-    
+
     # For NO bet at (1 - price)
     no_price = 1 - price
     no_profit = (1 - no_price) / no_price if no_price > 0 else 0
     no_ev = ((1 - prob) * no_profit) - (prob * 1)
-    
+
     # Determine recommendation
     if yes_ev > 0.05:
         recommendation = "BUY YES (+EV)"
@@ -89,7 +89,7 @@ def calculate_expected_value(yes_price: float, estimated_prob: float) -> Dict[st
         recommendation = "Slight NO edge"
     else:
         recommendation = "Market is fairly priced"
-    
+
     return {
         "yes_ev": round(yes_ev * 100, 2),  # As percentage return
         "no_ev": round(no_ev * 100, 2),
@@ -110,15 +110,15 @@ def calculate_implied_probability(yes_price: float) -> Dict[str, Any]:
     """
     yes_prob = yes_price / 100
     no_prob = (100 - yes_price) / 100
-    
+
     # Vig calculation (overround)
     total = yes_prob + no_prob  # Should be exactly 1 in efficient market
     vig = (total - 1) * 100  # Usually 0 on Polymarket (no fee on share prices)
-    
+
     # True probabilities adjusted for vig
     true_yes = yes_prob / total if total > 0 else 0.5
     true_no = no_prob / total if total > 0 else 0.5
-    
+
     return {
         "implied_yes_prob": round(yes_price, 2),
         "implied_no_prob": round(100 - yes_price, 2),
@@ -141,17 +141,17 @@ def calculate_kelly_criterion(yes_price: float, estimated_prob: float) -> Dict[s
     """
     price = yes_price / 100
     prob = estimated_prob / 100
-    
+
     # Kelly formula: f* = (bp - q) / b
     # where b = odds (profit per unit bet), p = win probability, q = 1 - p
-    
+
     # For YES bet
     if price > 0 and price < 1:
         b_yes = (1 - price) / price  # Odds for YES
         kelly_yes = (b_yes * prob - (1 - prob)) / b_yes if b_yes > 0 else 0
     else:
         kelly_yes = 0
-    
+
     # For NO bet
     no_price = 1 - price
     if no_price > 0 and no_price < 1:
@@ -159,7 +159,7 @@ def calculate_kelly_criterion(yes_price: float, estimated_prob: float) -> Dict[s
         kelly_no = (b_no * (1 - prob) - prob) / b_no if b_no > 0 else 0
     else:
         kelly_no = 0
-    
+
     # Determine optimal side
     if kelly_yes > kelly_no and kelly_yes > 0:
         optimal_kelly = kelly_yes
@@ -170,10 +170,10 @@ def calculate_kelly_criterion(yes_price: float, estimated_prob: float) -> Dict[s
     else:
         optimal_kelly = 0
         optimal_side = "NONE"
-    
+
     # Clamp between 0 and 1
     optimal_kelly = max(0, min(1, optimal_kelly))
-    
+
     return {
         "full_kelly": round(optimal_kelly * 100, 2),
         "half_kelly": round(optimal_kelly * 50, 2),
@@ -201,15 +201,15 @@ def analyze_price_volatility(prices: List[float]) -> Dict[str, Any]:
             "volatility_regime": "Unknown (insufficient data)",
             "range": 0
         }
-    
+
     n = len(prices)
     mean = sum(prices) / n
     variance = sum((p - mean) ** 2 for p in prices) / n
     std_dev = math.sqrt(variance)
-    
+
     cv = (std_dev / mean * 100) if mean > 0 else 0
     price_range = max(prices) - min(prices)
-    
+
     # Classify volatility regime
     if std_dev < 2:
         regime = "Low volatility (stable)"
@@ -219,7 +219,7 @@ def analyze_price_volatility(prices: List[float]) -> Dict[str, Any]:
         regime = "High volatility"
     else:
         regime = "Extreme volatility"
-    
+
     return {
         "std_dev": round(std_dev, 2),
         "mean": round(mean, 2),
@@ -249,23 +249,23 @@ def calculate_momentum_indicators(prices: List[float]) -> Dict[str, Any]:
             "current_price": prices[-1] if prices else 0,
             "trend_signal": "Insufficient data"
         }
-    
+
     current = prices[-1]
-    
+
     # Short-term SMA (last 1/4 of data or min 3 points)
     short_period = max(3, len(prices) // 4)
     sma_short = sum(prices[-short_period:]) / short_period
-    
+
     # Long-term SMA (full data)
     sma_long = sum(prices) / len(prices)
-    
+
     # EMA calculation (smoothing factor = 2 / (period + 1))
     ema_period = min(10, len(prices))
     alpha = 2 / (ema_period + 1)
     ema = prices[-ema_period]
     for p in prices[-ema_period + 1:]:
         ema = alpha * p + (1 - alpha) * ema
-    
+
     # Determine trend signal
     if current > sma_short > sma_long:
         trend = "Strong Bullish (price > short SMA > long SMA)"
@@ -277,13 +277,13 @@ def calculate_momentum_indicators(prices: List[float]) -> Dict[str, Any]:
         trend = "Bearish (price below short-term average)"
     else:
         trend = "Neutral (consolidating)"
-    
+
     # Momentum (rate of change)
     if len(prices) >= 5:
         roc = ((current - prices[-5]) / prices[-5] * 100) if prices[-5] > 0 else 0
     else:
         roc = 0
-    
+
     return {
         "current_price": round(current, 2),
         "sma_short": round(sma_short, 2),
@@ -310,27 +310,27 @@ def compute_support_resistance(prices: List[float]) -> Dict[str, Any]:
             "resistance": None,
             "current_position": "Insufficient data"
         }
-    
+
     current = prices[-1]
     low = min(prices)
     high = max(prices)
-    
+
     # Simple support/resistance based on percentile clustering
     sorted_prices = sorted(prices)
     n = len(sorted_prices)
-    
+
     # Support: 20th percentile
     support_idx = int(n * 0.2)
     support = sorted_prices[support_idx]
-    
+
     # Resistance: 80th percentile
     resistance_idx = int(n * 0.8)
     resistance = sorted_prices[resistance_idx]
-    
+
     # Position analysis
     range_size = resistance - support if resistance > support else 1
     position_pct = (current - support) / range_size * 100
-    
+
     if current <= support * 1.02:  # Within 2% of support
         position = f"At support ({support:.1f}%) - potential bounce zone"
     elif current >= resistance * 0.98:  # Within 2% of resistance
@@ -341,7 +341,7 @@ def compute_support_resistance(prices: List[float]) -> Dict[str, Any]:
         position = f"Lower range ({position_pct:.0f}%) - approaching support"
     else:
         position = f"Mid-range ({position_pct:.0f}%)"
-    
+
     return {
         "support": round(support, 2),
         "resistance": round(resistance, 2),
@@ -376,12 +376,12 @@ def calculate_time_decay_metrics(end_date_str: str, current_price: float) -> Dic
                 return {"error": "Could not parse end date", "days_remaining": None}
         else:
             return {"error": "No end date provided", "days_remaining": None}
-        
+
         now = datetime.datetime.now()
         time_delta = end_date - now
         days_remaining = time_delta.days + (time_delta.seconds / 86400)
         hours_remaining = time_delta.total_seconds() / 3600
-        
+
         if days_remaining < 0:
             return {
                 "days_remaining": 0,
@@ -390,7 +390,7 @@ def calculate_time_decay_metrics(end_date_str: str, current_price: float) -> Dic
                 "urgency": "Market has ended",
                 "theta_impact": "N/A"
             }
-        
+
         # Classify urgency
         if hours_remaining <= 24:
             urgency = "CRITICAL"
@@ -407,7 +407,7 @@ def calculate_time_decay_metrics(end_date_str: str, current_price: float) -> Dic
         else:
             urgency = "MINIMAL"
             urgency_desc = "Over a month - plenty of time for thesis to play out"
-        
+
         # Calculate theta (time decay factor)
         # Higher theta = faster price convergence expected
         if days_remaining > 0:
@@ -415,22 +415,22 @@ def calculate_time_decay_metrics(end_date_str: str, current_price: float) -> Dic
             theta = 1 / math.sqrt(max(days_remaining, 0.1))
         else:
             theta = 1.0
-        
+
         # Probability-time analysis
         # Markets at extreme prices with little time = likely priced correctly
         # Markets at 40-60% with little time = high uncertainty, volatile
         price_uncertainty = 1 - abs(current_price - 50) / 50  # 0 at extremes, 1 at 50%
         time_pressure = min(1, 7 / max(days_remaining, 0.1))  # 1 if <7 days, lower if more
-        
+
         volatility_risk = price_uncertainty * time_pressure
-        
+
         if volatility_risk > 0.7:
             vol_assessment = "HIGH - Uncertain outcome with little time = expect large swings"
         elif volatility_risk > 0.4:
             vol_assessment = "MODERATE - Some price movement expected"
         else:
             vol_assessment = "LOW - Price likely stable or already at terminal value"
-        
+
         # Theta advantage analysis
         if current_price > 80 and days_remaining < 7:
             theta_advice = "Time favors YES holders - market pricing in high likelihood"
@@ -442,7 +442,7 @@ def calculate_time_decay_metrics(end_date_str: str, current_price: float) -> Dic
             theta_advice = "Plenty of time for information to emerge - patience may be rewarded"
         else:
             theta_advice = "Monitor for catalysts that could accelerate price discovery"
-        
+
         return {
             "days_remaining": round(days_remaining, 1),
             "hours_remaining": round(hours_remaining, 1),
@@ -454,7 +454,7 @@ def calculate_time_decay_metrics(end_date_str: str, current_price: float) -> Dic
             "volatility_assessment": vol_assessment,
             "theta_advice": theta_advice
         }
-        
+
     except Exception as e:
         return {"error": str(e), "days_remaining": None}
 
@@ -487,37 +487,37 @@ def statistics_expert(state: DebateState):
         question = state.get("market_question", "Unknown Market")
         prices_24h = state.get("price_history_24h", [])
         prices_7d = state.get("price_history_7d", [])
-        
+
         current_price = market_data.get("price", 50.0)
         volume_24h = market_data.get("volume_24h", 0)
         volume_7d = market_data.get("volume_7d", 0)
         liquidity = market_data.get("liquidity", 0)
         end_date = market_data.get("end_date", "Unknown")
-        
+
         today = datetime.datetime.now().strftime("%Y-%m-%d")
-        
+
         # --- Run Statistical Calculations ---
-        
+
         # 1. Implied probability analysis
         implied = calculate_implied_probability(current_price)
-        
+
         # 2. Volatility analysis (use 7d data if available, else 24h)
         price_data = prices_7d if prices_7d else prices_24h
         volatility = analyze_price_volatility(price_data)
-        
+
         # 3. Momentum indicators
         momentum = calculate_momentum_indicators(price_data)
-        
+
         # 4. Support/Resistance levels
         sr_levels = compute_support_resistance(price_data)
-        
+
         # 5. Expected Value calculation
         # Use current price as baseline estimate (assume market efficiency)
         # Then show what EV would be at different probability estimates
         ev_at_market = calculate_expected_value(current_price, current_price)
         ev_bullish = calculate_expected_value(current_price, min(95, current_price + 10))
         ev_bearish = calculate_expected_value(current_price, max(5, current_price - 10))
-        
+
         # 6. Kelly Criterion (if there's perceived edge from momentum)
         # Estimate probability adjustment based on momentum
         momentum_adj = 0
@@ -529,10 +529,10 @@ def statistics_expert(state: DebateState):
             momentum_adj = -5
         elif momentum.get("trend_signal", "").startswith("Bearish"):
             momentum_adj = -2
-        
+
         adjusted_prob = max(5, min(95, current_price + momentum_adj))
         kelly = calculate_kelly_criterion(current_price, adjusted_prob)
-        
+
         # --- Build Analysis Report ---
         stats_report = f"""
 ## Quantitative Analysis Report
@@ -575,7 +575,7 @@ def statistics_expert(state: DebateState):
 - Half Kelly (moderate): {kelly['half_kelly']:.1f}% of bankroll
 - {kelly['recommendation']}
         """.strip()
-        
+
         # --- LLM Synthesis ---
         prompt = f"""
         You are a Statistics Expert for prediction markets.
@@ -595,13 +595,13 @@ def statistics_expert(state: DebateState):
         
         Be specific and reference the calculated numbers.
         """
-        
-        logger.info(f"Statistics Expert computed report, invoking LLM for synthesis...")
+
+        logger.info("Statistics Expert computed report, invoking LLM for synthesis...")
         response = llm.invoke([HumanMessage(content=prompt)])
-        
+
         # Combine computed stats with LLM synthesis
         full_response = f"{stats_report}\n\n---\n\n### Expert Interpretation\n\n{response.content}"
-        
+
         return {"messages": [HumanMessage(content=f"**Statistics Expert**: {full_response}", name="Statistics Expert")]}
     except Exception as e:
         logger.error(f"Statistics Expert failed: {e}")
@@ -694,9 +694,9 @@ def generalist_expert(state: DebateState):
         question = state.get("market_question", "")
         if not question:
             return {"messages": [HumanMessage(content="**Generalist Expert**: No market question provided.", name="Generalist Expert")]}
-        
+
         today = datetime.datetime.now().strftime("%Y-%m-%d")
-        
+
         # Step 1: Brainstorm search queries
         query_prompt = f"""
         You are a smart News Researcher. 
@@ -733,7 +733,7 @@ def generalist_expert(state: DebateState):
 
         # Simple deduplication
         unique_results = list(set([str(r) for r in all_results]))
-        search_context = "\n\n".join(unique_results[:5]) 
+        search_context = "\n\n".join(unique_results[:5])
 
         if not search_context:
             search_context = "No relevant search results found."
@@ -765,12 +765,12 @@ def devils_advocate(state: DebateState):
     try:
         messages = state.get("messages", [])
         question = state.get("market_question", "")
-        
+
         # Extract previous arguments
         context = "\n".join([m.content for m in messages if isinstance(m, HumanMessage)])
         if not context:
             context = "No previous arguments provided."
-        
+
         today = datetime.datetime.now().strftime("%Y-%m-%d")
         prompt = f"""
         You are the Devil's Advocate.
@@ -795,7 +795,7 @@ def crypto_macro_analyst(state: DebateState):
     """Analyzes broader context."""
     try:
         question = state.get("market_question", "")
-        
+
         today = datetime.datetime.now().strftime("%Y-%m-%d")
         prompt = f"""
         You are a Crypto and Macroeconomics Analyst.
@@ -825,16 +825,16 @@ def time_decay_analyst(state: DebateState):
         question = state.get("market_question", "Unknown Market")
         prices_24h = state.get("price_history_24h", [])
         prices_7d = state.get("price_history_7d", [])
-        
+
         current_price = market_data.get("price", 50.0)
         end_date = market_data.get("end_date", "Unknown")
         volume_24h = market_data.get("volume_24h", 0)
-        
+
         today = datetime.datetime.now().strftime("%Y-%m-%d")
-        
+
         # --- Calculate Time Decay Metrics ---
         time_metrics = calculate_time_decay_metrics(end_date, current_price)
-        
+
         # --- Analyze Recent Price Velocity ---
         velocity_analysis = ""
         if prices_24h and len(prices_24h) >= 2:
@@ -845,7 +845,7 @@ def time_decay_analyst(state: DebateState):
                 velocity_analysis = f"Price stable (Δ{recent_change:+.1f}%) - market in wait-and-see mode"
         else:
             velocity_analysis = "Insufficient price data for velocity analysis"
-        
+
         # --- Build Time Analysis Report ---
         if time_metrics.get("error"):
             time_report = f"""
@@ -866,7 +866,7 @@ Proceed with caution and rely on other signals.
             vol_assess = time_metrics.get("volatility_assessment", "")
             theta_advice = time_metrics.get("theta_advice", "")
             end_dt = time_metrics.get("end_date", "Unknown")
-            
+
             # Urgency emoji
             urgency_emoji = {
                 "CRITICAL": "🔴",
@@ -875,7 +875,7 @@ Proceed with caution and rely on other signals.
                 "LOW": "🟢",
                 "MINIMAL": "⚪"
             }.get(urgency, "⚪")
-            
+
             time_report = f"""
 ## Time Decay & Resolution Analysis
 
@@ -896,7 +896,7 @@ Proceed with caution and rely on other signals.
 ### Strategic Implications
 {theta_advice}
             """.strip()
-        
+
         # --- LLM Synthesis ---
         prompt = f"""
         You are a Time Decay & Resolution Analyst for prediction markets.
@@ -917,12 +917,12 @@ Proceed with caution and rely on other signals.
         
         Be specific about timing recommendations. Reference the calculated metrics.
         """
-        
-        logger.info(f"Time Decay Analyst computed report, invoking LLM for synthesis...")
+
+        logger.info("Time Decay Analyst computed report, invoking LLM for synthesis...")
         response = llm.invoke([HumanMessage(content=prompt)])
-        
+
         full_response = f"{time_report}\n\n---\n\n### Expert Interpretation\n\n{response.content}"
-        
+
         return {"messages": [HumanMessage(content=f"**Time Decay Analyst**: {full_response}", name="Time Decay Analyst")]}
     except Exception as e:
         logger.error(f"Time Decay Analyst failed: {e}")
@@ -934,11 +934,11 @@ def moderator(state: DebateState):
     try:
         messages = state.get("messages", [])
         question = state.get("market_question", "")
-        
+
         context = "\n".join([str(m.content) for m in messages if isinstance(m, HumanMessage)])
         if not context:
             context = "No arguments presented."
-        
+
         today = datetime.datetime.now().strftime("%Y-%m-%d")
         prompt = f"""
         You are the Moderator of the Debate Floor.
@@ -1007,39 +1007,39 @@ def build_debate_graph(config: Optional[AgentConfig] = None) -> StateGraph:
     """
     if config is None:
         config = DEFAULT_AGENT_CONFIG
-    
+
     workflow = StateGraph(DebateState)
-    
+
     # Determine which agents are enabled (in order)
     enabled_agents = [agent for agent in AGENT_ORDER if config.get(agent, True)]
-    
+
     # Log enabled agents
     logger.info(f"Building debate graph with agents: {enabled_agents}")
-    
+
     # Add enabled agent nodes
     for agent_name in enabled_agents:
         workflow.add_node(agent_name, AGENT_NODES[agent_name])
-    
+
     # Moderator is always added (required for verdict)
     workflow.add_node("moderator", moderator)
-    
+
     # Build the chain
     if enabled_agents:
         # Set entry point to first enabled agent
         workflow.set_entry_point(enabled_agents[0])
-        
+
         # Chain agents together
         for i in range(len(enabled_agents) - 1):
             workflow.add_edge(enabled_agents[i], enabled_agents[i + 1])
-        
+
         # Last agent connects to moderator
         workflow.add_edge(enabled_agents[-1], "moderator")
     else:
         # No agents enabled, go straight to moderator
         workflow.set_entry_point("moderator")
-    
+
     workflow.add_edge("moderator", END)
-    
+
     return workflow.compile()
 
 

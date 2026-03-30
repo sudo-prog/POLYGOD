@@ -1,23 +1,23 @@
 """Debate Floor API routes for AI-powered market analysis."""
 
+import asyncio
 import json
 import logging
-import asyncio
 from datetime import datetime, timedelta
+from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
-from pydantic import BaseModel, Field
-from typing import List, Dict, Any, Optional
 import httpx
+from fastapi import APIRouter, Depends, HTTPException
+from langchain_core.messages import HumanMessage
+from pydantic import BaseModel, Field
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.backend.agents.debate import AgentConfig, DebateState, build_debate_graph
 from src.backend.database import get_db
 from src.backend.models import Market
-from src.backend.agents.debate import build_debate_graph, DebateState, AgentConfig
-from src.backend.routes.markets import fetch_price_history_from_clob
 from src.backend.polymarket.client import polymarket_client
-from langchain_core.messages import BaseMessage, HumanMessage
+from src.backend.routes.markets import fetch_price_history_from_clob
 
 logger = logging.getLogger(__name__)
 
@@ -466,38 +466,38 @@ async def initiate_debate(
     # 1. Fetch Market Data
     result = await db.execute(select(Market).where(Market.id == market_id))
     market = result.scalar_one_or_none()
-    
+
     if not market:
         result = await db.execute(select(Market).where(Market.slug == market_id))
         market = result.scalar_one_or_none()
-        
+
     if not market:
         raise HTTPException(status_code=404, detail="Market not found")
-    
+
     # 2. Fetch Price History for Statistics Expert
     price_history_24h: List[float] = []
     price_history_7d: List[float] = []
-    
+
     if market.clob_token_ids:
         try:
             token_ids = json.loads(market.clob_token_ids)
             if token_ids and len(token_ids) > 0:
                 yes_token_id = token_ids[0]
-                
+
                 # Fetch 24h history (15-min fidelity)
                 history_24h = await fetch_price_history_from_clob(yes_token_id, "1d", 15)
                 if history_24h:
                     price_history_24h = [h["p"] * 100 for h in history_24h]  # Convert to 0-100 scale
-                
+
                 # Fetch 7d history (1-hour fidelity)
                 history_7d = await fetch_price_history_from_clob(yes_token_id, "7d", 60)
                 if history_7d:
                     price_history_7d = [h["p"] * 100 for h in history_7d]  # Convert to 0-100 scale
-                    
+
                 logger.info(f"Fetched price history: 24h={len(price_history_24h)} points, 7d={len(price_history_7d)} points")
         except Exception as e:
             logger.warning(f"Failed to fetch price history for debate: {e}")
-    
+
     # 3. Prepare Data for Agents
     market_data = {
         "title": market.title,
@@ -513,7 +513,7 @@ async def initiate_debate(
         top_traders = await _fetch_top_traders(market)
     except Exception as e:
         logger.warning(f"Failed to fetch top traders for debate: {e}")
-    
+
     initial_state: DebateState = {
         "messages": [],
         "market_data": market_data,
@@ -523,7 +523,7 @@ async def initiate_debate(
         "price_history_7d": price_history_7d,
         "top_traders": top_traders,
     }
-    
+
     # 3. Build Agent Config from Request
     agent_config: AgentConfig = {
         "statistics_expert": True,
@@ -533,7 +533,7 @@ async def initiate_debate(
         "time_decay_analyst": True,
         "top_traders_analyst": True,
     }
-    
+
     if request and request.agents:
         agent_config = {
             "statistics_expert": request.agents.statistics_expert,
@@ -543,17 +543,17 @@ async def initiate_debate(
             "time_decay_analyst": request.agents.time_decay_analyst,
             "top_traders_analyst": request.agents.top_traders_analyst,
         }
-    
+
     # Track enabled agents for response
     enabled_agents = [k for k, v in agent_config.items() if v]
-    
+
     # 4. Build Dynamic Graph and Run
     try:
         debate_graph = build_debate_graph(agent_config)
         final_state = await debate_graph.ainvoke(initial_state)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Debate failed: {str(e)}")
-    
+
     # 5. Format Output
     formatted_messages = []
     for msg in final_state["messages"]:
@@ -562,7 +562,7 @@ async def initiate_debate(
                 "agent": msg.name,
                 "content": str(msg.content)
             })
-            
+
     return DebateResponse(
         market_id=market_id,
         messages=formatted_messages,

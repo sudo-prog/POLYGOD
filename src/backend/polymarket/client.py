@@ -9,10 +9,6 @@ import json
 from datetime import datetime
 
 import httpx
-import httpx
-
-from src.backend.config import settings
-from src.backend.polymarket.schemas import MarketResponse
 
 from src.backend.config import settings
 from src.backend.polymarket.schemas import MarketResponse
@@ -62,7 +58,7 @@ class PolymarketClient:
                         host="https://clob.polymarket.com",
                         creds=creds,
                         chain_id=POLYGON,
-                        signature_type=2, 
+                        signature_type=2,
                     )
                 except Exception as e:
                     logger.error(f"Failed to initialize ClobClient: {e}")
@@ -185,7 +181,7 @@ class PolymarketClient:
                     break
                 all_markets.extend(batch)
                 offset += fetch_limit
-                
+
                 # Break early if we got fewer than limit (no more data)
                 if len(batch) < fetch_limit:
                     break
@@ -231,13 +227,13 @@ class PolymarketClient:
             volume_24h = market.volume_24hr if market.volume_24hr else 0.0
             volume_7d = market.volume_1wk if market.volume_1wk else 0.0
             liquidity = market.liquidity_num if market.liquidity_num else 0.0
-            
+
             # Fallback to volume_num if specific fields are zero
             if volume_24h == 0 and market.volume_num:
                 volume_24h = market.volume_num
             if volume_7d == 0 and market.volume_num:
                 volume_7d = market.volume_num
-            
+
             # Additional check for volume_7d being 0 but volume_24h > 0
             if volume_7d == 0 and volume_24h > 0:
                 volume_7d = volume_24h
@@ -264,7 +260,7 @@ class PolymarketClient:
 
         # Sort by 7d volume (or 24h if 7d is zero)
         processed_markets.sort(
-            key=lambda x: (x["volume_7d"], x["volume_24h"]), 
+            key=lambda x: (x["volume_7d"], x["volume_24h"]),
             reverse=True
         )
         return processed_markets[:limit]
@@ -272,11 +268,11 @@ class PolymarketClient:
     async def fetch_trades(self, market_slug: str, limit: int = 500) -> list[dict]:
         """
         Fetch recent trades for a market using Data API.
-        
+
         Args:
             market_slug: The market slug (e.g. "will-ethereum-reach-6000-in-january-2026").
             limit: Number of trades to fetch.
-            
+
         Returns:
             List of trade dictionaries.
         """
@@ -286,13 +282,13 @@ class PolymarketClient:
                 "https://data-api.polymarket.com/trades",
                 params={"market": market_slug, "limit": limit}
             )
-            
+
             if response.status_code == 200:
                 return response.json()
             else:
                 logger.warning(f"Data API returned status {response.status_code}: {response.text}")
                 return []
-                
+
         except Exception as e:
             logger.error(f"Error fetching trades from Data API: {e}")
             return []
