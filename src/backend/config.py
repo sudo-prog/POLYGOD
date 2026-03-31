@@ -6,6 +6,7 @@ Loads environment variables from .env file.
 
 from functools import lru_cache
 import logging
+import os
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -47,10 +48,33 @@ class Settings(BaseSettings):
     POLYGOD_MODE: int = 0
     MEM0_CONFIG: str = '{"provider": "qdrant", "vector_store": {"url": "http://qdrant:6333"}}'
 
+    # Network Configuration
+    FORCE_IPV4: bool = False  # Force IPv4 for DNS resolution (helps in some Docker setups)
+
+    # Database Configuration
+    ALLOW_IN_MEMORY_DB_FALLBACK: bool = False  # Allow fallback to in-memory DB on init failure
+
+    # Security Configuration
+    POLYGOD_ADMIN_TOKEN: str = ""  # Admin token for POLYGOD mode switching endpoint
+
     @property
     def cors_origins_list(self) -> list[str]:
-        """Parse CORS origins string into a list."""
-        return [origin.strip() for origin in self.CORS_ORIGINS.split(",")]
+        """
+        Parse CORS origins string into a list, filtering out blanks.
+
+        Handles cases like:
+        - empty string -> []
+        - trailing commas -> ignores empty segments
+        - whitespace around origins -> stripped
+        """
+        if not self.CORS_ORIGINS:
+            return []
+
+        return [
+            origin
+            for origin in (o.strip() for o in self.CORS_ORIGINS.split(","))
+            if origin
+        ]
 
 
 @lru_cache
@@ -84,7 +108,12 @@ def get_settings() -> Settings:
         logger.info(
             "POLYMARKET_SECRET/POLYMARKET_PASSPHRASE not fully set - authenticated trading may be disabled"
         )
-    logger.info(f"POLYGOD_MODE={settings.POLYGOD_MODE} | MEM0_CONFIG loaded={bool(settings.MEM0_CONFIG)}")
+    # MEM0_CONFIG has a non-empty default, so `bool(settings.MEM0_CONFIG)` is not useful to detect loading.
+    # Instead, distinguish between default and environment-provided values in the log output.
+    mem0_config_source = "env" if "MEM0_CONFIG" in os.environ else "default"
+    logger.info(
+        f"POLYGOD_MODE={settings.POLYGOD_MODE} | MEM0_CONFIG source={mem0_config_source}"
+    )
     logger.info("=== Configuration Validation Complete ===")
     return settings
 

@@ -13,7 +13,7 @@ from typing import Final
 import itertools
 
 import uvicorn
-from fastapi import FastAPI, WebSocket, HTTPException
+from fastapi import FastAPI, WebSocket, HTTPException, Header
 from fastapi.middleware.cors import CORSMiddleware
 
 from src.backend.config import settings
@@ -25,11 +25,20 @@ from src.backend.routes import debate, markets, news, users
 from src.backend.tasks.update_markets import get_scheduler, update_top_markets
 
 # Force IPv4 to avoid IPv6 timeouts (helps in some Docker/network setups)
-old_getaddrinfo = socket.getaddrinfo
-def new_getaddrinfo(*args, **kwargs):
-    responses = old_getaddrinfo(*args, **kwargs)
-    return [response for response in responses if response[0] == socket.AF_INET]
-socket.getaddrinfo = new_getaddrinfo
+# Only apply if FORCE_IPV4 is explicitly enabled to avoid unintended side effects
+if settings.FORCE_IPV4:
+    logger = logging.getLogger(__name__)
+    logger.warning(
+        "FORCE_IPV4 is enabled - overriding socket.getaddrinfo to filter IPv6. "
+        "This may break libraries that rely on IPv6 or standard DNS behavior."
+    )
+    _old_getaddrinfo = socket.getaddrinfo
+
+    def _ipv4_only_getaddrinfo(*args, **kwargs):
+        responses = _old_getaddrinfo(*args, **kwargs)
+        return [response for response in responses if response[0] == socket.AF_INET]
+
+    socket.getaddrinfo = _ipv4_only_getaddrinfo
 
 # Configure logging (basic config; can be overridden if app embeds this)
 logging.basicConfig(
@@ -85,9 +94,13 @@ async def lifespan(app: FastAPI):
         await init_db()
         logger.info("Database initialized")
     except Exception as e:
-        logger.error(f"Database initialization failed: {e} - Continuing with in-memory fallback")
-        settings.DATABASE_URL = "sqlite+aiosqlite:///:memory:"
-        logger.warning("DATABASE_URL overridden to sqlite+aiosqlite:///:memory:")
+        if settings.ALLOW_IN_MEMORY_DB_FALLBACK or settings.DEBUG:
+            logger.error(f"Database initialization failed: {e} - Continuing with in-memory fallback")
+            settings.DATABASE_URL = "sqlite+aiosqlite:///:memory:"
+            logger.warning("DATABASE_URL overridden to sqlite+aiosqlite:///:memory:")
+        else:
+            logger.error(f"Database initialization failed: {e}")
+            raise
 
     # Run initial market update with graceful error
     try:
@@ -167,25 +180,72 @@ app.mount("/polygod", polygod_app, name="polygod")
 async def polygod_ws(websocket: WebSocket):
     """WebSocket streaming POLYGOD status to the frontend."""
     await websocket.accept()
-    while True:
-        await websocket.send_json(
-            {
-                "paper_pnl": paper.pnls[-1] if paper.pnls else 0,
-                "mode": MODE,
-                "whale_alert": next(whale_cycle),
-            }
-        )
-        await asyncio.sleep(2)
+    try:
+        while True:
+            await websocket.send_json(
+                {
+                    "paper_pnl": paper.pnls[-1] if paper.pnls else 0,
+                    "mode": MODE,
+                    "whale_alert": next(whale_cycle),
+                }
+            )
+            await asyncio.sleep(2)
+    except Exception as e:
+        # Handle WebSocket disconnect and other errors gracefully
+        from fastapi import WebSocketDisconnect
+
+        if isinstance(e, WebSocketDisconnect):
+            logger.info("WebSocket client disconnected")
+        else:
+            logger.error(f"WebSocket error: {e}")
+    finally:
+        # Ensure cleanup happens
+        try:
+            await websocket.close()
+        except Exception:
+            pass
+
+
+def verify_admin_token(token: str) -> bool:
+    """Verify admin token for POLYGOD mode switching."""
+    if not settings.POLYGOD_ADMIN_TOKEN:
+        # If no admin token is configured, reject all requests
+        return False
+    # Use constant-time comparison to prevent timing attacks
+    import hmac
+    return hmac.compare_digest(token, settings.POLYGOD_ADMIN_TOKEN)
 
 
 @app.post("/polygod/switch-mode")
-async def switch_mode(new_mode: int):
-    """Switch POLYGOD operating mode (1=analysis, 2=safe, 3=beast)."""
+async def switch_mode(new_mode: int, authorization: str = Header(None, alias="Authorization")):
+    """Switch POLYGOD operating mode (1=analysis, 2=safe, 3=beast).
+
+    Requires Bearer token authentication via Authorization header.
+    Set POLYGOD_ADMIN_TOKEN environment variable to configure the admin token.
+    """
+    # Validate authorization
+    if not authorization:
+        raise HTTPException(
+            status_code=401,
+            detail="Authorization header required. Use: Authorization: Bearer <token>"
+        )
+
+    # Extract and validate Bearer token
+    if not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Authorization must be Bearer token")
+
+    token = authorization[7:]  # Strip "Bearer " prefix
+    if not verify_admin_token(token):
+        raise HTTPException(status_code=403, detail="Invalid admin token")
+
+    # Validate mode
     if new_mode not in [1, 2, 3]:
         raise HTTPException(status_code=400, detail="Mode must be 1, 2, or 3")
+
     global MODE
     MODE = new_mode
     mode_names = {1: "ANALYSIS MODE", 2: "SAFE MODE", 3: "BEAST MODE"}
+    logger.info(f"POLYGOD mode switched to {MODE} ({mode_names[MODE]})")
     return {"status": f"Switched to POLYGOD MODE {MODE} — {mode_names[MODE]}"}
 
 

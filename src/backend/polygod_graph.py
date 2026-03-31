@@ -79,7 +79,14 @@ def consult_dexter(query: str):
             timeout=60,
         )
         return result.stdout
-    except:
+    except subprocess.TimeoutExpired:
+        logger.warning("Dexter query timed out after 60s")
+        return "Dexter offline"
+    except FileNotFoundError:
+        logger.warning("Dexter executable not found - check path")
+        return "Dexter offline"
+    except Exception as e:
+        logger.error(f"Dexter query failed: {e}")
         return "Dexter offline"
 
 
@@ -130,9 +137,19 @@ def risk_gate_node(state: AgentState):
 
     # Get market data for volume/liquidity
     market_data = state.get("market_data", {})
-    volume = float(market_data.get("volume") or market_data.get("liquidity") or 100000.0)
 
-    # Calculate size ratio
+    raw_volume = market_data.get("volume", None)
+    raw_liquidity = market_data.get("liquidity", None)
+
+    # Prefer explicit volume, then liquidity; only fall back to default if both are missing/None
+    if raw_volume is not None:
+        volume = float(raw_volume)
+    elif raw_liquidity is not None:
+        volume = float(raw_liquidity)
+    else:
+        volume = 100000.0
+
+    # Calculate size ratio; treat zero or negative volume as fully risky (ratio = 1.0)
     size_ratio = (size / volume) if volume > 0 else 1.0
 
     # Calculate PnL volatility from recent trades
@@ -170,11 +187,10 @@ def execute_node(state: AgentState):
     order = state.get("decision", {}).get("order", {"size": 100, "price": 0.65})
     paper.execute_shadow(order)  # always-on paper mirror
 
-    if state["mode"] >= 2 and clob is not None:
+    # Only attempt official execution when CLOB client is available and mode >= 2
+    if state["mode"] >= 2 and CLOB_AVAILABLE and clob is not None and ClobClient is not None:
         # Official Polymarket execution via py-clob-client (no fake agent_skills)
         try:
-            # Type assertion since we know clob is a ClobClient when not None
-            from py_clob_client.client import ClobClient
             if isinstance(clob, ClobClient):
                 if state["mode"] == 3:
                     # Beast mode - direct order (add your gasless logic here later)
