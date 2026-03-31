@@ -3,7 +3,7 @@ name = "polygod"
 version = "0.1.0"
 description = "Real-time market tracking dashboard for Polymarket with TradingView charts and live news feeds"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.12,<3.14"
 dependencies = [
     "fastapi>=0.115.0",
     "uvicorn[standard]>=0.34.0",
@@ -23,12 +23,12 @@ dependencies = [
     "langgraph>=1.0.7",
     "tavily-python>=0.7.19",
     "qdrant-client>=1.12.0",
-    "mem0>=0.1.0",
+    # "mem0>=0.1.0",  # Optional - requires special installation, falls back to SimpleMemory
 ]
 
 [project.optional-dependencies]
 dev = [
-    "pytest>=8.0.0",
+    "pytest>=0.8.0",
     "pytest-asyncio>=0.25.0",
     "ruff>=0.9.0",
 ]

@@ -1,61 +1,31 @@
-"""
-Application configuration using Pydantic Settings.
-
-Loads environment variables from .env file.
-"""
 
 from functools import lru_cache
 import logging
 import os
 
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings
+from pydantic import Field
 
 
 class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
 
-    model_config = SettingsConfigDict(
-        env_file=".env",
-        env_file_encoding="utf-8",
-        case_sensitive=True,
-        extra="ignore",
-    )
-
-    # Database
-    DATABASE_URL: str = "sqlite+aiosqlite:///./polymarket.db"
-
-    # News API
-    NEWS_API_KEY: str = ""
-
-    # Polymarket API (Optional, for CLOB access)
-    POLYMARKET_API_KEY: str = ""
-    POLYMARKET_SECRET: str = ""
-    POLYMARKET_PASSPHRASE: str = ""
-
-    # CORS
-    CORS_ORIGINS: str = "http://localhost:5173,http://127.0.0.1:5173"
-
-    # Server
-    HOST: str = "0.0.0.0"
-    PORT: int = 8000
-    DEBUG: bool = False
-
-    # AI Agents for POLYGOD
-    GEMINI_API_KEY: str = ""
-    TAVILY_API_KEY: str = ""
-
-    # POLYGOD Configuration
-    POLYGOD_MODE: int = 0
-    MEM0_CONFIG: str = '{"provider": "qdrant", "vector_store": {"url": "http://qdrant:6333"}}'
-
-    # Network Configuration
-    FORCE_IPV4: bool = False  # Force IPv4 for DNS resolution (helps in some Docker setups)
-
-    # Database Configuration
-    ALLOW_IN_MEMORY_DB_FALLBACK: bool = False  # Allow fallback to in-memory DB on init failure
-
-    # Security Configuration
-    POLYGOD_ADMIN_TOKEN: str = ""  # Admin token for POLYGOD mode switching endpoint
+    DATABASE_URL: str = Field(default="sqlite+aiosqlite:///./polymarket.db", env="DATABASE_URL")
+    NEWS_API_KEY: str = Field(default="", env="NEWS_API_KEY")
+    POLYMARKET_API_KEY: str = Field(default="", env="POLYMARKET_API_KEY")
+    POLYMARKET_SECRET: str = Field(default="", env="POLYMARKET_SECRET")
+    POLYMARKET_PASSPHRASE: str = Field(default="", env="POLYMARKET_PASSPHRASE")
+    CORS_ORIGINS: str = Field(default="http://localhost:5173,http://127.0.0.1:5173", env="CORS_ORIGINS")
+    HOST: str = Field(default="0.0.0.0", env="HOST")
+    PORT: int = Field(default=8000, env="PORT")
+    DEBUG: bool = Field(default=False, env="DEBUG")
+    GEMINI_API_KEY: str = Field(default="", env="GEMINI_API_KEY")
+    TAVILY_API_KEY: str = Field(default="", env="TAVILY_API_KEY")
+    POLYGOD_MODE: int = Field(default=0, env="POLYGOD_MODE")
+    MEM0_CONFIG: str = Field(default='{"provider": "qdrant", "vector_store": {"url": "http://qdrant:6333"}}', env="MEM0_CONFIG")
+    FORCE_IPV4: bool = Field(default=False, env="FORCE_IPV4")
+    ALLOW_IN_MEMORY_DB_FALLBACK: bool = Field(default=False, env="ALLOW_IN_MEMORY_DB_FALLBACK")
+    POLYGOD_ADMIN_TOKEN: str = Field(default="", env="POLYGOD_ADMIN_TOKEN")
 
     @property
     def cors_origins_list(self) -> list[str]:

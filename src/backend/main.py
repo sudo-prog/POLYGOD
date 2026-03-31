@@ -19,7 +19,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from src.backend.config import settings
 from src.backend.database import close_db, init_db
 from src.backend.news.aggregator import news_aggregator
-from src.backend.polygod_graph import paper, polygod_app
+from src.backend.polygod_graph import polygod_app, paper, POLYGOD_MODE
 from src.backend.polymarket.client import polymarket_client
 from src.backend.routes import debate, markets, news, users
 from src.backend.tasks.update_markets import get_scheduler, update_top_markets
@@ -173,80 +173,26 @@ app.include_router(debate.router)
 app.include_router(users.router)
 
 # Mount POLYGOD sub-application
-app.mount("/polygod", polygod_app, name="polygod")
+app.mount("/polygod", polygod_app)
 
 
 @app.websocket("/ws/polygod")
 async def polygod_ws(websocket: WebSocket):
-    """WebSocket streaming POLYGOD status to the frontend."""
     await websocket.accept()
-    try:
-        while True:
-            await websocket.send_json(
-                {
-                    "paper_pnl": paper.pnls[-1] if paper.pnls else 0,
-                    "mode": MODE,
-                    "whale_alert": next(whale_cycle),
-                }
-            )
-            await asyncio.sleep(2)
-    except Exception as e:
-        # Handle WebSocket disconnect and other errors gracefully
-        from fastapi import WebSocketDisconnect
-
-        if isinstance(e, WebSocketDisconnect):
-            logger.info("WebSocket client disconnected")
-        else:
-            logger.error(f"WebSocket error: {e}")
-    finally:
-        # Ensure cleanup happens
-        try:
-            await websocket.close()
-        except Exception:
-            pass
-
-
-def verify_admin_token(token: str) -> bool:
-    """Verify admin token for POLYGOD mode switching."""
-    if not settings.POLYGOD_ADMIN_TOKEN:
-        # If no admin token is configured, reject all requests
-        return False
-    # Use constant-time comparison to prevent timing attacks
-    import hmac
-    return hmac.compare_digest(token, settings.POLYGOD_ADMIN_TOKEN)
+    while True:
+        await websocket.send_json({
+            "paper_pnl": paper.pnls[-1] if paper.pnls else 0,
+            "mode": POLYGOD_MODE,
+            "whale_alert": "HorizonSplendidView just loaded 150k YES — POLYGOD analyzing edge"
+        })
+        await asyncio.sleep(2)
 
 
 @app.post("/polygod/switch-mode")
-async def switch_mode(new_mode: int, authorization: str = Header(None, alias="Authorization")):
-    """Switch POLYGOD operating mode (1=analysis, 2=safe, 3=beast).
-
-    Requires Bearer token authentication via Authorization header.
-    Set POLYGOD_ADMIN_TOKEN environment variable to configure the admin token.
-    """
-    # Validate authorization
-    if not authorization:
-        raise HTTPException(
-            status_code=401,
-            detail="Authorization header required. Use: Authorization: Bearer <token>"
-        )
-
-    # Extract and validate Bearer token
-    if not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Authorization must be Bearer token")
-
-    token = authorization[7:]  # Strip "Bearer " prefix
-    if not verify_admin_token(token):
-        raise HTTPException(status_code=403, detail="Invalid admin token")
-
-    # Validate mode
-    if new_mode not in [1, 2, 3]:
-        raise HTTPException(status_code=400, detail="Mode must be 1, 2, or 3")
-
-    global MODE
-    MODE = new_mode
-    mode_names = {1: "ANALYSIS MODE", 2: "SAFE MODE", 3: "BEAST MODE"}
-    logger.info(f"POLYGOD mode switched to {MODE} ({mode_names[MODE]})")
-    return {"status": f"Switched to POLYGOD MODE {MODE} — {mode_names[MODE]}"}
+async def switch_mode(new_mode: int):
+    global POLYGOD_MODE
+    POLYGOD_MODE = new_mode
+    return {"status": f"Switched to Mode {POLYGOD_MODE} — {'BEAST MODE' if POLYGOD_MODE == 3 else 'safe'}"}
 
 
 @app.get("/api/health")
