@@ -23,7 +23,7 @@ dependencies = [
     "langgraph>=1.0.7",
     "tavily-python>=0.7.19",
     "qdrant-client>=1.12.0",
-    # "mem0>=0.1.0",  # Optional - requires special installation, falls back to SimpleMemory
+    "mem0>=0.1.0",
 ]
 
 [project.optional-dependencies]
