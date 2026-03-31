@@ -1,14 +1,16 @@
+# POLYGOD Docker Compose - Hardened for zero-error startup with Qdrant for mem0
+
 services:
   backend:
     build:
       context: .
       dockerfile: Dockerfile.backend
-    image: polymarket-backend:latest
+    image: polygod-backend:latest
     restart: unless-stopped
     env_file:
       - .env
     volumes:
-      - polymarket_db:/app?polymarket.db
+      - polygod_db:/app/polymarket.db
     ports:
       - "8000:8000"
     networks:
@@ -20,14 +22,14 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.frontend
-    image: polymarket-frontend:latest
+    image: polygod-frontend:latest
     restart: unless-stopped
     ports:
       - "5173:80"
     networks:
       - pnet
 
-  qdrant:
+  qdrant:  # For mem0 vector store
     image: qdrant/qdrant:latest
     restart: unless-stopped
     volumes:
@@ -41,7 +43,7 @@ services:
       - pnet
 
 volumes:
-  polymarket_db:
+  polygod_db:
   qdrant_data:
 
 networks:

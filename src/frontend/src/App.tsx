@@ -11,7 +11,7 @@ import { SearchBar } from './components/SearchBar'
 import DebateFloor from './components/DebateFloor'
 import UserDashboard from './components/UserDashboard'
 import { useMarketStore } from './stores/marketStore'
-import { useRAGGodWS } from './hooks/useRAGGodWS'
+import { usePolyGodWS } from './hooks/usePolyGodWS'
 
 interface PolyGodData {
   mode?: number;
@@ -21,7 +21,7 @@ interface PolyGodData {
 
 function App() {
     const { selectedMarket } = useMarketStore()
-    const { isConnected, data: rawPolyGodData, lastAlert } = useRAGGodWS()
+    const { isConnected, data: rawPolyGodData, lastAlert } = usePolyGodWS()
     const [activeTab, setActiveTab] = useState<'news' | 'whales' | 'holders' | 'stats' | 'debate'>('news')
     const [activeView, setActiveView] = useState<'markets' | 'user'>('markets')
 
@@ -88,10 +88,10 @@ function App() {
                         </div>
                         <div>
                             <h1 className="text-2xl font-bold text-white tracking-tight">
-                                Polymarket Intelligence
+                                POLYGOD
                             </h1>
                             <p className="text-sm text-surface-200">
-                                Real-time markets & news
+                                AI-Powered Market Intelligence
                             </p>
                         </div>
                     </div>

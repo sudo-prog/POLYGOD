@@ -4,8 +4,8 @@ Polymarket API client.
 Fetches market data from the Polymarket CLOB API using the official SDK.
 """
 
-import logging
 import json
+import logging
 from datetime import datetime
 
 import httpx
@@ -46,8 +46,8 @@ class PolymarketClient:
             if settings.POLYMARKET_API_KEY and settings.POLYMARKET_SECRET and settings.POLYMARKET_PASSPHRASE:
                 try:
                     from py_clob_client.client import ClobClient
-                    from py_clob_client.constants import POLYGON
                     from py_clob_client.clob_types import ApiCreds
+                    from py_clob_client.constants import POLYGON
 
                     creds = ApiCreds(
                         api_key=settings.POLYMARKET_API_KEY,
@@ -297,3 +297,22 @@ class PolymarketClient:
 
 # Global client instance
 polymarket_client = PolymarketClient()
+
+async def create_empty_market_data() -> list[dict]:
+    """Create empty market data structure for fallback scenarios."""
+    return [
+        {
+            "id": "fallback",
+            "slug": "fallback",
+            "title": "No Market Data Available",
+            "description": "Market data could not be loaded at startup",
+            "volume_24h": 0.0,
+            "volume_7d": 0.0,
+            "liquidity": 0.0,
+            "yes_percentage": 50.0,
+            "is_active": False,
+            "end_date": None,
+            "image_url": None,
+            "clob_token_ids": None,
+        }
+    ]

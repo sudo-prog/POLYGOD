@@ -1,15 +1,17 @@
 import { create } from 'zustand';
 
-interface RAGGodData {
-  [key: string]: unknown;
+interface PolyGodData {
+  paper_pnl: number;
+  mode: number;
+  whale_alert: string;
 }
 
-interface RAGGodState {
-  data: RAGGodData | null;
-  updateRAGGod: (data: RAGGodData) => void;
+interface PolyGodState {
+  data: PolyGodData | null;
+  updatePolyGod: (data: PolyGodData) => void;
 }
 
-export const useStore = create<RAGGodState>((set) => ({
+export const useStore = create<PolyGodState>((set) => ({
   data: null,
-  updateRAGGod: (data) => set({ data }),
+  updatePolyGod: (data) => set({ data }),
 }));
