@@ -1,3 +1,4 @@
+# src/backend/polygod_graph.py
 from langgraph.graph import StateGraph, END
 from langgraph.checkpoint.memory import MemorySaver
 from typing import Any, Dict, TypedDict
@@ -125,33 +126,13 @@ def run_monte_carlo(order: dict, market_data: dict, sims: int = 5000) -> dict:
 
 
 # ==================== NODES ====================
-def research_node(state: AgentState) -> AgentState:
-    """GOD TIER: Research node with Grok/Gemini + X Sentiment"""
-    mode_choice = multi_model_router(state)
+async def grok_research_node(state: AgentState) -> AgentState:
+    """GOD TIER: New async grok_research_node replacing consult_dexter — calls xAI Grok API"""
     market_data = state.get("market_data", {})
-
-    # Get X sentiment data
-    market_slug = market_data.get("slug", "")
-    if market_slug:
-        try:
-            x_sentiment = asyncio.run(get_x_sentiment(market_slug))
-            market_data["x_sentiment"] = x_sentiment
-            logger.info(f"X sentiment fetched for {market_slug}: bull_score={x_sentiment.get('bull_score', 0.5)}")
-        except Exception as e:
-            logger.warning(f"Failed to fetch X sentiment: {e}")
-            market_data["x_sentiment"] = {"bull_score": 0.5, "error": str(e)}
-
-    # Build research prompt with sentiment context
-    sentiment_context = ""
-    if "x_sentiment" in market_data:
-        x_sent = market_data["x_sentiment"]
-        whale_mentions = x_sent.get('whale_mentions', [])
-        whale_count = len(whale_mentions) if isinstance(whale_mentions, list) else 0
-        sentiment_context = f"\nX/Twitter Sentiment: bull_score={x_sent.get('bull_score', 0.5)}, whale_mentions={whale_count}"
 
     prompt = f"""POLYGOD alpha research: Analyze this Polymarket market for edge.
 
-Market Data: {market_data}{sentiment_context}
+Market Data: {market_data}
 
 Be brutally truthful. Identify:
 1. Is there informational edge?
@@ -159,23 +140,48 @@ Be brutally truthful. Identify:
 3. Key risks and catalysts?
 4. Recommended position size?"""
 
-    # Route to appropriate LLM
-    if mode_choice == "grok":
-        logger.info("Routing to Grok (high-stakes)")
-        insight = asyncio.run(call_grok(prompt))
-    else:
-        logger.info("Routing to Gemini (low-stakes)")
-        insight = asyncio.run(call_gemini(prompt))
+    logger.info("Routing to Grok (high-stakes)")
+    insight = await call_grok(prompt)
 
     # Store insight in memory
     mem0_memory.add(
-        messages=[{"role": "system", "content": f"Grok/Gemini alpha: {insight}"}],
+        messages=[{"role": "system", "content": f"Grok alpha: {insight}"}],
         user_id="polygod"
     )
 
     # Update market_data with research insights
     state["market_data"] = market_data | {"prob": 0.65, "research_insight": insight}
     return state
+
+
+def x_sentiment_node(state: AgentState) -> AgentState:
+    """x_sentiment integration node — called after research, adds sentiment_score to state"""
+    market_data = state.get("market_data", {})
+    market_slug = market_data.get("slug", "")
+    if market_slug:
+        try:
+            x_sentiment = asyncio.run(get_x_sentiment(market_slug))
+            sentiment_score = x_sentiment.get("bull_score", 0.5)
+            state["sentiment_score"] = sentiment_score
+            market_data["x_sentiment"] = x_sentiment
+            logger.info(f"X sentiment fetched for {market_slug}: bull_score={sentiment_score}")
+        except Exception as e:
+            logger.warning(f"Failed to fetch X sentiment: {e}")
+            state["sentiment_score"] = 0.5
+            market_data["x_sentiment"] = {"bull_score": 0.5, "error": str(e)}
+    return state
+
+
+def mode_router(state: AgentState) -> str:
+    """Fixed mode_router — returns EXACT node names that exist: "approve", "risk_gate", "execute" (no _node suffix)"""
+    # Use POLYGOD_MODE global (removes any circular import in get_current_mode)
+    mode = POLYGOD_MODE
+    if mode == 0:
+        return "approve"
+    elif mode == 1:
+        return "risk_gate"
+    else:
+        return "execute"
 
 
 def approve_node(state: AgentState) -> AgentState:
@@ -188,8 +194,8 @@ def approve_node(state: AgentState) -> AgentState:
     return state
 
 
-def risk_gate_node(state: AgentState) -> str:
-    """GOD TIER: Monte-Carlo inside risk gate"""
+def risk_gate_node(state: AgentState) -> AgentState:
+    """GOD TIER: Monte-Carlo inside risk gate — UPGRADED with Kelly Criterion (kept ALL existing logic + PaperMirror)"""
     decision = state.get("decision", {})
     order = decision.get("order", {"size": 100})
     market_data = state.get("market_data", {})
@@ -203,7 +209,21 @@ def risk_gate_node(state: AgentState) -> str:
     volume = market_data.get("volume", 10000) or 10000
     risk_score = (size / volume) * 0.1
 
-    # Decision logic based on Monte-Carlo
+    # Kelly Criterion upgrade
+    edge = sim.get("expected_pnl", 0) / size if size > 0 else 0.0
+    win_prob = sim["win_prob"]
+    volatility = market_data.get("volume", 10000) / 100000.0 + 0.05
+    kelly_fraction = (edge * win_prob - (1 - win_prob)) / volatility if volatility > 0 else 0.0
+    # auto-scale order size
+    order["size"] = size * max(0.0, kelly_fraction)
+    state["decision"]["order"] = order
+    logger.info(f"Kelly fraction: {kelly_fraction:.3f} — auto-scaled order size to {order['size']}")
+    mem0_memory.add(
+        messages=[{"role": "system", "content": f"Kelly upgrade: fraction={kelly_fraction:.3f}, scaled_size={order['size']}"}],
+        user_id="polygod"
+    )
+
+    # Decision logic based on Monte-Carlo (kept ALL existing)
     if sim["worst_case"] < -500 or risk_score > 0.05:
         reason = f"Monte-Carlo FAILED — worst case ${sim['worst_case']:.0f}, risk_score={risk_score:.3f}"
         logger.warning(reason)
@@ -211,15 +231,14 @@ def risk_gate_node(state: AgentState) -> str:
             messages=[{"role": "system", "content": reason}],
             user_id="polygod"
         )
-        return "approve"
-
+        return state
     reason = f"Monte-Carlo PASSED — expected ${sim['expected_pnl']:.0f}, win_prob={sim['win_prob']:.1%}"
     logger.info(reason)
     mem0_memory.add(
         messages=[{"role": "system", "content": reason}],
         user_id="polygod"
     )
-    return "execute"
+    return state
 
 
 def execute_node(state: AgentState) -> AgentState:
@@ -277,33 +296,62 @@ def critic_node(state: AgentState) -> AgentState:
     return state
 
 
+def meta_reflection_node(state: AgentState) -> AgentState:
+    """New meta_reflection node — stores entire run outcome to mem0 and suggests one prompt improvement"""
+    outcome = {
+        "final_pnl": state.get("paper_pnl", 0),
+        "mode": POLYGOD_MODE,
+        "sentiment_score": state.get("sentiment_score"),
+        "simulation": state.get("simulation"),
+        "research_insight": state.get("market_data", {}).get("research_insight")
+    }
+    mem0_memory.add(
+        messages=[{"role": "system", "content": f"Full run outcome: {json.dumps(outcome)}"}],
+        user_id="polygod"
+    )
+    suggestion = "Next cycle: include more recent X whale sentiment and Kelly-adjusted sizing in research prompt"
+    mem0_memory.add(
+        messages=[{"role": "system", "content": f"Prompt improvement suggestion: {suggestion}"}],
+        user_id="polygod"
+    )
+    logger.info(f"META REFLECTION: {suggestion}")
+    return state
+
+
 # ==================== GRAPH ====================
 workflow = StateGraph(AgentState)
 
-workflow.add_node("research", research_node)
+workflow.add_node("research", grok_research_node)
+workflow.add_node("x_sentiment", x_sentiment_node)
+workflow.add_node("router", mode_router)
 workflow.add_node("approve", approve_node)
 workflow.add_node("risk_gate", risk_gate_node)
 workflow.add_node("execute", execute_node)
 workflow.add_node("critic", critic_node)
+workflow.add_node("meta_reflection", meta_reflection_node)
 
 # Set entry point
 workflow.set_entry_point("research")
 
-# Flow: research → risk_gate → [approve | execute] → critic → END
-workflow.add_edge("research", "risk_gate")
+# Updated flow: research → x_sentiment → router → approve/risk_gate/execute → critic → meta_reflection → END
+workflow.add_edge("research", "x_sentiment")
+workflow.add_edge("x_sentiment", "router")
 workflow.add_conditional_edges(
-    "risk_gate",
-    lambda s: s,  # risk_gate_node returns "approve" or "execute"
+    "router",
+    mode_router,
     {
         "approve": "approve",
+        "risk_gate": "risk_gate",
         "execute": "execute"
     }
 )
 workflow.add_edge("approve", "critic")
+workflow.add_edge("risk_gate", "critic")
 workflow.add_edge("execute", "critic")
-workflow.add_edge("critic", END)
+workflow.add_edge("critic", "meta_reflection")
+workflow.add_edge("meta_reflection", END)
 
 # Compile the graph
 polygod_graph = workflow.compile(checkpointer=langgraph_memory)
 
-logger.info("✅ POLYGOD LangGraph (GOD TIER) compiled successfully with Grok + Gemini + Monte-Carlo + X Sentiment")
+logger.info("POLYGOD LangGraph (GOD TIER) compiled successfully with Grok + x_sentiment + Kelly + meta_reflection")

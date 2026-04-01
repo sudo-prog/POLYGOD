@@ -208,15 +208,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Include routers
-app.include_router(markets.router)
-app.include_router(news.router)
-app.include_router(debate.router)
-app.include_router(users.router)
-
-# Mount POLYGOD sub-application
-app.mount("/polygod", polygod_graph)  # type: ignore[arg-type]
-
 
 @app.websocket("/ws/polygod")
 async def polygod_ws(websocket: WebSocket):
