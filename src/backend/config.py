@@ -12,6 +12,7 @@ class Settings(BaseSettings):
 
     DATABASE_URL: str = Field(default="sqlite+aiosqlite:///./polymarket.db", env="DATABASE_URL")
     NEWS_API_KEY: str = Field(default="", env="NEWS_API_KEY")
+    POLYMARKET_API_HOST: str = Field(default="https://clob.polymarket.com", env="POLYMARKET_API_HOST")
     POLYMARKET_API_KEY: str = Field(default="", env="POLYMARKET_API_KEY")
     POLYMARKET_SECRET: str = Field(default="", env="POLYMARKET_SECRET")
     POLYMARKET_PASSPHRASE: str = Field(default="", env="POLYMARKET_PASSPHRASE")
@@ -21,6 +22,7 @@ class Settings(BaseSettings):
     DEBUG: bool = Field(default=False, env="DEBUG")
     GEMINI_API_KEY: str = Field(default="", env="GEMINI_API_KEY")
     TAVILY_API_KEY: str = Field(default="", env="TAVILY_API_KEY")
+    GROK_API_KEY: str = Field(default="", env="GROK_API_KEY")  # ← NEW: xAI Grok
     POLYGOD_MODE: int = Field(default=0, env="POLYGOD_MODE")
     MEM0_CONFIG: str = Field(default='{"provider": "qdrant", "vector_store": {"url": "http://qdrant:6333"}}', env="MEM0_CONFIG")
     FORCE_IPV4: bool = Field(default=False, env="FORCE_IPV4")
@@ -53,7 +55,8 @@ def get_settings() -> Settings:
     settings = Settings()
     # Validation logs for all env vars from .env.example
     logger = logging.getLogger(__name__)
-    logger.info("=== POLYGOD Configuration Validation ===")
+    logger.info("=== POLYGOD Configuration Validation (GOD TIER) ===")
+    logger.info(f"GROK_API_KEY present: {'YES' if settings.GROK_API_KEY else 'NO (using fallback)'}")
     logger.info(f"Database: {settings.DATABASE_URL!r}")
     logger.info(f"CORS Origins: {settings.CORS_ORIGINS!r}")
     logger.info(f"Server: {settings.HOST}:{settings.PORT}")
