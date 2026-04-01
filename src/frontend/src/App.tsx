@@ -97,23 +97,44 @@ function App() {
                     </div>
 
                     <div className="flex-1 flex flex-col md:flex-row items-center justify-end gap-3 w-full">
-                        {/* POLYGOD Status */}
+                        {/* GOD TIER POLYGOD STATUS */}
                         <div className="flex items-center gap-2 bg-surface-900/70 border border-white/10 rounded-xl px-3 py-2">
                             <Brain className={`w-4 h-4 ${isConnected ? 'text-emerald-400' : 'text-red-400'}`} />
                             <span className="text-xs font-semibold text-surface-200">POLYGOD</span>
                             {polyGodData && hasValidPolyGodData(polyGodData) && (
                                 <>
-                                    <div className="w-px h-3 bg-white/20" />
-                                    <span className={`text-xs px-2 py-0.5 rounded-lg font-medium ${getModeColor(polyGodData.mode || 0)}`}>
-                                        {polyGodData.mode_name || `MODE ${polyGodData.mode || 0}`}
-                                    </span>
-                                    <div className="w-px h-3 bg-white/20" />
+                                    {/* Mode + PnL (original) */}
+                                    <div className={`text-xs px-2 py-0.5 rounded-lg font-medium ${getModeColor(polyGodData.mode || 0)}`}>
+                                        MODE {polyGodData.mode || 0}
+                                    </div>
                                     <div className="flex items-center gap-1">
                                         <DollarSign className={`w-3 h-3 ${(polyGodData.paper_pnl ?? 0) >= 0 ? 'text-emerald-400' : 'text-red-400'}`} />
                                         <span className={`text-xs font-mono font-bold ${(polyGodData.paper_pnl ?? 0) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                                            {(polyGodData.paper_pnl ?? 0) >= 0 ? '+' : ''}{(polyGodData.paper_pnl ?? 0).toFixed(2)}
+                                            {(polyGodData.paper_pnl ?? 0).toFixed(2)}
                                         </span>
                                     </div>
+                                    {/* NEW: Confidence Gauge */}
+                                    <div className="w-24 h-2 bg-surface-800 rounded-full overflow-hidden">
+                                        <div className="h-full bg-gradient-to-r from-emerald-400 to-cyan-400 transition-all" 
+                                             style={{width: `${Math.min(100, (polyGodData.paper_pnl ?? 0) * 20)}%`}}></div>
+                                    </div>
+                                    <button 
+                                        onClick={async () => {
+                                            try {
+                                                const marketId = selectedMarket?.id || 'default';
+                                                const response = await fetch(`/api/polygod/simulate?market_id=${marketId}&order_size=1000`, {
+                                                    method: 'POST',
+                                                    headers: { 'Content-Type': 'application/json' }
+                                                });
+                                                const data = await response.json();
+                                                alert(`Monte-Carlo: ${data.recommendation}\nWin Prob: ${(data.simulation.win_prob * 100).toFixed(1)}%\nExpected PnL: $${data.simulation.expected_pnl.toFixed(2)}`);
+                                            } catch (err) {
+                                                alert('Monte-Carlo simulation failed — check backend logs');
+                                            }
+                                        }}
+                                        className="text-[10px] px-2 py-1 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 rounded-lg flex items-center gap-1">
+                                        <Zap className="w-3 h-3" /> SIM
+                                    </button>
                                 </>
                             )}
                             {!isConnected && (

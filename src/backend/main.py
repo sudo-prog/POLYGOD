@@ -19,10 +19,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from src.backend.config import settings
 from src.backend.database import close_db, init_db
 from src.backend.news.aggregator import news_aggregator
-from src.backend.polygod_graph import polygod_app, paper, POLYGOD_MODE
+from src.backend.polygod_graph import polygod_graph, paper, POLYGOD_MODE
 from src.backend.polymarket.client import polymarket_client
 from src.backend.routes import debate, markets, news, users
 from src.backend.tasks.update_markets import get_scheduler, update_top_markets
+from prometheus_fastapi_instrumentator import Instrumentator
 
 # Force IPv4 to avoid IPv6 timeouts (helps in some Docker/network setups)
 # Only apply if FORCE_IPV4 is explicitly enabled to avoid unintended side effects
@@ -58,6 +59,30 @@ whale_cycle = itertools.cycle(WHALE_ALERTS)
 
 # Current POLYGOD mode (initialized from settings)
 MODE: int = settings.POLYGOD_MODE
+
+
+async def daily_pnl_report():
+    """GOD TIER daily PnL report — runs every 24h"""
+    logger.info("=== POLYGOD DAILY PNL REPORT ===")
+
+    # Use your existing PaperMirror (already imported)
+    total_pnl = sum(paper.pnls) if paper.pnls else 0.0
+    trade_count = len(paper.pnls)
+
+    logger.info(f"Paper PnL: ${total_pnl:.2f} | Trades today: {trade_count}")
+    logger.info(f"Current POLYGOD_MODE: {POLYGOD_MODE}")
+
+    # Optional: pull latest market stats from DB
+    try:
+        from src.backend.polymarket.client import polymarket_client
+        top_markets = await polymarket_client.get_top_markets(limit=5)
+        logger.info(f"Top 5 markets by volume: {[m.get('title', 'N/A') for m in top_markets]}")
+    except Exception as e:
+        logger.warning(f"Could not fetch market data for report: {e}")
+
+    # TODO (future): send via email (Resend) or Telegram
+    # For now it's logged + visible in Prometheus metrics
+    logger.info("=== DAILY REPORT COMPLETE ===")
 
 
 @asynccontextmanager
@@ -125,6 +150,20 @@ async def lifespan(app: FastAPI):
         logger.error(f"Failed to start background scheduler: {e} - Continuing without scheduler")
         scheduler = None  # Set to None to avoid shutdown errors
 
+    # Schedule daily PnL report (runs once per day at midnight)
+    try:
+        scheduler.add_job(
+            daily_pnl_report,
+            trigger="cron",
+            hour=0,
+            minute=0,
+            id="daily_pnl_report",
+            replace_existing=True,
+        )
+        logger.info("Daily PnL report scheduled (every 24h)")
+    except Exception as e:
+        logger.warning(f"Could not schedule daily PnL report: {e}")
+
     yield
 
     # Shutdown
@@ -157,6 +196,9 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Prometheus metrics — exposes /metrics endpoint
+Instrumentator().instrument(app).expose(app)
+
 # Configure CORS
 app.add_middleware(
     CORSMiddleware,
@@ -173,7 +215,7 @@ app.include_router(debate.router)
 app.include_router(users.router)
 
 # Mount POLYGOD sub-application
-app.mount("/polygod", polygod_app)
+app.mount("/polygod", polygod_graph)  # type: ignore[arg-type]
 
 
 @app.websocket("/ws/polygod")
@@ -183,7 +225,7 @@ async def polygod_ws(websocket: WebSocket):
         await websocket.send_json({
             "paper_pnl": paper.pnls[-1] if paper.pnls else 0,
             "mode": POLYGOD_MODE,
-            "whale_alert": "HorizonSplendidView just loaded 150k YES — POLYGOD analyzing edge"
+            "whale_alert": next(whale_cycle)
         })
         await asyncio.sleep(2)
 
@@ -193,6 +235,21 @@ async def switch_mode(new_mode: int):
     global POLYGOD_MODE
     POLYGOD_MODE = new_mode
     return {"status": f"Switched to Mode {POLYGOD_MODE} — {'BEAST MODE' if POLYGOD_MODE == 3 else 'safe'}"}
+
+
+@app.post("/polygod/simulate")
+async def monte_carlo_simulate(market_id: str, order_size: float = 1000):
+    """GOD TIER simulation dashboard endpoint"""
+    from src.backend.polygod_graph import get_enriched_market_data, run_monte_carlo
+    
+    # Pull latest market data (reuse existing helper)
+    market_data = await get_enriched_market_data(market_id)
+    sim = run_monte_carlo({"size": order_size}, market_data)  # uses the function from polygod_graph
+    
+    return {
+        "simulation": sim,
+        "recommendation": "BEAST APPROVED" if sim["win_prob"] > 0.65 else "SAFE MODE ONLY"
+    }
 
 
 @app.get("/api/health")
