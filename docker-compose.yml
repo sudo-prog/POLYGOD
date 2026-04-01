@@ -49,8 +49,6 @@ services:
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:6333/health"]
       interval: 5s
-      timeout: 3s
-      retries: 3
 
   polygod-swarm:  # Parallel tournament + Lightning AI offload
     build:
@@ -69,6 +67,9 @@ services:
     depends_on:
       - backend
       - qdrant
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 15s
 
 volumes:
   polygod_db:

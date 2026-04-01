@@ -336,7 +336,7 @@ async def polygod_run(market_id: str, mode: int = 0, question: str = ""):
 @app.get("/api/health")
 async def health():
     """GOD TIER health check."""
-    return {"status": "god-tier", "mode": settings.POLYGOD_MODE}
+    return {"status": "god-tier", "mode": settings.POLYGOD_MODE, "scanner": "active"}
 
 
 @app.get("/")
@@ -352,10 +352,4 @@ async def root() -> dict:
 
 
 if __name__ == "__main__":
-    uvicorn.run(
-        "src.backend.main:app",
-        host=settings.HOST,
-        port=settings.PORT,
-        reload=settings.DEBUG,
-        log_level="debug" if settings.DEBUG else "info"
-    )
+    uvicorn.run("src.backend.main:app", host=settings.HOST, port=settings.PORT, reload=settings.DEBUG)
