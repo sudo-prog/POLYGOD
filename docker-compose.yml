@@ -42,6 +42,24 @@ services:
     networks:
       - pnet
 
+  polygod-swarm:  # Parallel tournament + Lightning AI offload
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    image: polygod-swarm:latest
+    restart: unless-stopped
+    command: python -m src.backend.polygod_graph
+    env_file:
+      - .env
+    environment:
+      - LIGHTNING_AI_TOKEN=${LIGHTNING_AI_TOKEN:-your_free_token}
+      - COLAB_WEBHOOK_URL=${COLAB_WEBHOOK_URL:-}
+    networks:
+      - pnet
+    depends_on:
+      - backend
+      - qdrant
+
 volumes:
   polygod_db:
   qdrant_data:

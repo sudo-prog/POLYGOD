@@ -19,7 +19,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from src.backend.config import settings
 from src.backend.database import close_db, init_db
 from src.backend.news.aggregator import news_aggregator
-from src.backend.polygod_graph import polygod_graph, paper, POLYGOD_MODE
+from src.backend.polygod_graph import polygod_graph, paper, POLYGOD_MODE, run_polygod
 from src.backend.polymarket.client import polymarket_client
 from src.backend.routes import debate, markets, news, users
 from src.backend.tasks.update_markets import get_scheduler, update_top_markets
@@ -241,6 +241,40 @@ async def monte_carlo_simulate(market_id: str, order_size: float = 1000):
         "simulation": sim,
         "recommendation": "BEAST APPROVED" if sim["win_prob"] > 0.65 else "SAFE MODE ONLY"
     }
+
+
+@app.post("/polygod/run")
+async def polygod_run(market_id: str, mode: int = 0, question: str = ""):
+    """
+    GOD TIER CYCLIC SWARM — Full pipeline execution.
+    
+    Runs the complete POLYGOD pipeline:
+    memory_recall → research → x_sentiment → [cyclic debate swarm] → moderator →
+    [approve | risk_gate | evolution_lab] → execute → meta_reflection
+    
+    Modes:
+    - 0 = OBSERVE (1 debate round, approval required)
+    - 1 = PAPER (2 debate rounds, paper execution)
+    - 2 = LOW (3 debate rounds, Kelly-guarded, evolution lab)
+    - 3 = BEAST (3 debate rounds, evolution lab, live execution)
+    """
+    try:
+        result = await run_polygod(market_id=market_id, mode=mode, question=question)
+        return {
+            "status": "complete",
+            "run_id": result.get("run_id"),
+            "market": result.get("question", ""),
+            "verdict": result.get("debate_verdict", "No verdict"),
+            "paper_pnl": result.get("paper_pnl", 0),
+            "risk_status": result.get("risk_status", "unknown"),
+            "debate_rounds": result.get("debate_round", 0),
+            "evolution_best": result.get("evolution_best"),
+            "simulation": result.get("simulation"),
+            "execution_result": result.get("execution_result"),
+        }
+    except Exception as e:
+        logger.error(f"POLYGOD run failed: {e}")
+        raise HTTPException(status_code=500, detail=f"POLYGOD run failed: {str(e)}")
 
 
 @app.get("/api/health")
