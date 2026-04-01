@@ -17,6 +17,11 @@ services:
       - pnet
     depends_on:
       - qdrant
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
 
   frontend:
     build:
@@ -41,6 +46,11 @@ services:
       - QDRANT__SERVICE__GRPC_PORT=6334
     networks:
       - pnet
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:6333/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
 
   polygod-swarm:  # Parallel tournament + Lightning AI offload
     build:

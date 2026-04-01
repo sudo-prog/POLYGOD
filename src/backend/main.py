@@ -1,7 +1,7 @@
 """
-FastAPI main application entry point for POLYGOD.
+FastAPI main application entry point for POLYGOD — FULL GOD-TIER VERSION.
 
-Configures CORS, routers, and lifespan events for database and background tasks.
+Configures CORS, routers, WebSocket streams, and lifespan events for database and background tasks.
 """
 
 import asyncio
@@ -164,6 +164,11 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Could not schedule daily PnL report: {e}")
 
+    # GOD TIER: Start paper mirror + swarm in MODE >= 1
+    if settings.POLYGOD_MODE >= 1:
+        logger.info(f"🚀 Starting paper mirror + swarm in MODE {settings.POLYGOD_MODE}")
+        asyncio.create_task(polygod_graph.run_continuous_paper_mirror())
+
     yield
 
     # Shutdown
@@ -208,6 +213,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# ─── Route includes ───────────────────────────────────────────────────────────
+app.include_router(markets.router, prefix="/api/markets")
+app.include_router(news.router, prefix="/api/news")
+app.include_router(debate.router, prefix="/api/debate")
+app.include_router(users.router, prefix="/api/users")
+
+
+# ─── WebSocket streams ────────────────────────────────────────────────────────
 
 @app.websocket("/ws/polygod")
 async def polygod_ws(websocket: WebSocket):
@@ -221,6 +234,17 @@ async def polygod_ws(websocket: WebSocket):
         await asyncio.sleep(2)
 
 
+@app.websocket("/ws/debate/{market_id}")
+async def debate_websocket(websocket: WebSocket, market_id: str):
+    """Full Debate Floor streaming — live agent debate with verdict."""
+    await websocket.accept()
+    async for result in polygod_graph.stream_debate(market_id, settings.POLYGOD_MODE):
+        await websocket.send_json(result)
+    await websocket.close()
+
+
+# ─── Control endpoints ────────────────────────────────────────────────────────
+
 @app.post("/polygod/switch-mode")
 async def switch_mode(new_mode: int):
     global POLYGOD_MODE
@@ -232,26 +256,56 @@ async def switch_mode(new_mode: int):
 async def monte_carlo_simulate(market_id: str, order_size: float = 1000):
     """GOD TIER simulation dashboard endpoint"""
     from src.backend.polygod_graph import get_enriched_market_data, run_monte_carlo
-    
+
     # Pull latest market data (reuse existing helper)
     market_data = await get_enriched_market_data(market_id)
     sim = run_monte_carlo({"size": order_size}, market_data)  # uses the function from polygod_graph
-    
+
     return {
         "simulation": sim,
         "recommendation": "BEAST APPROVED" if sim["win_prob"] > 0.65 else "SAFE MODE ONLY"
     }
 
 
+@app.post("/api/scan-niches")
+async def scan_niches(mode: int = 1):
+    """
+    Start money printer — scan for micro-niche opportunities in low-liquidity markets.
+    
+    Scans weather, tweets, and mentions markets for mispriced opportunities,
+    then runs parallel paper tournaments to validate edges before promotion.
+    
+    Modes:
+    - 0 = OBSERVE (scan only, no tournaments)
+    - 1 = PAPER (scan + paper tournaments)
+    - 2 = LOW (scan + Kelly-guarded tournaments)
+    - 3 = BEAST (scan + full tournaments)
+    """
+    from src.backend.niche_scanner import scanner
+    
+    try:
+        opps = await scanner.scan_niches(mode)
+        return {
+            "status": "scan_complete",
+            "opportunities": opps,
+            "count": len(opps),
+            "mode": mode,
+            "message": f"🎰 Money printer scanned {len(opps)} niche opportunities"
+        }
+    except Exception as e:
+        logger.error(f"Niche scan failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Niche scan failed: {str(e)}")
+
+
 @app.post("/polygod/run")
 async def polygod_run(market_id: str, mode: int = 0, question: str = ""):
     """
     GOD TIER CYCLIC SWARM — Full pipeline execution.
-    
+
     Runs the complete POLYGOD pipeline:
     memory_recall → research → x_sentiment → [cyclic debate swarm] → moderator →
     [approve | risk_gate | evolution_lab] → execute → meta_reflection
-    
+
     Modes:
     - 0 = OBSERVE (1 debate round, approval required)
     - 1 = PAPER (2 debate rounds, paper execution)
@@ -277,15 +331,12 @@ async def polygod_run(market_id: str, mode: int = 0, question: str = ""):
         raise HTTPException(status_code=500, detail=f"POLYGOD run failed: {str(e)}")
 
 
+# ─── Health + Root ─────────────────────────────────────────────────────────────
+
 @app.get("/api/health")
-async def health_check() -> dict:
-    """Health check endpoint."""
-    return {
-        "status": "healthy",
-        "timestamp": datetime.utcnow().isoformat(),
-        "version": "0.1.0",
-        "service": "POLYGOD API",
-    }
+async def health():
+    """GOD TIER health check."""
+    return {"status": "god-tier", "mode": settings.POLYGOD_MODE}
 
 
 @app.get("/")

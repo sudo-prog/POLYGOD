@@ -52,6 +52,25 @@ Real-time market tracking dashboard for Polymarket with live price charts, news 
 
 4. Open http://localhost:5173
 
+### 🎰 Start the Money Printer
+
+Scan for micro-niche opportunities in low-liquidity markets:
+
+```bash
+# Start the niche scanner (paper mode)
+curl -X POST http://localhost:8000/api/scan-niches?mode=1
+
+# Or with Docker
+docker compose up --build -d
+curl -X POST http://localhost:8000/api/scan-niches?mode=1
+```
+
+**Modes:**
+- `mode=0` — OBSERVE (scan only, no tournaments)
+- `mode=1` — PAPER (scan + paper tournaments)
+- `mode=2` — LOW (scan + Kelly-guarded tournaments)
+- `mode=3` — BEAST (scan + full tournaments)
+
 ### Quick Start with Docker
 
 Alternatively, run the entire stack with Docker:
@@ -216,6 +235,12 @@ flowchart TD
 | Endpoint | Description |
 |----------|-------------|
 | `GET /api/news/{market_id}` | Get news articles for a market |
+
+### Niche Scanner
+
+| Endpoint | Description |
+|----------|-------------|
+| `POST /api/scan-niches?mode=1` | Scan for micro-niche opportunities in low-liquidity markets |
 
 ### Health
 

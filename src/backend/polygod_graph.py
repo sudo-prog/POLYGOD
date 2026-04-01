@@ -31,6 +31,7 @@ from src.backend.config import settings
 from src.backend.llm_router import router
 from src.backend.tools.x_sentiment import get_x_sentiment
 from src.backend.parallel_tournament import parallel_paper_tournament
+from src.backend.niche_scanner import scanner
 
 logger = logging.getLogger(__name__)
 
@@ -740,6 +741,35 @@ async def execute_node(state: AgentState) -> AgentState:
 
 # ==================== META REFLECTION ====================
 
+async def niche_scanner_node(state: AgentState) -> AgentState:
+    """Micro Niche Scanner — detect edge in low-liquidity recurring markets."""
+    mode = state.get("mode", 0)
+    logger.info(f"NICHE SCANNER NODE: Scanning niches in mode {mode}")
+    
+    try:
+        opps = await scanner.scan_niches(mode)
+        if opps:
+            state["debate_history"] = state.get("debate_history", []) + [
+                {"agent": "MicroNicheScanner", "output": f"Found {len(opps)} niche opportunities", "round": state.get("debate_round", 0)}
+            ]
+            # Auto-spawn parallel tournaments on free GPU
+            for opp in opps[:3]:  # Limit to top 3 to avoid timeout
+                tournament_state = {
+                    **state,
+                    "market_id": opp["market_id"],
+                    "question": opp.get("title", "Unknown Market"),
+                    "decision": {"order": {"size": 1000 * opp["kelly_size"]}},
+                }
+                state = await parallel_paper_tournament(tournament_state)
+            logger.info(f"NICHE SCANNER: Processed {min(3, len(opps))} opportunities via tournament")
+        else:
+            logger.info("NICHE SCANNER: No opportunities found")
+    except Exception as e:
+        logger.error(f"Niche scanner failed: {e}")
+    
+    return state
+
+
 async def meta_reflection_node(state: AgentState) -> AgentState:
     """Store full run outcome to mem0 and suggest prompt improvements."""
     outcome = {
@@ -808,6 +838,7 @@ def build_polygod_graph() -> StateGraph:
     workflow.add_node("evolution_lab", evolution_lab_node)
     workflow.add_node("parallel_tournament", parallel_paper_tournament)
     workflow.add_node("execute", execute_node)
+    workflow.add_node("niche_scanner", niche_scanner_node)
     workflow.add_node("meta_reflection", meta_reflection_node)
 
     # ==================== EDGES ====================
@@ -840,9 +871,12 @@ def build_polygod_graph() -> StateGraph:
         },
     )
 
-    # --- Post-debate: moderator → mode routing ---
+    # --- Post-debate: moderator → niche_scanner (cyclic after debate) ---
+    workflow.add_edge("moderator", "niche_scanner")
+    
+    # niche_scanner → mode routing ---
     workflow.add_conditional_edges(
-        "moderator",
+        "niche_scanner",
         mode_router,
         {
             "approve": "approve",           # Observe mode

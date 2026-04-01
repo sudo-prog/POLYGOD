@@ -22,13 +22,13 @@ class Settings(BaseSettings):
     GEMINI_API_KEY: str = Field(default="", env="GEMINI_API_KEY")
     TAVILY_API_KEY: str = Field(default="", env="TAVILY_API_KEY")
     GROK_API_KEY: str = Field(default="", env="GROK_API_KEY")  # ← NEW: xAI Grok
+    LIGHTNING_AI_TOKEN: str = Field(default="", env="LIGHTNING_AI_TOKEN")  # Lightning AI GPU offload
     POLYGOD_MODE: int = Field(default=0, env="POLYGOD_MODE")
     MEM0_CONFIG: str = Field(default='{"provider": "qdrant", "vector_store": {"url": "http://qdrant:6333"}}', env="MEM0_CONFIG")
     FORCE_IPV4: bool = Field(default=False, env="FORCE_IPV4")
     ALLOW_IN_MEMORY_DB_FALLBACK: bool = Field(default=False, env="ALLOW_IN_MEMORY_DB_FALLBACK")
     POLYGOD_ADMIN_TOKEN: str = Field(default="", env="POLYGOD_ADMIN_TOKEN")
     X_BEARER_TOKEN: str = Field(default="", env="X_BEARER_TOKEN")
-    POLYMARKET_API_HOST: str = Field(default="https://clob.polymarket.com", env="POLYMARKET_API_HOST")
 
     @property
     def cors_origins_list(self) -> list[str]:
@@ -91,6 +91,10 @@ def get_settings() -> Settings:
     # Added validation logging for them in get_settings() (similar to other keys)
     if not settings.X_BEARER_TOKEN:
         logger.warning("X_BEARER_TOKEN not set - X API features (sentiment) may be limited")
+    if not settings.LIGHTNING_AI_TOKEN:
+        logger.warning("LIGHTNING_AI_TOKEN not set - GPU tournament offload disabled")
+    else:
+        logger.info("LIGHTNING_AI_TOKEN configured - GPU tournament offload available")
     logger.info(f"POLYMARKET_API_HOST: {settings.POLYMARKET_API_HOST}")
     logger.info("=== Configuration Validation Complete ===")
     return settings
