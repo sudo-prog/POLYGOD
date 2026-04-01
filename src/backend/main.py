@@ -164,10 +164,9 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Could not schedule daily PnL report: {e}")
 
-    # GOD TIER: Start paper mirror + swarm in MODE >= 1
+    # GOD TIER: Swarm runs via polygod-swarm container (see docker-compose.yml)
     if settings.POLYGOD_MODE >= 1:
-        logger.info(f"🚀 Starting paper mirror + swarm in MODE {settings.POLYGOD_MODE}")
-        asyncio.create_task(polygod_graph.run_continuous_paper_mirror())
+        logger.info(f"🚀 MODE {settings.POLYGOD_MODE} — swarm runs via polygod-swarm container")
 
     yield
 

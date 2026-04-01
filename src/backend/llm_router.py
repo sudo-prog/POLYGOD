@@ -1,11 +1,24 @@
 # src/backend/llm_router.py
 from litellm import Router
-from mem0 import Mem0
 import os
 import asyncio
-from langsmith import traceable
 
-mem0 = Mem0.from_config({"vector_store": {"provider": "qdrant"}})
+try:
+    from mem0 import Mem0
+    mem0 = Mem0.from_config({"vector_store": {"provider": "qdrant"}})
+except ImportError:
+    Mem0 = None
+    mem0 = None
+
+try:
+    from langsmith import traceable
+except ImportError:
+    def traceable(*args, **kwargs):
+        def decorator(fn):
+            return fn
+        if len(args) == 1 and callable(args[0]):
+            return args[0]
+        return decorator
 
 class GodTierLLMRouter:
     def __init__(self):

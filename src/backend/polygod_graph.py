@@ -23,10 +23,19 @@ from typing import Any, Dict, List, Literal, TypedDict
 import httpx
 from langchain_core.messages import HumanMessage
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langgraph.checkpoint.sqlite import SqliteSaver
+try:
+    from langgraph_checkpoint_sqlite import SqliteSaver
+except ImportError:
+    try:
+        from langgraph.checkpoint.sqlite import SqliteSaver
+    except ImportError:
+        SqliteSaver = None
 from langgraph.graph import END, StateGraph
 
-from mem0 import Memory
+try:
+    from mem0 import Memory
+except ImportError:
+    Memory = None
 from src.backend.config import settings
 from src.backend.llm_router import router
 from src.backend.tools.x_sentiment import get_x_sentiment
