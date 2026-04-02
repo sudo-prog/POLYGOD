@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { TrendingUp, Newspaper, BarChart3, Wallet, Trophy, Activity, User, MessageSquare, Zap, Brain, DollarSign } from 'lucide-react'
+import { TrendingUp, Newspaper, BarChart3, Wallet, Trophy, Activity, User, MessageSquare, Zap, Brain, DollarSign, Cpu } from 'lucide-react'
 import { MarketList } from './components/MarketList'
 import PriceChart from './components/PriceChart'
 import { NewsFeed } from './components/NewsFeed'
@@ -10,6 +10,7 @@ import { TimeframeSelector } from './components/TimeframeSelector'
 import { SearchBar } from './components/SearchBar'
 import DebateFloor from './components/DebateFloor'
 import UserDashboard from './components/UserDashboard'
+import LLMHub from './components/LLMHub'
 import { useMarketStore } from './stores/marketStore'
 import { usePolyGodWS } from './hooks/usePolyGodWS'
 
@@ -23,7 +24,7 @@ function App() {
     const { selectedMarket } = useMarketStore()
     const { isConnected, data: rawPolyGodData, lastAlert } = usePolyGodWS()
     const [activeTab, setActiveTab] = useState<'news' | 'whales' | 'holders' | 'stats' | 'debate'>('news')
-    const [activeView, setActiveView] = useState<'markets' | 'user'>('markets')
+    const [activeView, setActiveView] = useState<'markets' | 'user' | 'llm'>('markets')
 
     // Safely parse polyGodData with proper type checking
     const polyGodData: PolyGodData | null = (() => {
@@ -162,6 +163,16 @@ function App() {
                                 <User className="w-3 h-3" />
                                 User Lab
                             </button>
+                            <button
+                                onClick={() => setActiveView('llm')}
+                                className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors flex items-center gap-1 ${activeView === 'llm'
+                                    ? 'bg-primary-500/30 text-white'
+                                    : 'text-surface-300 hover:text-white'
+                                    }`}
+                            >
+                                <Cpu className="w-3 h-3" />
+                                🧠 LLM Hub
+                            </button>
                         </div>
                         {activeView === 'markets' && <SearchBar />}
                     </div>
@@ -295,6 +306,8 @@ function App() {
                             </section>
                         </div>
                     </div>
+                ) : activeView === 'llm' ? (
+                    <LLMHub />
                 ) : (
                     <UserDashboard />
                 )}

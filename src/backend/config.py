@@ -29,6 +29,7 @@ class Settings(BaseSettings):
     ALLOW_IN_MEMORY_DB_FALLBACK: bool = Field(default=False, env="ALLOW_IN_MEMORY_DB_FALLBACK")
     POLYGOD_ADMIN_TOKEN: str = Field(default="", env="POLYGOD_ADMIN_TOKEN")
     X_BEARER_TOKEN: str = Field(default="", env="X_BEARER_TOKEN")
+    ENCRYPTION_KEY: str = Field(default="", env="ENCRYPTION_KEY")  # ← LLM Hub: API key encryption (Fernet)
 
     @property
     def cors_origins_list(self) -> list[str]:
