@@ -26,6 +26,7 @@ from src.backend.news.aggregator import news_aggregator
 from src.backend.polygod_graph import POLYGOD_MODE, paper, polygod_graph, run_polygod
 from src.backend.polymarket.client import polymarket_client
 from src.backend.routes import debate, llm, markets, news, telegram, users
+from src.backend.self_improving_memory_loop import memory_loop
 from src.backend.tasks.update_markets import get_scheduler, update_top_markets
 
 # Force IPv4 to avoid IPv6 timeouts (helps in some Docker/network setups)
@@ -246,6 +247,33 @@ async def lifespan(app: FastAPI):
         logger.info(
             f"🚀 MODE {settings.POLYGOD_MODE} — swarm runs via polygod-swarm container"
         )
+
+    # Schedule Self-Improving Memory Loop (weekly on Sunday)
+    if scheduler:
+        try:
+            scheduler.add_job(
+                memory_loop.hindsight_replay,
+                trigger="cron",
+                day_of_week="sun",
+                hour=23,
+                minute=0,
+                id="hindsight_replay",
+                replace_existing=True,
+            )
+            scheduler.add_job(
+                memory_loop.notebooklm_reflection,
+                trigger="cron",
+                day_of_week="sun",
+                hour=23,
+                minute=30,
+                id="notebooklm_reflection",
+                replace_existing=True,
+            )
+            logger.info(
+                "Self-Improving Memory Loop scheduled (weekly Sunday 23:00-23:30)"
+            )
+        except Exception as e:
+            logger.warning(f"Could not schedule memory loop jobs: {e}")
 
     # Start Telegram bot in background (if token configured)
     telegram_task = None

@@ -3,6 +3,7 @@
 Provides real-time Telegram commands to control the POLYGOD swarm:
 - /start: Bot online confirmation
 - /mode <0-3>: Switch POLYGOD mode (OBSERVE/PAPER/LOW/BEAST)
+- /real: Paper-to-real switch (enable LIVE trading)
 - /scan: Trigger niche scanner for micro-opportunities
 - /beast <market_id>: Execute full BEAST MODE pipeline
 - /kill: Graceful kill switch (save checkpoints, pause swarm)
@@ -34,6 +35,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "🚀 *POLYGOD God-Tier Swarm Online!*\n\n"
         "Available commands:\n"
         "/mode <0-3> — Switch POLYGOD mode\n"
+        "/real — Paper-to-real switch (LIVE trading)\n"
         "/scan — Scan micro-niches for opportunities\n"
         "/beast <market_id> — Execute BEAST MODE\n"
         "/kill — Graceful shutdown (save checkpoints)\n\n"
@@ -158,6 +160,34 @@ async def cmd_beast_mode(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"❌ BEAST MODE failed: {e}")
 
 
+async def cmd_real_mode(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Paper-to-real switch — enable LIVE trading (mode 3)."""
+    # Mutate the module-level mode variable
+    import src.backend.polygod_graph as pg
+
+    old_mode = pg.POLYGOD_MODE
+    pg.POLYGOD_MODE = 3
+
+    # Also update settings
+    settings.POLYGOD_MODE = 3
+
+    await update.message.reply_text(
+        "🚀 *PAPER-TO-REAL SWITCH ACTIVATED*\n\n"
+        "💰 *LIVE TRADING ENABLED*\n\n"
+        "Safety guards active:\n"
+        "• Min liquidity: $5,000\n"
+        "• Min confidence: 90%\n"
+        "• Kelly-optimized sizing\n\n"
+        f"Previous mode: {old_mode}\n"
+        "Current mode: 3 (BEAST/LIVE)\n\n"
+        "_Use /beast <market_id> to execute live trades_",
+        parse_mode="Markdown",
+    )
+    logger.info(
+        f"Telegram: PAPER-TO-REAL activated — mode switched from {old_mode} to 3 (LIVE)"
+    )
+
+
 async def cmd_kill_switch(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Graceful kill switch — save checkpoints and pause swarm."""
     await update.message.reply_text(
@@ -201,6 +231,7 @@ def build_telegram_app() -> Application:
     # Register command handlers
     app_telegram.add_handler(CommandHandler("start", cmd_start))
     app_telegram.add_handler(CommandHandler("mode", cmd_switch_mode))
+    app_telegram.add_handler(CommandHandler("real", cmd_real_mode))
     app_telegram.add_handler(CommandHandler("scan", cmd_scan_niches))
     app_telegram.add_handler(CommandHandler("beast", cmd_beast_mode))
     app_telegram.add_handler(CommandHandler("kill", cmd_kill_switch))

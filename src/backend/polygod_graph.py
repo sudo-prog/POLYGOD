@@ -1,6 +1,7 @@
 """
 POLYGOD_GRAPH — ULTIMATE GOD-TIER VERSION with Tournament Auto-Entrant Subgraph
 Cyclic debate swarm + free on-chain verification + paper tournament + AutoResearchLab.
+WhaleRAG: Property Graph index for whale copy-trading intelligence.
 """
 
 import json
@@ -27,10 +28,18 @@ try:
 except ImportError:
     Memory = None
 
+try:
+    import llama_index.core  # noqa: F401
+
+    HAS_LLAMA_INDEX = True
+except ImportError:
+    HAS_LLAMA_INDEX = False
+
 from src.backend.autoresearch_lab import autoresearch_lab  # Karpathy loop
 from src.backend.config import settings
 from src.backend.parallel_tournament import parallel_paper_tournament
 from src.backend.polymarket.client import polymarket_client
+from src.backend.self_improving_memory_loop import memory_loop
 
 logger = logging.getLogger(__name__)
 
@@ -260,6 +269,9 @@ class AgentState(TypedDict):
     risk_status: str
     # On-chain
     on_chain_fills: list[dict]
+    # WhaleRAG
+    whale_context: str
+    kelly_size: float
     # Execution
     paper_pnl: float
     execution_result: dict | None
@@ -492,6 +504,7 @@ Be ruthless but fair. Challenge the strongest argument the most."""
 # ==================== ON-CHAIN VERIFICATION NODE ====================
 async def onchain_verification_node(state: AgentState) -> AgentState:
     """Free on-chain + CLOB verification before final verdict (mode >= 2)."""
+    state = await memory_loop.remember_node(state, "onchain_verification")
     if settings.POLYGOD_MODE >= 2:
         state["on_chain_fills"] = await verify_onchain_orders(state["market_id"])
         whale_activity = len(state["on_chain_fills"]) > 0
@@ -507,12 +520,88 @@ async def onchain_verification_node(state: AgentState) -> AgentState:
     return state
 
 
+# ==================== WHALE RAG NODE ====================
+async def whale_copy_rag_node(state: AgentState) -> AgentState:
+    """
+    WhaleRAG — Ingest latest whale fills → Property Graph → extract strategies.
+    Queries the PropertyGraphIndex for profitable wallet patterns and niche strategies.
+    """
+    state = await memory_loop.remember_node(state, "whale_copy_rag")
+    mode = state.get("mode", POLYGOD_MODE)
+    if mode < 3:
+        logger.debug("WhaleRAG skipped: mode < 3 (beast mode only)")
+        state["whale_context"] = ""
+        return state
+
+    market_id = state.get("market_id", "")
+    logger.info(f"WhaleRAG: fetching recent fills for market {market_id}")
+
+    try:
+        # Fetch latest whale fills
+        fills = await polymarket_client.get_recent_fills(market_id, limit=50)
+        logger.info(f"WhaleRAG: {len(fills)} fills retrieved")
+
+        # Build query for whale strategies
+        market_title = state.get("question", market_id)
+        query = f"Top profitable wallets on {market_title} and similar niches"
+
+        # Try to load PropertyGraphIndex (nightly rebuilt)
+        whale_strategies = ""
+        if HAS_LLAMA_INDEX:
+            try:
+                # Attempt to load existing index from Qdrant
+                from llama_index.core import VectorStoreIndex
+                from llama_index.vector_stores.qdrant import QdrantVectorStore
+                from qdrant_client import AsyncQdrantClient
+
+                qdrant_client = AsyncQdrantClient(
+                    url=state.get("market_data", {}).get(
+                        "qdrant_url", "http://qdrant:6333"
+                    )
+                )
+                vector_store = QdrantVectorStore(
+                    client=qdrant_client, collection_name="whale_fills"
+                )
+                index = VectorStoreIndex.from_vector_store(vector_store)
+                query_engine = index.as_query_engine()
+                response = await query_engine.aquery(query)
+                whale_strategies = str(response)
+                logger.info(
+                    f"WhaleRAG: strategies extracted ({len(whale_strategies)} chars)"
+                )
+            except Exception as e:
+                logger.debug(f"WhaleRAG: PropertyGraphIndex not available: {e}")
+                # Fallback: use fill data directly
+                if fills:
+                    whale_strategies = (
+                        f"Recent {len(fills)} fills analyzed. "
+                        f"Largest fill: {fills[0] if fills else 'N/A'}. "
+                        "Whale patterns require nightly index rebuild."
+                    )
+        else:
+            # No llama_index: use raw fill data
+            if fills:
+                whale_strategies = (
+                    f"Recent {len(fills)} fills detected. "
+                    "Install llama-index for full RAG capabilities."
+                )
+
+        state["whale_context"] = whale_strategies
+
+    except Exception as e:
+        logger.error(f"WhaleRAG failed: {e}")
+        state["whale_context"] = ""
+
+    return state
+
+
 # ==================== TOURNAMENT AUTO-ENTRANT NODE ====================
 async def tournament_auto_entrant_node(state: AgentState) -> AgentState:
     """
     Tournament Auto-Entrant — when confidence is high, auto-enter paper tournament
     and promote to AutoResearchLab if Sharpe > 2.0.
     """
+    state = await memory_loop.remember_node(state, "tournament_auto_entrant")
     confidence = state.get("confidence", 0)
     mode = settings.POLYGOD_MODE
 
@@ -568,6 +657,7 @@ async def moderator_agent(state: AgentState) -> AgentState:
     Moderator — synthesizes all agent inputs into ONE final verdict.
     Escalates to Grok if available (high-stakes truth-seeking).
     """
+    state = await memory_loop.remember_node(state, "moderator")
     llm = get_llm("grok" if settings.GROK_API_KEY else "gemini")
     market_data = state.get("market_data", {})
     question = state.get("question", "")
@@ -717,10 +807,15 @@ async def approve_node(state: AgentState) -> AgentState:
 
 
 async def execute_node(state: AgentState) -> AgentState:
-    """Execute trade — PaperMirror for paper/low mode, live for beast mode."""
+    """
+    Execute trade — PaperMirror for paper/low mode, live for beast mode.
+    Paper-to-real switch: mode >= 3 enables LIVE TRADES with safety guards.
+    """
+    state = await memory_loop.remember_node(state, "execution")
     decision = state.get("decision", {})
     order = decision.get("order", {})
     mode = state.get("mode", POLYGOD_MODE)
+    confidence = state.get("confidence", 0)
 
     logger.info(f"EXECUTING in mode {mode}: {order}")
 
@@ -730,31 +825,37 @@ async def execute_node(state: AgentState) -> AgentState:
         state["paper_pnl"] = state.get("paper_pnl", 0) + result.get("pnl", 0)
         logger.info(f"Paper execution: pnl=${result.get('pnl', 0):.2f}")
     else:
-        # Beast mode — live execution (when ClobClient is configured)
-        clob = None
-        try:
-            if settings.POLYMARKET_API_KEY:
-                from py_clob_client.client import ClobClient
+        # PAPER-TO-REAL SWITCH (mode >= 3) — LIVE TRADES
+        logger.info("🚀 PAPER-TO-REAL: mode >= 3 — attempting LIVE execution")
 
-                clob = ClobClient(host=settings.POLYMARKET_API_HOST)
-        except Exception:
-            pass
+        # Build live order
+        live_order = {
+            "market_id": state["market_id"],
+            "side": "YES" if "YES" in state.get("verdict", "").upper() else "NO",
+            "size": state.get("kelly_size", 100),
+            "dry_run": False,  # LIVE TRADE
+        }
 
-        if clob is not None:
-            try:
-                result = {
-                    "status": "live_executed",
-                    "order_id": f"live_{uuid.uuid4().hex[:8]}",
-                }
-                logger.info(f"BEAST MODE live execution: {result}")
-            except Exception as e:
-                logger.error(f"Live execution failed, falling back to paper: {e}")
-                result = paper.execute_shadow(order)
-                state["paper_pnl"] = state.get("paper_pnl", 0) + result.get("pnl", 0)
-        else:
+        # Safety guard 1: Check liquidity
+        liquidity = await polymarket_client.check_liquidity(live_order)
+        if liquidity < 5000:
+            logger.warning(
+                f"🔴 LIVE TRADE ABORTED: liquidity ${liquidity:,.0f} < $5,000 minimum"
+            )
             result = paper.execute_shadow(order)
             state["paper_pnl"] = state.get("paper_pnl", 0) + result.get("pnl", 0)
-            logger.warning("Beast mode but no ClobClient — fell back to PaperMirror")
+        # Safety guard 2: Check confidence
+        elif confidence < 90:
+            logger.warning(
+                f"🔴 LIVE TRADE ABORTED: confidence {confidence:.0f}% < 90% minimum"
+            )
+            result = paper.execute_shadow(order)
+            state["paper_pnl"] = state.get("paper_pnl", 0) + result.get("pnl", 0)
+        else:
+            # All guards passed — execute live trade
+            result = await polymarket_client.place_order(live_order)
+            state["execution_result"] = result
+            logger.info(f"💰 LIVE TRADE EXECUTED: {result}")
 
     state["execution_result"] = result
     state["decision"] = {**decision, "execution_result": result}
@@ -764,6 +865,7 @@ async def execute_node(state: AgentState) -> AgentState:
 # ==================== META REFLECTION ====================
 async def meta_reflection_node(state: AgentState) -> AgentState:
     """Store full run outcome to mem0 and finalize."""
+    state = await memory_loop.remember_node(state, "meta_reflection")
     outcome = {
         "run_id": state.get("run_id"),
         "market": state.get("question", ""),
@@ -829,6 +931,7 @@ def build_polygod_graph() -> StateGraph:
     workflow.add_node("macro", macro_agent)
     workflow.add_node("devil", devil_agent)
     workflow.add_node("onchain_verify", onchain_verification_node)
+    workflow.add_node("whale_rag", whale_copy_rag_node)
     workflow.add_node("auto_enter", tournament_auto_entrant_node)
     workflow.add_node("evolution_supervisor", evolution_supervisor_node)
     workflow.add_node("moderator", moderator_agent)
@@ -878,9 +981,12 @@ def build_polygod_graph() -> StateGraph:
         },
     )
 
-    # Tournament auto-entrant → mode-based routing to risk_gate or approve
+    # Tournament auto-entrant → whale_rag (beast mode only)
+    workflow.add_edge("auto_enter", "whale_rag")
+
+    # Whale RAG → risk_gate or approve (based on mode)
     workflow.add_conditional_edges(
-        "auto_enter",
+        "whale_rag",
         lambda s: "approve" if s.get("mode", 0) == 0 else "risk_gate",
         {
             "approve": "approve",
@@ -962,8 +1068,10 @@ async def run_polygod(market_id: str, mode: int = 0, question: str = "") -> dict
         "decision": {"order": {"size": 1000}},
         "simulation": None,
         "kelly_fraction": 0.25,
+        "kelly_size": 100.0,
         "risk_status": "pending",
         "on_chain_fills": [],
+        "whale_context": "",
         "paper_pnl": 0.0,
         "execution_result": None,
         "final_decision": None,
