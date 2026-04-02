@@ -12,12 +12,16 @@ from contextlib import asynccontextmanager
 from typing import Final
 
 import uvicorn
-from fastapi import FastAPI, HTTPException, WebSocket
+from fastapi import Depends, FastAPI, HTTPException, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from prometheus_fastapi_instrumentator import Instrumentator
+from slowapi.errors import RateLimitExceeded
 
 from src.backend.config import settings
 from src.backend.database import close_db, init_db
+from src.backend.middleware.auth import admin_required
+from src.backend.middleware.rate_limit import limiter
 from src.backend.news.aggregator import news_aggregator
 from src.backend.polygod_graph import POLYGOD_MODE, paper, polygod_graph, run_polygod
 from src.backend.polymarket.client import polymarket_client
@@ -275,6 +279,15 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Rate limiting setup
+app.state.limiter = limiter
+
+
+@app.exception_handler(RateLimitExceeded)
+async def rate_limit_handler(request, exc):
+    return JSONResponse({"error": "Rate limit exceeded"}, status_code=429)
+
+
 # Prometheus metrics — exposes /metrics endpoint
 Instrumentator().instrument(app).expose(app)
 
@@ -320,9 +333,7 @@ async def debate_websocket(websocket: WebSocket, market_id: str):
         async for chunk in polygod_graph.astream(
             {"market_id": market_id, "mode": settings.POLYGOD_MODE},
         ):
-            await websocket.send_json(
-                {k: str(v) for k, v in chunk.items()}
-            )
+            await websocket.send_json({k: str(v) for k, v in chunk.items()})
     except Exception as e:
         logger.error(f"Debate WebSocket error: {e}")
         await websocket.send_json({"error": str(e)})
@@ -337,9 +348,7 @@ async def switch_mode(new_mode: int):
     global POLYGOD_MODE
     POLYGOD_MODE = new_mode
     mode_label = "BEAST MODE" if POLYGOD_MODE == 3 else "safe"
-    return {
-        "status": f"Switched to Mode {POLYGOD_MODE} — {mode_label}"
-    }
+    return {"status": f"Switched to Mode {POLYGOD_MODE} — {mode_label}"}
 
 
 @app.post("/polygod/simulate")
@@ -361,7 +370,8 @@ async def monte_carlo_simulate(market_id: str, order_size: float = 1000):
     }
 
 
-@app.post("/api/scan-niches")
+@app.post("/api/scan-niches", dependencies=[Depends(admin_required)])
+@limiter.limit("60/minute")
 async def scan_niches(mode: int = 1):
     """
     Start money printer — scan for micro-niche opportunities in low-liquidity markets.
@@ -388,9 +398,7 @@ async def scan_niches(mode: int = 1):
         }
     except Exception as e:
         logger.error(f"Niche scan failed: {e}")
-        raise HTTPException(
-            status_code=500, detail=f"Niche scan failed: {e}"
-        ) from e
+        raise HTTPException(status_code=500, detail=f"Niche scan failed: {e}") from e
 
 
 @app.post("/polygod/run")
@@ -424,9 +432,7 @@ async def polygod_run(market_id: str, mode: int = 0, question: str = ""):
         }
     except Exception as e:
         logger.error(f"POLYGOD run failed: {e}")
-        raise HTTPException(
-            status_code=500, detail=f"POLYGOD run failed: {e}"
-        ) from e
+        raise HTTPException(status_code=500, detail=f"POLYGOD run failed: {e}") from e
 
 
 # ─── Health + Root ─────────────────────────────────────────────────────────────

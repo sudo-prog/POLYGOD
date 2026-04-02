@@ -32,6 +32,8 @@ dependencies = [
     "gitpython>=3.1.0",  # ← for AutoResearch Lab git mutations
     "mem0ai>=0.1.0",     # ← re-enabled for long-term memory
     "cryptography>=44.0.0",  # ← for LLM Hub API key encryption (Fernet)
+    "slowapi>=0.1.9",        # ← rate limiting middleware
+    "redis>=5.2.0",          # ← Redis client for rate limit storage
 ]
 
 [project.optional-dependencies]
@@ -68,3 +70,10 @@ dev = [
     "pytest-cov",
     "ruff>=0.14.14",
 ]
+
+[tool.mypy]
+python_version = "3.12"
+warn_return_any = true
+warn_unused_configs = true
+ignore_missing_imports = true
+packages = ["backend"]

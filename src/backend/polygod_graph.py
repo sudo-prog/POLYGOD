@@ -1,6 +1,6 @@
 """
-POLYGOD_GRAPH — God-Tier LangGraph Swarm + Grok-3/4 + FREE On-Chain Verification Loop
-Zero extra cost. Runs on free-tier Gemini by default. Grok only when credits available.
+POLYGOD_GRAPH — ULTIMATE GOD-TIER VERSION with Tournament Auto-Entrant Subgraph
+Cyclic debate swarm + free on-chain verification + paper tournament + AutoResearchLab.
 """
 
 import json
@@ -27,7 +27,9 @@ try:
 except ImportError:
     Memory = None
 
+from src.backend.autoresearch_lab import autoresearch_lab  # Karpathy loop
 from src.backend.config import settings
+from src.backend.parallel_tournament import parallel_paper_tournament
 from src.backend.polymarket.client import polymarket_client
 
 logger = logging.getLogger(__name__)
@@ -505,6 +507,61 @@ async def onchain_verification_node(state: AgentState) -> AgentState:
     return state
 
 
+# ==================== TOURNAMENT AUTO-ENTRANT NODE ====================
+async def tournament_auto_entrant_node(state: AgentState) -> AgentState:
+    """
+    Tournament Auto-Entrant — when confidence is high, auto-enter paper tournament
+    and promote to AutoResearchLab if Sharpe > 2.0.
+    """
+    confidence = state.get("confidence", 0)
+    mode = settings.POLYGOD_MODE
+
+    if mode >= 1 and confidence > 90:
+        # Build tournament state compatible with parallel_paper_tournament
+        verdict = state.get("verdict", "")
+        side = "YES" if "YES" in verdict.upper() else "NO"
+        size = 100 * (confidence / 100)
+
+        logger.info(
+            f"TOURNAMENT AUTO-ENTRANT: confidence={confidence:.0f}% > 90%, "
+            f"side={side}, size={size:.0f} — entering paper tournament"
+        )
+
+        # Build state dict compatible with parallel_paper_tournament
+        tournament_state = {
+            **state,
+            "decision": {
+                **state.get("decision", {}),
+                "order": {"market_id": state["market_id"], "side": side, "size": size},
+            },
+        }
+
+        try:
+            result = await parallel_paper_tournament(tournament_state)
+            state["execution_result"] = result.get("decision", {})
+            best_config = result.get("evolution_best", {})
+            sharpe = best_config.get("score", 0)
+
+            # Auto-promote to AutoResearchLab if winner
+            if sharpe > 2.0:
+                logger.info(
+                    f"TOURNAMENT WINNER (sharpe={sharpe:.3f} > 2.0) — "
+                    "promoting to AutoResearchLab for mutation"
+                )
+                await autoresearch_lab.mutate_and_evolve(state)
+            else:
+                logger.info(
+                    f"Tournament complete but sharpe={sharpe:.3f} <= 2.0 — skipping AutoResearchLab"
+                )
+        except Exception as e:
+            logger.error(f"Tournament auto-entrant failed: {e}")
+    elif mode >= 1:
+        logger.debug(
+            f"Tournament auto-entrant skipped: confidence={confidence:.0f}% <= 90%"
+        )
+    return state
+
+
 # ==================== MODERATOR ====================
 async def moderator_agent(state: AgentState) -> AgentState:
     """
@@ -747,14 +804,12 @@ def debate_router(state: AgentState) -> str:
 
 
 def mode_router(state: AgentState) -> str:
-    """Route based on mode after debate."""
+    """Route based on mode after onchain_verify."""
     mode = state.get("mode", POLYGOD_MODE)
     if mode == 0:
         return "approve"
-    elif mode == 1:
-        return "risk_gate"
     else:
-        return "risk_gate"
+        return "auto_enter"
 
 
 def risk_router(state: AgentState) -> str:
@@ -764,16 +819,17 @@ def risk_router(state: AgentState) -> str:
 
 # ==================== GRAPH CONSTRUCTION ====================
 def build_polygod_graph() -> StateGraph:
-    """Build the god-tier cyclic swarm graph."""
+    """Build the god-tier cyclic swarm graph with tournament auto-entrant."""
     workflow = StateGraph(AgentState)
 
-    # --- Core nodes ---
+    # --- Core debate nodes ---
     workflow.add_node("statistics", statistics_agent)
     workflow.add_node("time_decay", time_decay_agent)
     workflow.add_node("generalist", generalist_agent)
     workflow.add_node("macro", macro_agent)
     workflow.add_node("devil", devil_agent)
     workflow.add_node("onchain_verify", onchain_verification_node)
+    workflow.add_node("auto_enter", tournament_auto_entrant_node)
     workflow.add_node("evolution_supervisor", evolution_supervisor_node)
     workflow.add_node("moderator", moderator_agent)
 
@@ -795,7 +851,7 @@ def build_polygod_graph() -> StateGraph:
     # Devil → evolution_supervisor (cycle controller)
     workflow.add_edge("devil", "evolution_supervisor")
 
-    # Evolution supervisor → cycle back to stats OR go to on-chain verify / moderator
+    # Evolution supervisor → cycle back to stats OR go to moderator
     def _cycle_or_finish(s: AgentState) -> str:
         max_rounds = {0: 1, 1: 2, 2: 3, 3: 3}.get(s.get("mode", 0), 2)
         return "moderator" if s.get("debate_round", 0) >= max_rounds else "stats"
@@ -809,14 +865,23 @@ def build_polygod_graph() -> StateGraph:
         },
     )
 
-    # Moderator → on-chain verify (mode >= 2) or direct to mode routing
-    # Using a conditional edge: always go through onchain_verify, it's a no-op if mode < 2
+    # Moderator → on-chain verify (always, it's a no-op if mode < 2)
     workflow.add_edge("moderator", "onchain_verify")
 
-    # On-chain verify → mode routing
+    # On-chain verify → mode routing (approve or auto_enter)
     workflow.add_conditional_edges(
         "onchain_verify",
         mode_router,
+        {
+            "approve": "approve",  # mode 0 → skip tournament
+            "auto_enter": "auto_enter",  # mode 1-3 → tournament auto-entrant
+        },
+    )
+
+    # Tournament auto-entrant → mode-based routing to risk_gate or approve
+    workflow.add_conditional_edges(
+        "auto_enter",
+        lambda s: "approve" if s.get("mode", 0) == 0 else "risk_gate",
         {
             "approve": "approve",
             "risk_gate": "risk_gate",
@@ -854,7 +919,8 @@ polygod_graph = build_polygod_graph().compile(
 logger.info(
     "POLYGOD GOD-TIER SWARM compiled: "
     "statistics → time_decay → generalist → macro → devil → [cyclic] → "
-    "moderator → onchain_verify → [approve | risk_gate] → execute → meta_reflection → END"
+    "moderator → onchain_verify → [auto_enter tournament] → "
+    "[approve | risk_gate] → execute → meta_reflection → END"
 )
 
 
