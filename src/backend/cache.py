@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import time
+from dataclasses import dataclass
+
 """
 In-memory TTL cache for Polymarket user stats.
 
@@ -7,9 +10,6 @@ Caches global PnL, ROI, and balance data per wallet address to avoid
 repeated external API calls to Polymarket's data-api. Shared across
 the /trades and /holders endpoints.
 """
-
-import time
-from dataclasses import dataclass
 
 
 @dataclass
@@ -53,7 +53,9 @@ class UserStatsCache:
             cached_at=time.time(),
         )
 
-    def get_many(self, addresses: set[str]) -> tuple[dict[str, CachedUserStats], set[str]]:
+    def get_many(
+        self, addresses: set[str]
+    ) -> tuple[dict[str, CachedUserStats], set[str]]:
         """Bulk lookup. Returns (cached_map, uncached_addresses)."""
         cached: dict[str, CachedUserStats] = {}
         uncached: set[str] = set()

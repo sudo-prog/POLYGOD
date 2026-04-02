@@ -55,7 +55,9 @@ class Market(Base):
             "end_date": self.end_date.isoformat() if self.end_date else None,
             "image_url": self.image_url,
             "clob_token_ids": self.clob_token_ids,
-            "last_updated": self.last_updated.isoformat() if self.last_updated else None,
+            "last_updated": (
+                self.last_updated.isoformat() if self.last_updated else None
+            ),
         }
 
 
@@ -70,9 +72,7 @@ class PriceHistory(Base):
     volume: Mapped[float] = mapped_column(Float, default=0.0)
     timestamp: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
-    __table_args__ = (
-        Index("idx_price_history_market_time", "market_id", "timestamp"),
-    )
+    __table_args__ = (Index("idx_price_history_market_time", "market_id", "timestamp"),)
 
     def to_dict(self) -> dict:
         """Convert model to dictionary."""
@@ -119,7 +119,9 @@ class NewsArticle(Base):
             "source": self.source,
             "author": self.author,
             "image_url": self.image_url,
-            "published_at": self.published_at.isoformat() if self.published_at else None,
+            "published_at": (
+                self.published_at.isoformat() if self.published_at else None
+            ),
             "sentiment_score": self.sentiment_score,
         }
 

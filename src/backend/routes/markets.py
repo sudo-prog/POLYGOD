@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.backend.cache import user_stats_cache
 from src.backend.database import get_db
-from src.backend.models import AppState, Market
+from src.backend.db_models import AppState, Market
 from src.backend.polymarket.client import polymarket_client
 from src.backend.polymarket.schemas import (
     MarketListResponse,
@@ -200,9 +200,7 @@ async def get_market_status(db: AsyncSession = Depends(get_db)) -> MarketStatusR
         Last update time and market count.
     """
     # Count markets
-    result = await db.execute(
-        select(Market).where(Market.is_active == True)
-    )  # noqa: E712
+    result = await db.execute(select(Market).where(Market.is_active))
     markets = result.scalars().all()
 
     # Get last update time
@@ -789,8 +787,10 @@ async def get_market(market_id: str, db: AsyncSession = Depends(get_db)) -> Mark
                     logger.info(f"Saved fallback market to DB: {new_market.slug}")
                 except Exception as db_err:
                     logger.error(f"Failed to save fallback market to DB: {db_err}")
-                    # Continue returning the object even if save fails, though history endpoints will still fail
-                    # Using the model object for consistency if save succeeded, or constructing MarketOut manually if failed
+                    # Continue returning the object even if save fails,
+                    # though history endpoints will still fail.
+                    # Using the model object for consistency if save succeeded,
+                    # or constructing MarketOut manually if failed
                     if not market:
                         return MarketOut(
                             id=api_market.condition_id or api_market.id,
@@ -1043,7 +1043,10 @@ async def get_market_trades(
                 if raw_id:
                     dedupe_key = str(raw_id)
                 else:
-                    dedupe_key = f"{trade_time.isoformat()}|{address}|{size}|{price}|{side}|{outcome}"
+                    dedupe_key = (
+                        f"{trade_time.isoformat()}|{address}"
+                        f"|{size}|{price}|{side}|{outcome}"
+                    )
 
                 if dedupe_key in seen_trade_keys:
                     continue
@@ -1204,7 +1207,6 @@ async def get_market_holders(market_id: str, db: AsyncSession = Depends(get_db))
 
     try:
         condition_id = market.id
-        market_slug = market.slug
 
         async with httpx.AsyncClient(timeout=15.0) as client:
             # 1. Fetch Holders

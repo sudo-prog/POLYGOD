@@ -9,7 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.backend.database import get_db
-from src.backend.models import Market, NewsArticle
+from src.backend.db_models import Market, NewsArticle
 from src.backend.news.aggregator import news_aggregator
 from src.backend.news.schemas import NewsArticleOut, NewsListResponse
 
@@ -64,7 +64,9 @@ async def get_news_for_market(
         for article_data in fresh_articles:
             # Check for duplicate by url_hash
             existing = await db.execute(
-                select(NewsArticle).where(NewsArticle.url_hash == article_data["url_hash"])
+                select(NewsArticle).where(
+                    NewsArticle.url_hash == article_data["url_hash"]
+                )
             )
             if existing.scalar_one_or_none():
                 continue

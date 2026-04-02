@@ -1,7 +1,9 @@
-import asyncio
+from typing import Dict
+
 import aiohttp
-from typing import Dict, List
+
 from src.backend.config import settings
+
 
 async def get_x_sentiment(market_slug: str) -> Dict:
     """
@@ -13,12 +15,12 @@ async def get_x_sentiment(market_slug: str) -> Dict:
     Returns:
         Dictionary containing bull_score, top_posts, and whale_mentions
     """
-    if not hasattr(settings, 'X_BEARER_TOKEN') or not settings.X_BEARER_TOKEN:
+    if not hasattr(settings, "X_BEARER_TOKEN") or not settings.X_BEARER_TOKEN:
         return {
             "bull_score": 0.5,
             "top_posts": [],
             "whale_mentions": [],
-            "error": "X_BEARER_TOKEN not configured"
+            "error": "X_BEARER_TOKEN not configured",
         }
 
     async with aiohttp.ClientSession() as session:
@@ -28,40 +30,44 @@ async def get_x_sentiment(market_slug: str) -> Dict:
             search_params = {
                 "query": f"{market_slug} OR #{market_slug.replace('-', '')}",
                 "max_results": 10,
-                "tweet.fields": "public_metrics,created_at,text,author_id"
+                "tweet.fields": "public_metrics,created_at,text,author_id",
             }
 
             async with session.get(
                 search_url,
                 headers={"Authorization": f"Bearer {settings.X_BEARER_TOKEN}"},
-                params=search_params
+                params=search_params,
             ) as response:
                 if response.status != 200:
                     return {
                         "bull_score": 0.5,
                         "top_posts": [],
                         "whale_mentions": [],
-                        "error": f"Search API error: {response.status}"
+                        "error": f"Search API error: {response.status}",
                     }
                 search_results = await response.json()
 
             # Get user details for author information
-            author_ids = [tweet["author_id"] for tweet in search_results.get("data", [])]
+            author_ids = [
+                tweet["author_id"] for tweet in search_results.get("data", [])
+            ]
             if author_ids:
                 users_url = "https://api.x.com/2/users"
                 users_params = {
                     "ids": ",".join(author_ids),
-                    "user.fields": "public_metrics,verified,created_at"
+                    "user.fields": "public_metrics,verified,created_at",
                 }
 
                 async with session.get(
                     users_url,
                     headers={"Authorization": f"Bearer {settings.X_BEARER_TOKEN}"},
-                    params=users_params
+                    params=users_params,
                 ) as response:
                     if response.status == 200:
                         users_results = await response.json()
-                        users_dict = {user["id"]: user for user in users_results.get("data", [])}
+                        users_dict = {
+                            user["id"]: user for user in users_results.get("data", [])
+                        }
                     else:
                         users_dict = {}
             else:
@@ -96,14 +102,16 @@ async def get_x_sentiment(market_slug: str) -> Dict:
                 # Normalize sentiment between -1 and 1
                 sentiment_score = max(-1, min(1, sentiment_score))
 
-                posts.append({
-                    "text": tweet["text"],
-                    "created_at": tweet["created_at"],
-                    "author": author.get("username", ""),
-                    "verified": author.get("verified", False),
-                    "engagement": engagement,
-                    "sentiment": sentiment_score
-                })
+                posts.append(
+                    {
+                        "text": tweet["text"],
+                        "created_at": tweet["created_at"],
+                        "author": author.get("username", ""),
+                        "verified": author.get("verified", False),
+                        "engagement": engagement,
+                        "sentiment": sentiment_score,
+                    }
+                )
 
                 if sentiment_score != 0:
                     total_sentiment += sentiment_score
@@ -120,18 +128,20 @@ async def get_x_sentiment(market_slug: str) -> Dict:
             whale_mentions = []
             for post in posts:
                 if post["engagement"] > 100:  # Threshold for whale activity
-                    whale_mentions.append({
-                        "text": post["text"],
-                        "author": post["author"],
-                        "verified": post["verified"],
-                        "engagement": post["engagement"],
-                        "sentiment": post["sentiment"]
-                    })
+                    whale_mentions.append(
+                        {
+                            "text": post["text"],
+                            "author": post["author"],
+                            "verified": post["verified"],
+                            "engagement": post["engagement"],
+                            "sentiment": post["sentiment"],
+                        }
+                    )
 
             return {
                 "bull_score": round(bull_score, 3),
                 "top_posts": posts[:5],  # Return top 5 posts
-                "whale_mentions": whale_mentions[:3]  # Return top 3 whale mentions
+                "whale_mentions": whale_mentions[:3],  # Return top 3 whale mentions
             }
 
         except Exception as e:
@@ -139,5 +149,5 @@ async def get_x_sentiment(market_slug: str) -> Dict:
                 "bull_score": 0.5,
                 "top_posts": [],
                 "whale_mentions": [],
-                "error": str(e)
+                "error": str(e),
             }

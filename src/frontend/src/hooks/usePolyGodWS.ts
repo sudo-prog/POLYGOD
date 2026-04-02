@@ -48,9 +48,13 @@ export function usePolyGodWS() {
         // Attempt reconnection with exponential backoff
         if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
           const delay = RECONNECT_INTERVAL * Math.pow(1.5, reconnectAttempts);
-          console.log(`[PolyGodWS] Reconnecting in ${delay}ms (attempt ${reconnectAttempts + 1}/${MAX_RECONNECT_ATTEMPTS})`);
+          console.log(
+            `[PolyGodWS] Reconnecting in ${delay}ms (attempt ${
+              reconnectAttempts + 1
+            }/${MAX_RECONNECT_ATTEMPTS})`
+          );
           reconnectTimeoutRef.current = setTimeout(() => {
-            setReconnectAttempts(prev => prev + 1);
+            setReconnectAttempts((prev) => prev + 1);
             connect();
           }, delay);
         } else {
@@ -86,6 +90,6 @@ export function usePolyGodWS() {
     data,
     lastAlert,
     reconnectAttempts,
-    maxReconnectAttempts: MAX_RECONNECT_ATTEMPTS
+    maxReconnectAttempts: MAX_RECONNECT_ATTEMPTS,
   };
 }

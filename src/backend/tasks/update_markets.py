@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 from sqlalchemy import delete, select
 
 from src.backend.database import async_session_factory
-from src.backend.models import AppState, Market, PriceHistory
+from src.backend.db_models import AppState, Market, PriceHistory
 from src.backend.polymarket.client import polymarket_client
 
 logger = logging.getLogger(__name__)
@@ -79,7 +79,9 @@ async def update_top_markets() -> None:
                 db.add(state)
 
             await db.commit()
-            logger.info(f"Successfully updated {len(markets_data)} markets with price history")
+            logger.info(
+                f"Successfully updated {len(markets_data)} markets with price history"
+            )
 
     except Exception as e:
         logger.error(f"Error updating markets: {e}")
@@ -93,7 +95,7 @@ async def cleanup_old_news(days: int = 7) -> None:
     Args:
         days: Number of days to keep articles.
     """
-    from src.backend.models import NewsArticle
+    from src.backend.db_models import NewsArticle
 
     logger.info(f"Cleaning up news articles older than {days} days...")
 

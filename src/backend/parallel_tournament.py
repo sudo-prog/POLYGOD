@@ -194,7 +194,6 @@ async def parallel_paper_tournament(state: dict) -> dict:
     Spawns 50 variants in parallel, offloads heavy work to free GPU,
     and selects winners via Darwinian selection + Mem0 hindsight.
     """
-    market_id = state.get("market_id", "unknown")
     question = state.get("question", "Unknown Market")
 
     logger.info(f"PARALLEL TOURNAMENT: Spawning 50 variants for '{question[:50]}...'")
@@ -311,4 +310,7 @@ async def parallel_paper_tournament(state: dict) -> dict:
 # This node is wired into polygod_graph.py via:
 #   workflow.add_node("parallel_tournament", parallel_paper_tournament)
 #   workflow.add_edge("evolution_lab", "parallel_tournament")
-#   workflow.add_conditional_edges("parallel_tournament", lambda s: "moderator" if s.final_decision else END)
+#   workflow.add_conditional_edges(
+#     "parallel_tournament",
+#     lambda s: "moderator" if s.final_decision else END,
+#   )

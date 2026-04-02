@@ -21,35 +21,36 @@ Mutation protocol:
 # Current mutation target: Kelly fraction, hedge thresholds, niche rules
 
 # --- Position Sizing ---
-KELLY_FRACTION = 0.02          # Fraction of Kelly to use (conservative: 0.02 = 2%)
-MAX_POSITION_PCT = 0.15        # Max portfolio % per single position
-MIN_POSITION_SIZE = 50         # Minimum trade size in USD
+KELLY_FRACTION = 0.02  # Fraction of Kelly to use (conservative: 0.02 = 2%)
+MAX_POSITION_PCT = 0.15  # Max portfolio % per single position
+MIN_POSITION_SIZE = 50  # Minimum trade size in USD
 
 # --- Hedge & Risk Thresholds ---
-HEDGE_THRESHOLD = 0.95         # Auto-hedge when correlation exceeds this
-STOP_LOSS_PCT = 0.10           # Exit position at 10% loss
-TAKE_PROFIT_PCT = 0.25         # Take profits at 25% gain
+HEDGE_THRESHOLD = 0.95  # Auto-hedge when correlation exceeds this
+STOP_LOSS_PCT = 0.10  # Exit position at 10% loss
+TAKE_PROFIT_PCT = 0.25  # Take profits at 25% gain
 
 # --- Micro-Niche Detection ---
-MIN_VOLUME_7D = 10000          # Minimum 7-day volume to consider (USD)
-MAX_LIQUIDITY_RATIO = 5.0      # Max volume/liquidity ratio (detects thin markets)
-MIN_MARKET_DEPTH = 500         # Minimum required depth on both sides (USD)
+MIN_VOLUME_7D = 10000  # Minimum 7-day volume to consider (USD)
+MAX_LIQUIDITY_RATIO = 5.0  # Max volume/liquidity ratio (detects thin markets)
+MIN_MARKET_DEPTH = 500  # Minimum required depth on both sides (USD)
 
 # --- Sentiment & Signal Weights ---
-SENTIMENT_WEIGHT = 0.3         # Weight of X/Twitter sentiment in probability
-POLYMARKET_WEIGHT = 0.5        # Weight of Polymarket price signal
-NLP_WEIGHT = 0.2               # Weight of NLP/news sentiment
+SENTIMENT_WEIGHT = 0.3  # Weight of X/Twitter sentiment in probability
+POLYMARKET_WEIGHT = 0.5  # Weight of Polymarket price signal
+NLP_WEIGHT = 0.2  # Weight of NLP/news sentiment
 
 # --- Niche Category Thresholds ---
-WEATHER_NICHE_MIN_VOL = 5000      # Weather markets: lower volume threshold
-POLITICS_NICHE_MIN_VOL = 20000    # Politics markets: higher volume needed
-CRYPTO_NICHE_MIN_VOL = 15000      # Crypto markets: medium volume threshold
-TWITTER_TREND_MIN_VOL = 3000      # Twitter trend markets: very low volume ok
+WEATHER_NICHE_MIN_VOL = 5000  # Weather markets: lower volume threshold
+POLITICS_NICHE_MIN_VOL = 20000  # Politics markets: higher volume needed
+CRYPTO_NICHE_MIN_VOL = 15000  # Crypto markets: medium volume threshold
+TWITTER_TREND_MIN_VOL = 3000  # Twitter trend markets: very low volume ok
 
 # --- Tournament Parameters ---
-TOURNAMENT_SIMS = 200             # Simulations per variant in tournament
-SHARPE_LOOKBACK = 50              # Period for Sharpe calculation (days)
-EVOLUTION_MUTATION_RATE = 0.1     # Probability of mutation per generation
+TOURNAMENT_SIMS = 200  # Simulations per variant in tournament
+SHARPE_LOOKBACK = 50  # Period for Sharpe calculation (days)
+EVOLUTION_MUTATION_RATE = 0.1  # Probability of mutation per generation
+
 
 # --- Edge Detection Rules ---
 def is_niche_opportunity(market_data: dict) -> bool:

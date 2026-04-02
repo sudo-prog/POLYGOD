@@ -1,6 +1,7 @@
 """Debate Floor Agent System - Multi-agent debate for market analysis."""
 
 import datetime
+import logging
 import math
 from typing import Annotated, Any, Dict, List, Optional, TypedDict
 
@@ -12,6 +13,8 @@ from langgraph.graph import END, StateGraph
 from langgraph.graph.message import add_messages
 
 load_dotenv()
+
+logger = logging.getLogger(__name__)
 
 
 # --- Agent Configuration ---
@@ -118,8 +121,6 @@ def calculate_implied_probability(yes_price: float) -> Dict[str, Any]:
     vig = (total - 1) * 100  # Usually 0 on Polymarket (no fee on share prices)
 
     # True probabilities adjusted for vig
-    true_yes = yes_prob / total if total > 0 else 0.5
-    true_no = no_prob / total if total > 0 else 0.5
 
     return {
         "implied_yes_prob": round(yes_price, 2),
@@ -184,7 +185,9 @@ def calculate_kelly_criterion(
         "quarter_kelly": round(optimal_kelly * 25, 2),
         "optimal_side": optimal_side,
         "recommendation": (
-            f"Bet {round(optimal_kelly * 25, 1)}%-{round(optimal_kelly * 50, 1)}% of bankroll on {optimal_side}"
+            f"Bet {round(optimal_kelly * 25, 1)}%"
+            f"-{round(optimal_kelly * 50, 1)}%"
+            f" of bankroll on {optimal_side}"
             if optimal_kelly > 0.01
             else "No bet recommended (no edge)"
         ),
@@ -497,10 +500,6 @@ class DebateState(TypedDict):
 
 # --- Agents ---
 
-import logging
-
-logger = logging.getLogger(__name__)
-
 
 def statistics_expert(state: DebateState):
     """
@@ -541,7 +540,6 @@ def statistics_expert(state: DebateState):
         # 5. Expected Value calculation
         # Use current price as baseline estimate (assume market efficiency)
         # Then show what EV would be at different probability estimates
-        ev_at_market = calculate_expected_value(current_price, current_price)
         ev_bullish = calculate_expected_value(
             current_price, min(95, current_price + 10)
         )
@@ -584,7 +582,9 @@ def statistics_expert(state: DebateState):
 
 ### Momentum Analysis
 - **Trend**: {momentum['trend_signal']}
-- Current: {momentum['current_price']:.1f}% | Short SMA: {momentum.get('sma_short', 'N/A')} | Long SMA: {momentum.get('sma_long', 'N/A')}
+- Current: {momentum['current_price']:.1f}%
+- Short SMA: {momentum.get('sma_short', 'N/A')}
+- Long SMA: {momentum.get('sma_long', 'N/A')}
 - Rate of Change: {momentum.get('rate_of_change', 0):.1f}%
 
 ### Support & Resistance
@@ -667,7 +667,10 @@ def top_traders_analyst(state: DebateState):
             return {
                 "messages": [
                     HumanMessage(
-                        content="**Top Traders Analyst**: No top trader data available for this market.",
+                        content=(
+                            "**Top Traders Analyst**: "
+                            "No top trader data available for this market."
+                        ),
                         name="Top Traders Analyst",
                     )
                 ]
@@ -715,7 +718,8 @@ def top_traders_analyst(state: DebateState):
                 trader_lines.append(
                     f"- **{name}** (`{address[:6]}…{address[-4:]}`) | "
                     f"Volume {format_usd(total_volume)} across {trade_count} trades | "
-                    f"Flow: {bias} (bull {format_usd(bullish_volume)} vs bear {format_usd(bearish_volume)}) | "
+                    f"Flow: {bias} "
+                    f"(bull {format_usd(bullish_volume)} vs bear {format_usd(bearish_volume)}) | "
                     f"PnL {pnl_text} | Balance {balance_text} | Last trade {last_trade}"
                 )
 
@@ -727,7 +731,8 @@ def top_traders_analyst(state: DebateState):
         Market: "{question}"
         Current Price: {current_price:.1f}%
 
-        Here are the top actors (preferably top holders; otherwise top traders) and their recent activity:
+        Here are the top actors (preferably top holders;
+        otherwise top traders) and their recent activity:
         {traders_report}
 
         Please evaluate:
@@ -741,7 +746,10 @@ def top_traders_analyst(state: DebateState):
         """
 
         response = llm.invoke([HumanMessage(content=prompt)])
-        full_response = f"## Top Traders Snapshot\n\n{traders_report}\n\n---\n\n### Expert Interpretation\n\n{response.content}"
+        full_response = (
+            f"## Top Traders Snapshot\n\n{traders_report}\n\n---\n\n"
+            f"### Expert Interpretation\n\n{response.content}"
+        )
 
         return {
             "messages": [
@@ -788,7 +796,9 @@ def generalist_expert(state: DebateState):
         Generate 3 distinct search queries to find the most relevant and up-to-date information.
 
         1. Query 1: The exact market terms.
-        2. Query 2: Related entities, specific locations, or people involved (e.g. if it's about "Insurrection Act", search for "Minneapolis ICE shooting" or "troops deployment").
+        2. Query 2: Related entities, specific locations, or people involved
+        (e.g. if it's about "Insurrection Act", search for "Minneapolis ICE
+        shooting" or "troops deployment").
         3. Query 3: Broader context or recent breaking news affecting this topic.
 
         Output ONLY the 3 queries, one per line.
@@ -834,7 +844,8 @@ def generalist_expert(state: DebateState):
         Search Results:
         {search_context}
 
-        Analyze how these recent news stories affect the likelihood of the event resolving YES or NO.
+        Analyze how these recent news stories affect the likelihood
+        of the event resolving YES or NO.
         Cite specific articles or events found (e.g. "According to reports on [Topic]...").
         """
         logger.info(f"Generalist Expert Prompt: {prompt[:100]}...")
@@ -877,13 +888,16 @@ def devils_advocate(state: DebateState):
         You are the Devil's Advocate.
         Today's date is: {today}
 
-        Your job is to challenge the consensus or finding logical fallacies in the arguments presented so far.
+        Your job is to challenge the consensus or finding logical
+        fallacies in the arguments presented so far.
 
         Market: "{question}"
         Previous Arguments:
         {context}
 
-        Identify risks, alternative interpretations, or missing data points. If everyone says YES, argue why NO might happen, and vice versa.
+        Identify risks, alternative interpretations, or missing data
+        points. If everyone says YES, argue why NO might happen, and
+        vice versa.
         """
         logger.info(f"Devil's Advocate Prompt: {prompt[:100]}...")
         response = llm.invoke([HumanMessage(content=prompt)])
@@ -919,7 +933,8 @@ def crypto_macro_analyst(state: DebateState):
 
         Analyze the market "{question}" from a structural, macro, or crypto-native perspective.
 
-        Does general market sentiment, crypto correlation, or macro events (Fed rates, elections, etc.) impact this?
+        Does general market sentiment, crypto correlation, or macro
+        events (Fed rates, elections, etc.) impact this?
         """
         logger.info(f"Crypto/Macro Analyst Prompt: {prompt[:100]}...")
         response = llm.invoke([HumanMessage(content=prompt)])
@@ -954,7 +969,6 @@ def time_decay_analyst(state: DebateState):
         market_data = state.get("market_data", {})
         question = state.get("market_question", "Unknown Market")
         prices_24h = state.get("price_history_24h", [])
-        prices_7d = state.get("price_history_7d", [])
 
         current_price = market_data.get("price", 50.0)
         end_date = market_data.get("end_date", "Unknown")
@@ -970,9 +984,15 @@ def time_decay_analyst(state: DebateState):
         if prices_24h and len(prices_24h) >= 2:
             recent_change = prices_24h[-1] - prices_24h[0]
             if abs(recent_change) > 5:
-                velocity_analysis = f"Price moved {recent_change:+.1f}% in last 24h - active information flow"
+                velocity_analysis = (
+                    f"Price moved {recent_change:+.1f}% in last 24h "
+                    "- active information flow"
+                )
             else:
-                velocity_analysis = f"Price stable (Δ{recent_change:+.1f}%) - market in wait-and-see mode"
+                velocity_analysis = (
+                    f"Price stable (Δ{recent_change:+.1f}%)"
+                    " - market in wait-and-see mode"
+                )
         else:
             velocity_analysis = "Insufficient price data for velocity analysis"
 
@@ -1041,9 +1061,11 @@ Proceed with caution and rely on other signals.
 
         Based on this time analysis:
         1. Is the timing favorable for entering a position now, or should the user wait?
-        2. What specific catalysts or events should occur before resolution that could move the price?
+        2. What specific catalysts or events should occur before
+        resolution that could move the price?
         3. Is the current price "priced in" given the time remaining, or is there mispricing?
-        4. What's the optimal strategy considering time decay (hold, take profits, cut losses, wait)?
+        4. What's the optimal strategy considering time decay
+        (hold, take profits, cut losses, wait)?
 
         Be specific about timing recommendations. Reference the calculated metrics.
         """

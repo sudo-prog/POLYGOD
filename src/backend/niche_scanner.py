@@ -112,7 +112,6 @@ class MicroNicheScanner:
                     continue  # skip high-liquidity markets
 
                 title_lower = market.get("title", "").lower()
-                slug_lower = market.get("slug", "").lower()
                 market_id = market.get("id", "")
                 prices = {"yes": market.get("yes_percentage", 50) / 100}
 
@@ -153,7 +152,9 @@ class MicroNicheScanner:
                         }
                     )
                     logger.info(
-                        f"Edge found: {niche_type} | {market.get('title', '')[:50]}... | Edge: {edge:.2%}"
+                        f"Edge found: {niche_type} | "
+                        f"{market.get('title', '')[:50]}... | "
+                        f"Edge: {edge:.2%}"
                     )
 
             except Exception as e:
@@ -335,7 +336,6 @@ class MicroNicheScanner:
                 result = await parallel_paper_tournament(state)
 
                 final_decision = result.get("final_decision", {})
-                best_config = final_decision.get("best_config", {})
 
                 mem0_add(
                     f"Scanned {opp['niche']} | Edge {opp['edge']:.2%} | "

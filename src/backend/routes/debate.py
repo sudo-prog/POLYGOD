@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.backend.agents.debate import AgentConfig, DebateState, build_debate_graph
 from src.backend.database import get_db
-from src.backend.models import Market
+from src.backend.db_models import Market
 from src.backend.polymarket.client import polymarket_client
 from src.backend.routes.markets import fetch_price_history_from_clob
 
@@ -52,7 +52,10 @@ class DebateRequest(BaseModel):
 
     agents: Optional[AgentConfigRequest] = Field(
         default=None,
-        description="Configuration for which agents to include. If not provided, all agents are enabled.",
+        description=(
+            "Configuration for which agents to include. "
+            "If not provided, all agents are enabled."
+        ),
     )
 
 
@@ -568,7 +571,9 @@ async def initiate_debate(
                     ]  # Convert to 0-100 scale
 
                 logger.info(
-                    f"Fetched price history: 24h={len(price_history_24h)} points, 7d={len(price_history_7d)} points"
+                    "Fetched price history: 24h=%d points, 7d=%d points",
+                    len(price_history_24h),
+                    len(price_history_7d),
                 )
         except Exception as e:
             logger.warning(f"Failed to fetch price history for debate: {e}")

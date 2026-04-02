@@ -9,7 +9,7 @@ import os
 from datetime import datetime
 
 from cryptography.fernet import Fernet
-from sqlalchemy import DateTime, Integer, JSON, String, func
+from sqlalchemy import JSON, DateTime, Integer, String, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from src.backend.database import Base
@@ -28,7 +28,8 @@ class Provider(Base):
     name: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
     base_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     api_key_encrypted: Mapped[str | None] = mapped_column(String(1000), nullable=True)
-    models_json: Mapped[list | None] = mapped_column(JSON, nullable=True)  # list of available model IDs
+    # list of available model IDs
+    models_json: Mapped[list | None] = mapped_column(JSON, nullable=True)
     status: Mapped[str] = mapped_column(String(20), default="unknown")  # ✅ / ⚠️ / 🔴
     uptime_24h: Mapped[str] = mapped_column(String(20), default="100%")
     avg_speed: Mapped[int | None] = mapped_column(Integer, nullable=True)  # tokens/sec
@@ -72,7 +73,8 @@ class AgentConfig(Base):
     agent_name: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
     provider_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     model_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
-    overrides_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)  # e.g. {"volume_threshold": 10000}
+    # e.g. {"volume_threshold": 10000}
+    overrides_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
     def to_dict(self) -> dict:
         """Convert model to dictionary."""

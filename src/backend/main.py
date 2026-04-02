@@ -12,7 +12,7 @@ from contextlib import asynccontextmanager
 from typing import Final
 
 import uvicorn
-from fastapi import Depends, FastAPI, HTTPException, WebSocket
+from fastapi import Depends, FastAPI, HTTPException, Request, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from prometheus_fastapi_instrumentator import Instrumentator
@@ -373,7 +373,7 @@ async def monte_carlo_simulate(market_id: str, order_size: float = 1000):
 
 @app.post("/api/scan-niches", dependencies=[Depends(admin_required)])
 @limiter.limit("60/minute")
-async def scan_niches(mode: int = 1):
+async def scan_niches(request: Request, mode: int = 1):
     """
     Start money printer — scan for micro-niche opportunities in low-liquidity markets.
 

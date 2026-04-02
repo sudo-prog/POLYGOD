@@ -111,7 +111,9 @@ def _is_wallet_address(identifier: str) -> bool:
     return bool(WALLET_RE.match(identifier))
 
 
-def _extract_user_from_candidate(candidate: dict, requested_username: str | None) -> UserProfile | None:
+def _extract_user_from_candidate(
+    candidate: dict, requested_username: str | None
+) -> UserProfile | None:
     if not isinstance(candidate, dict):
         return None
     if isinstance(candidate.get("profile"), dict):
@@ -194,7 +196,9 @@ async def _resolve_user(identifier: str) -> UserProfile | None:
             {"q": identifier},
         ):
             try:
-                response = await client.get(f"{GAMMA_API_BASE}/public-search", params=params)
+                response = await client.get(
+                    f"{GAMMA_API_BASE}/public-search", params=params
+                )
                 if response.status_code != 200:
                     continue
                 data = response.json()
@@ -241,7 +245,9 @@ async def _fetch_positions(user_identifier: str, limit: int) -> list[dict]:
                 params={"user": user_identifier, "limit": str(limit)},
             )
             if response.status_code != 200:
-                logger.warning(f"Positions API status {response.status_code}: {response.text}")
+                logger.warning(
+                    f"Positions API status {response.status_code}: {response.text}"
+                )
                 return []
             data = response.json()
             if isinstance(data, dict):
@@ -265,7 +271,9 @@ async def _fetch_closed_positions(user_identifier: str, limit: int) -> list[dict
                 params={"user": user_identifier, "limit": str(limit)},
             )
             if response.status_code != 200:
-                logger.warning(f"Closed positions API status {response.status_code}: {response.text}")
+                logger.warning(
+                    f"Closed positions API status {response.status_code}: {response.text}"
+                )
                 return []
             data = response.json()
             if isinstance(data, dict):
@@ -304,7 +312,12 @@ def _extract_next_cursor(data: object) -> str | None:
 def _position_key_from_raw(item: dict) -> str | None:
     if not isinstance(item, dict):
         return None
-    market_id = item.get("conditionId") or item.get("marketId") or item.get("id") or item.get("slug")
+    market_id = (
+        item.get("conditionId")
+        or item.get("marketId")
+        or item.get("id")
+        or item.get("slug")
+    )
     outcome = item.get("outcome") or item.get("outcomeIndex") or item.get("asset")
     if market_id is None and outcome is None:
         return None
@@ -336,9 +349,13 @@ async def _fetch_all_positions(
                 params["offset"] = str(offset)
 
             try:
-                response = await client.get(f"{DATA_API_BASE}/{endpoint}", params=params)
+                response = await client.get(
+                    f"{DATA_API_BASE}/{endpoint}", params=params
+                )
                 if response.status_code != 200:
-                    logger.warning(f"{endpoint} API status {response.status_code}: {response.text}")
+                    logger.warning(
+                        f"{endpoint} API status {response.status_code}: {response.text}"
+                    )
                     break
                 data = response.json()
                 batch = _extract_list_from_response(data)
@@ -375,7 +392,9 @@ async def _fetch_all_positions(
     return collected
 
 
-def _normalize_position(position: dict, force_is_open: bool | None = None) -> UserPosition | None:
+def _normalize_position(
+    position: dict, force_is_open: bool | None = None
+) -> UserPosition | None:
     if not isinstance(position, dict):
         return None
 
@@ -392,26 +411,34 @@ def _normalize_position(position: dict, force_is_open: bool | None = None) -> Us
         or position.get("marketTitle")
         or position.get("market")
     )
-    slug = position.get("slug") or position.get("marketSlug") or position.get("market_slug")
-    outcome = position.get("outcome") or position.get("side") or position.get("positionSide")
+    slug = (
+        position.get("slug")
+        or position.get("marketSlug")
+        or position.get("market_slug")
+    )
+    outcome = (
+        position.get("outcome") or position.get("side") or position.get("positionSide")
+    )
 
     shares = _safe_float(
-        position.get("size")
-        or position.get("shares")
-        or position.get("amount")
+        position.get("size") or position.get("shares") or position.get("amount")
     )
     avg_price = _safe_float(
         position.get("avgPrice")
         or position.get("avg_price")
         or position.get("averagePrice")
     )
-    current_value = _safe_float(position.get("currentValue") or position.get("current_value"))
+    current_value = _safe_float(
+        position.get("currentValue") or position.get("current_value")
+    )
     initial_value = _safe_float(
         position.get("initialValue")
         or position.get("initial_value")
         or position.get("costBasis")
     )
-    total_bought = _safe_float(position.get("totalBought") or position.get("total_bought"))
+    total_bought = _safe_float(
+        position.get("totalBought") or position.get("total_bought")
+    )
     if initial_value == 0:
         initial_value = total_bought
     cash_pnl = _safe_float(
@@ -485,7 +512,9 @@ def _position_key(position: UserPosition) -> str | None:
     return f"{market_id}:{outcome}"
 
 
-def _compute_metrics(open_positions: list[UserPosition], closed_positions: list[UserPosition]) -> UserMetrics:
+def _compute_metrics(
+    open_positions: list[UserPosition], closed_positions: list[UserPosition]
+) -> UserMetrics:
     positions = [*open_positions, *closed_positions]
     if not positions:
         return UserMetrics()
@@ -505,8 +534,12 @@ def _compute_metrics(open_positions: list[UserPosition], closed_positions: list[
     win_positions = [p for p in positions if p.cash_pnl > 0]
 
     total_roi = (total_pnl / volume_traded * 100) if volume_traded > 0 else 0.0
-    realized_roi = (realized_pnl / realized_cost_basis * 100) if realized_cost_basis > 0 else 0.0
-    avg_roi = sum(p.percent_pnl for p in positions) / len(positions) if positions else 0.0
+    realized_roi = (
+        (realized_pnl / realized_cost_basis * 100) if realized_cost_basis > 0 else 0.0
+    )
+    avg_roi = (
+        sum(p.percent_pnl for p in positions) / len(positions) if positions else 0.0
+    )
     avg_position_size = total_initial_value / len(positions) if positions else 0.0
     largest_position_value = max((p.current_value for p in positions), default=0.0)
 
@@ -582,7 +615,9 @@ async def get_user_analytics(
     user_identifier = profile.address if profile else identifier
 
     positions_raw = await _fetch_all_positions("positions", user_identifier, limit)
-    closed_positions_raw = await _fetch_all_positions("closed-positions", user_identifier, limit)
+    closed_positions_raw = await _fetch_all_positions(
+        "closed-positions", user_identifier, limit
+    )
 
     if not positions_raw and not closed_positions_raw and not profile:
         raise HTTPException(status_code=404, detail="User not found")
@@ -600,7 +635,9 @@ async def get_user_analytics(
             closed_positions_raw_norm.append(normalized)
 
     closed_keys = {k for p in closed_positions_raw_norm if (k := _position_key(p))}
-    open_positions = [p for p in open_positions_raw if _position_key(p) not in closed_keys]
+    open_positions = [
+        p for p in open_positions_raw if _position_key(p) not in closed_keys
+    ]
     closed_positions = closed_positions_raw_norm
 
     metrics = _compute_metrics(open_positions, closed_positions)
