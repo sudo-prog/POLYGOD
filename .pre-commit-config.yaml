@@ -31,7 +31,11 @@ repos:
     hooks:
       - id: mypy
         additional_dependencies:
-          - types-all
+          - types-PyYAML
+          - types-requests
+          - types-python-dateutil
+          - types-pytz
+          - pydantic
         files: ^src/backend/
         args:
           - --ignore-missing-imports

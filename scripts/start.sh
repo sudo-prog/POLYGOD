@@ -18,7 +18,7 @@ BACKEND_PID=$!
 # Wait a bit for backend to start
 sleep 3
 
-# Start frontend in background  
+# Start frontend in background
 "$SCRIPT_DIR/start_frontend.sh" &
 FRONTEND_PID=$!
 

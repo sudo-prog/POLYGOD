@@ -32,10 +32,10 @@ interface Props {
 export function MarketCard({ marketId, onSelect }: Props) {
   // Hooks at top level
   const { data, isLoading } = useMarketData(marketId);
-  
+
   // Early returns for loading/error states
   if (isLoading) return <Skeleton />;
-  
+
   return (
     <div onClick={() => onSelect(marketId)}>
       {/* Component JSX */}
@@ -178,13 +178,13 @@ function useMarket(marketId: string) {
 ```typescript
 function usePlaceOrder() {
   const queryClient = useQueryClient();
-  
+
   return useMutation({
     mutationFn: (order: OrderPayload) => placeOrder(order),
     onSuccess: (_, variables) => {
       // Invalidate relevant queries
-      queryClient.invalidateQueries({ 
-        queryKey: marketKeys.orderbook(variables.marketId) 
+      queryClient.invalidateQueries({
+        queryKey: marketKeys.orderbook(variables.marketId)
       });
     },
     onError: (error) => {
@@ -218,7 +218,7 @@ interface UIState {
   sidebarOpen: boolean;
   selectedMarketId: string | null;
   theme: 'light' | 'dark';
-  
+
   // Actions
   toggleSidebar: () => void;
   selectMarket: (id: string) => void;
@@ -232,7 +232,7 @@ export const useUIStore = create<UIState>()(
         sidebarOpen: true,
         selectedMarketId: null,
         theme: 'dark',
-        
+
         toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
         selectMarket: (id) => set({ selectedMarketId: id }),
         setTheme: (theme) => set({ theme }),
@@ -287,10 +287,10 @@ interface TradingViewWidgetProps {
   interval?: string;
 }
 
-export function TradingViewWidget({ 
-  symbol, 
+export function TradingViewWidget({
+  symbol,
   theme = 'dark',
-  interval = 'D' 
+  interval = 'D'
 }: TradingViewWidgetProps) {
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -326,9 +326,9 @@ export function TradingViewWidget({
   }, [symbol, theme, interval]);
 
   return (
-    <div 
+    <div
       id={`tradingview_${symbol.replace('/', '_')}`}
-      ref={containerRef} 
+      ref={containerRef}
       className="h-[500px] w-full"
     />
   );
@@ -343,21 +343,21 @@ const polymarketChartConfig = {
   // Chart appearance
   theme: 'dark',
   style: '3', // Area chart
-  
+
   // Hide unnecessary UI
   hide_top_toolbar: false,
   hide_side_toolbar: true,
   hide_legend: false,
-  
+
   // Customization
   backgroundColor: 'rgba(0, 0, 0, 0)',
   gridColor: 'rgba(255, 255, 255, 0.1)',
-  
+
   // Disable features not needed
   enable_publishing: false,
   withdateranges: true,
   save_image: false,
-  
+
   // Study configuration
   studies: [
     'Volume@tv-basicstudies',

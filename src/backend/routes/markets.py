@@ -19,7 +19,11 @@ from src.backend.cache import user_stats_cache
 from src.backend.database import get_db
 from src.backend.models import AppState, Market
 from src.backend.polymarket.client import polymarket_client
-from src.backend.polymarket.schemas import MarketListResponse, MarketOut, MarketStatusResponse
+from src.backend.polymarket.schemas import (
+    MarketListResponse,
+    MarketOut,
+    MarketStatusResponse,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -93,8 +97,12 @@ def _extract_position_pnl(position: dict) -> float:
             continue
         return _parse_float(raw)
 
-    realized = _parse_float(position.get("realizedPnl") or position.get("realized_pnl") or 0)
-    unrealized = _parse_float(position.get("unrealizedPnl") or position.get("unrealized_pnl") or 0)
+    realized = _parse_float(
+        position.get("realizedPnl") or position.get("realized_pnl") or 0
+    )
+    unrealized = _parse_float(
+        position.get("unrealizedPnl") or position.get("unrealized_pnl") or 0
+    )
     if realized or unrealized:
         return realized + unrealized
 
@@ -150,7 +158,7 @@ def _compute_global_stats(
 async def get_top_50_markets(db: AsyncSession = Depends(get_db)) -> MarketListResponse:
     """
     Get the top 100 markets by 7-day volume.
-    
+
     (Endpoint name kept as /top50 for compatibility, but returns up to 100)
 
     Returns:
@@ -192,7 +200,9 @@ async def get_market_status(db: AsyncSession = Depends(get_db)) -> MarketStatusR
         Last update time and market count.
     """
     # Count markets
-    result = await db.execute(select(Market).where(Market.is_active == True))  # noqa: E712
+    result = await db.execute(
+        select(Market).where(Market.is_active == True)
+    )  # noqa: E712
     markets = result.scalars().all()
 
     # Get last update time
@@ -306,10 +316,10 @@ async def get_price_history(
 
     # Map timeframe to CLOB API parameters
     timeframe_config = {
-        "24H": ("1d", 15),    # 1 day with 15-minute fidelity
-        "7D": ("7d", 60),     # 7 days with 1-hour fidelity
-        "1M": ("30d", 240),   # 30 days with 4-hour fidelity
-        "ALL": ("max", 1440), # All time with 1-day fidelity
+        "24H": ("1d", 15),  # 1 day with 15-minute fidelity
+        "7D": ("7d", 60),  # 7 days with 1-hour fidelity
+        "1M": ("30d", 240),  # 30 days with 4-hour fidelity
+        "ALL": ("max", 1440),  # All time with 1-day fidelity
     }
     interval, fidelity = timeframe_config.get(timeframe, ("1d", 15))
 
@@ -351,6 +361,7 @@ async def get_price_history(
 
 class MarketSignal(BaseModel):
     """A trading signal with strength and description."""
+
     name: str
     signal: str  # "bullish", "bearish", "neutral"
     strength: int  # 1-5
@@ -360,6 +371,7 @@ class MarketSignal(BaseModel):
 
 class MarketStats(BaseModel):
     """Comprehensive market statistics and signals."""
+
     market_id: str
     current_price: float
 
@@ -389,12 +401,11 @@ class MarketStats(BaseModel):
 
 @router.get("/{market_id}/stats")
 async def get_market_stats(
-    market_id: str,
-    db: AsyncSession = Depends(get_db)
+    market_id: str, db: AsyncSession = Depends(get_db)
 ) -> MarketStats:
     """
     Get comprehensive market statistics and trading signals.
-    
+
     Computes price movement, volatility, and bullish/bearish signals
     based on 24h and 7d price action and volume.
     """
@@ -497,63 +508,75 @@ async def get_market_stats(
     if abs(change_24h_percent) > 1:
         if change_24h_percent > 0:
             strength = min(5, int(change_24h_percent / 2) + 1)
-            signals.append(MarketSignal(
-                name="24h Momentum",
-                signal="bullish",
-                strength=strength,
-                description=f"Price up {change_24h_percent:.1f}% in 24h",
-                value=change_24h_percent
-            ))
+            signals.append(
+                MarketSignal(
+                    name="24h Momentum",
+                    signal="bullish",
+                    strength=strength,
+                    description=f"Price up {change_24h_percent:.1f}% in 24h",
+                    value=change_24h_percent,
+                )
+            )
             bullish_score += strength
         else:
             strength = min(5, int(abs(change_24h_percent) / 2) + 1)
-            signals.append(MarketSignal(
-                name="24h Momentum",
-                signal="bearish",
-                strength=strength,
-                description=f"Price down {abs(change_24h_percent):.1f}% in 24h",
-                value=change_24h_percent
-            ))
+            signals.append(
+                MarketSignal(
+                    name="24h Momentum",
+                    signal="bearish",
+                    strength=strength,
+                    description=f"Price down {abs(change_24h_percent):.1f}% in 24h",
+                    value=change_24h_percent,
+                )
+            )
             bearish_score += strength
     else:
-        signals.append(MarketSignal(
-            name="24h Momentum",
-            signal="neutral",
-            strength=1,
-            description="Price stable in 24h",
-            value=change_24h_percent
-        ))
+        signals.append(
+            MarketSignal(
+                name="24h Momentum",
+                signal="neutral",
+                strength=1,
+                description="Price stable in 24h",
+                value=change_24h_percent,
+            )
+        )
 
     # Signal 2: 7d Trend
     if abs(change_7d_percent) > 3:
         if change_7d_percent > 0:
             strength = min(5, int(change_7d_percent / 3) + 1)
-            signals.append(MarketSignal(
-                name="7d Trend",
-                signal="bullish",
-                strength=strength,
-                description=f"Strong uptrend: +{change_7d_percent:.1f}% over 7 days",
-                value=change_7d_percent
-            ))
+            signals.append(
+                MarketSignal(
+                    name="7d Trend",
+                    signal="bullish",
+                    strength=strength,
+                    description=f"Strong uptrend: +{change_7d_percent:.1f}% over 7 days",
+                    value=change_7d_percent,
+                )
+            )
             bullish_score += strength
         else:
             strength = min(5, int(abs(change_7d_percent) / 3) + 1)
-            signals.append(MarketSignal(
-                name="7d Trend",
-                signal="bearish",
-                strength=strength,
-                description=f"Strong downtrend: {change_7d_percent:.1f}% over 7 days",
-                value=change_7d_percent
-            ))
+            signals.append(
+                MarketSignal(
+                    name="7d Trend",
+                    signal="bearish",
+                    strength=strength,
+                    description=f"Strong downtrend: {change_7d_percent:.1f}% over 7 days",
+                    value=change_7d_percent,
+                )
+            )
             bearish_score += strength
     else:
-        signals.append(MarketSignal(
-            name="7d Trend",
-            signal="neutral",
-            strength=1,
-            description="No significant weekly trend",
-            value=change_7d_percent
-        ))
+        signals.append(
+            MarketSignal(
+                name="7d Trend",
+                signal="neutral",
+                strength=1,
+                description="No significant weekly trend",
+                value=change_7d_percent,
+            )
+        )
 
     # Signal 3: Price Position (relative to range)
     if history_7d and len(history_7d) > 5:
@@ -561,76 +584,90 @@ async def get_market_stats(
         if range_7d > 0:
             position = (current_price - low_7d) / range_7d
             if position > 0.8:
-                signals.append(MarketSignal(
-                    name="Range Position",
-                    signal="bullish",
-                    strength=4,
-                    description=f"Near 7d high ({position*100:.0f}% of range)",
-                    value=position * 100
-                ))
+                signals.append(
+                    MarketSignal(
+                        name="Range Position",
+                        signal="bullish",
+                        strength=4,
+                        description=f"Near 7d high ({position*100:.0f}% of range)",
+                        value=position * 100,
+                    )
+                )
                 bullish_score += 4
             elif position < 0.2:
-                signals.append(MarketSignal(
-                    name="Range Position",
-                    signal="bearish",
-                    strength=4,
-                    description=f"Near 7d low ({position*100:.0f}% of range)",
-                    value=position * 100
-                ))
+                signals.append(
+                    MarketSignal(
+                        name="Range Position",
+                        signal="bearish",
+                        strength=4,
+                        description=f"Near 7d low ({position*100:.0f}% of range)",
+                        value=position * 100,
+                    )
+                )
                 bearish_score += 4
             else:
-                signals.append(MarketSignal(
-                    name="Range Position",
-                    signal="neutral",
-                    strength=2,
-                    description=f"Mid-range ({position*100:.0f}% of range)",
-                    value=position * 100
-                ))
+                signals.append(
+                    MarketSignal(
+                        name="Range Position",
+                        signal="neutral",
+                        strength=2,
+                        description=f"Mid-range ({position*100:.0f}% of range)",
+                        value=position * 100,
+                    )
+                )
 
     # Signal 4: Volume Analysis
     if volume_7d > 0:
         daily_avg = volume_7d / 7
         if volume_24h > daily_avg * 1.5:
-            signals.append(MarketSignal(
-                name="Volume Surge",
-                signal="bullish" if change_24h > 0 else "bearish",
-                strength=3,
-                description=f"Volume {volume_24h/daily_avg:.1f}x above average",
-                value=volume_24h / daily_avg
-            ))
+            signals.append(
+                MarketSignal(
+                    name="Volume Surge",
+                    signal="bullish" if change_24h > 0 else "bearish",
+                    strength=3,
+                    description=f"Volume {volume_24h/daily_avg:.1f}x above average",
+                    value=volume_24h / daily_avg,
+                )
+            )
             if change_24h > 0:
                 bullish_score += 3
             else:
                 bearish_score += 3
         elif volume_24h < daily_avg * 0.5:
-            signals.append(MarketSignal(
-                name="Low Volume",
-                signal="neutral",
-                strength=2,
-                description="Below average volume - low conviction",
-                value=volume_24h / daily_avg if daily_avg > 0 else 0
-            ))
+            signals.append(
+                MarketSignal(
+                    name="Low Volume",
+                    signal="neutral",
+                    strength=2,
+                    description="Below average volume - low conviction",
+                    value=volume_24h / daily_avg if daily_avg > 0 else 0,
+                )
+            )
 
     # Signal 5: Volatility
     if history_24h and len(history_24h) > 10:
         prices = [h["p"] * 100 for h in history_24h]
         volatility = max(prices) - min(prices)
         if volatility > 5:
-            signals.append(MarketSignal(
-                name="High Volatility",
-                signal="neutral",
-                strength=3,
-                description=f"24h range: {volatility:.1f}% - expect swings",
-                value=volatility
-            ))
+            signals.append(
+                MarketSignal(
+                    name="High Volatility",
+                    signal="neutral",
+                    strength=3,
+                    description=f"24h range: {volatility:.1f}% - expect swings",
+                    value=volatility,
+                )
+            )
         elif volatility < 1:
-            signals.append(MarketSignal(
-                name="Low Volatility",
-                signal="neutral",
-                strength=2,
-                description=f"24h range: {volatility:.1f}% - consolidating",
-                value=volatility
-            ))
+            signals.append(
+                MarketSignal(
+                    name="Low Volatility",
+                    signal="neutral",
+                    strength=2,
+                    description=f"24h range: {volatility:.1f}% - consolidating",
+                    value=volatility,
+                )
+            )
 
     # Calculate overall signal
     total_score = bullish_score - bearish_score
@@ -659,8 +696,9 @@ async def get_market_stats(
         volume_7d=round(volume_7d, 0),
         overall_signal=overall_signal,
         overall_strength=overall_strength,
-        signals=signals
+        signals=signals,
     )
+
 
 @router.get("/{market_id}", response_model=MarketOut)
 async def get_market(market_id: str, db: AsyncSession = Depends(get_db)) -> MarketOut:
@@ -709,7 +747,9 @@ async def get_market(market_id: str, db: AsyncSession = Depends(get_db)) -> Mark
                     try:
                         date_str = api_market.end_date_iso
                         if "T" in date_str:
-                            end_date = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
+                            end_date = datetime.fromisoformat(
+                                date_str.replace("Z", "+00:00")
+                            )
                         else:
                             end_date = datetime.fromisoformat(date_str)
                     except Exception:
@@ -737,7 +777,7 @@ async def get_market(market_id: str, db: AsyncSession = Depends(get_db)) -> Mark
                     end_date=end_date,
                     image_url=api_market.image or api_market.icon,
                     clob_token_ids=api_market.clob_token_ids,
-                    last_updated=datetime.utcnow()
+                    last_updated=datetime.utcnow(),
                 )
 
                 # Save to database so subsequent calls (history, stats) work
@@ -752,7 +792,7 @@ async def get_market(market_id: str, db: AsyncSession = Depends(get_db)) -> Mark
                     # Continue returning the object even if save fails, though history endpoints will still fail
                     # Using the model object for consistency if save succeeded, or constructing MarketOut manually if failed
                     if not market:
-                         return MarketOut(
+                        return MarketOut(
                             id=api_market.condition_id or api_market.id,
                             slug=api_market.slug or api_market.market_slug or market_id,
                             title=api_market.question,
@@ -765,7 +805,7 @@ async def get_market(market_id: str, db: AsyncSession = Depends(get_db)) -> Mark
                             end_date=end_date,
                             image_url=api_market.image or api_market.icon,
                             clob_token_ids=api_market.clob_token_ids,
-                            last_updated=datetime.utcnow()
+                            last_updated=datetime.utcnow(),
                         )
         except Exception as e:
             logger.error(f"Error serving market from API fallback: {e}")
@@ -776,7 +816,9 @@ async def get_market(market_id: str, db: AsyncSession = Depends(get_db)) -> Mark
 
     # Always try to fetch fresh data from API for individual market view
     try:
-        api_market = await polymarket_client.get_market_by_slug(market.slug or market_id)
+        api_market = await polymarket_client.get_market_by_slug(
+            market.slug or market_id
+        )
         if api_market:
             # Parse yes percentage
             yes_percentage = 50.0
@@ -794,7 +836,7 @@ async def get_market(market_id: str, db: AsyncSession = Depends(get_db)) -> Mark
             volume_24h_val = api_market.volume_24hr or api_market.volume_num or 0.0
             volume_7d_val = api_market.volume_1wk or api_market.volume_num or 0.0
             if volume_7d_val == 0 and volume_24h_val > 0:
-                 volume_7d_val = volume_24h_val
+                volume_7d_val = volume_24h_val
 
             liquidity_val = api_market.liquidity_num or 0.0
 
@@ -808,7 +850,9 @@ async def get_market(market_id: str, db: AsyncSession = Depends(get_db)) -> Mark
             # Commit updates
             await db.commit()
             await db.refresh(market)
-            logger.info(f"Refreshed market data for {market.slug}: {market.yes_percentage}%")
+            logger.info(
+                f"Refreshed market data for {market.slug}: {market.yes_percentage}%"
+            )
 
     except Exception as e:
         logger.warning(f"Failed to refresh market data from API (using cached): {e}")
@@ -823,16 +867,16 @@ async def get_market_trades(
     limit: int = 2000,
     days: int = Query(default=7, ge=1, le=30),
     include_user_stats: bool = Query(default=False),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Get recent large trades (whale orders) for a market.
-    
+
     Returns individual trades above the min_volume threshold.
     Includes both BUY and SELL orders with bullish/bearish sentiment.
     Lookback window is configurable via the `days` query param.
     Optional user stats enrichment via `include_user_stats`.
-    
+
     Bullish = Buying Yes OR Selling No (betting on positive outcome)
     Bearish = Buying No OR Selling Yes (betting on negative outcome)
     """
@@ -888,13 +932,23 @@ async def get_market_trades(
                 trade.get("conditionId"),
                 trade.get("condition_id"),
             ]
-            normalized = [normalize_key(field) for field in trade_fields if field is not None]
+            normalized = [
+                normalize_key(field) for field in trade_fields if field is not None
+            ]
             if normalized:
                 return any(value in market_keys for value in normalized)
             return True
 
         def parse_trade_value(trade: dict, size: float, price: float) -> float:
-            for key in ("value", "tradeValue", "totalValue", "total_value", "usdValue", "usd_value", "notional"):
+            for key in (
+                "value",
+                "tradeValue",
+                "totalValue",
+                "total_value",
+                "usdValue",
+                "usd_value",
+                "notional",
+            ):
                 raw = trade.get(key)
                 if raw is None:
                     continue
@@ -930,7 +984,9 @@ async def get_market_trades(
                     trade_time = datetime.utcfromtimestamp(ts_int)
                 else:
                     try:
-                        trade_time = datetime.fromisoformat(str(ts_val).replace("Z", "+00:00"))
+                        trade_time = datetime.fromisoformat(
+                            str(ts_val).replace("Z", "+00:00")
+                        )
                     except ValueError:
                         continue
 
@@ -979,7 +1035,11 @@ async def get_market_trades(
                 )
                 name = trade.get("name") or trade.get("pseudonym") or ""
 
-                raw_id = trade.get("transactionHash") or trade.get("tradeId") or trade.get("trade_id")
+                raw_id = (
+                    trade.get("transactionHash")
+                    or trade.get("tradeId")
+                    or trade.get("trade_id")
+                )
                 if raw_id:
                     dedupe_key = str(raw_id)
                 else:
@@ -989,18 +1049,20 @@ async def get_market_trades(
                     continue
                 seen_trade_keys.add(dedupe_key)
 
-                whale_trades.append({
-                    "trade_id": str(raw_id)[:16] if raw_id else dedupe_key[:16],
-                    "address": address,
-                    "name": name if name else None,
-                    "side": side,
-                    "outcome": outcome,
-                    "is_bullish": is_bullish,
-                    "size": round(size, 2),
-                    "price": round(price, 4),
-                    "volume": round(volume, 2),
-                    "timestamp": trade_time.isoformat() + "Z"
-                })
+                whale_trades.append(
+                    {
+                        "trade_id": str(raw_id)[:16] if raw_id else dedupe_key[:16],
+                        "address": address,
+                        "name": name if name else None,
+                        "side": side,
+                        "outcome": outcome,
+                        "is_bullish": is_bullish,
+                        "size": round(size, 2),
+                        "price": round(price, 4),
+                        "volume": round(volume, 2),
+                        "timestamp": trade_time.isoformat() + "Z",
+                    }
+                )
 
             except Exception as e:
                 logger.debug(f"Error processing trade: {e}")
@@ -1079,9 +1141,11 @@ async def get_market_trades(
                                 if isinstance(closed_positions, list)
                                 else []
                             )
-                            global_pnl, global_roi, total_balance = _compute_global_stats(
-                                positions,
-                                closed_positions,
+                            global_pnl, global_roi, total_balance = (
+                                _compute_global_stats(
+                                    positions,
+                                    closed_positions,
+                                )
                             )
                             if value_total > 0:
                                 total_balance = value_total
@@ -1123,10 +1187,7 @@ async def get_market_trades(
 
 
 @router.get("/{market_id}/holders")
-async def get_market_holders(
-    market_id: str,
-    db: AsyncSession = Depends(get_db)
-):
+async def get_market_holders(market_id: str, db: AsyncSession = Depends(get_db)):
     """
     Get top holders for a market with PnL and ROI data.
     """
@@ -1149,7 +1210,7 @@ async def get_market_holders(
             # 1. Fetch Holders
             response = await client.get(
                 "https://data-api.polymarket.com/holders",
-                params={"market": condition_id}
+                params={"market": condition_id},
             )
 
             if response.status_code != 200:
@@ -1164,11 +1225,15 @@ async def get_market_holders(
             for token_data in data:
                 token_holders = token_data.get("holders", [])
                 for h in token_holders:
-                    h["outcomeIndex"] = token_data.get("dummy", h.get("outcomeIndex")) # preserve outcome index
+                    h["outcomeIndex"] = token_data.get(
+                        "dummy", h.get("outcomeIndex")
+                    )  # preserve outcome index
                     all_holders.append(h)
 
             # Deduplicate by address for fetching stats, but keep references
-            unique_addresses = {h["proxyWallet"] for h in all_holders if h.get("proxyWallet")}
+            unique_addresses = {
+                h["proxyWallet"] for h in all_holders if h.get("proxyWallet")
+            }
 
             # ── 2. Check cache first ─────────────────────────────────────
             cached_map, uncached_addresses = user_stats_cache.get_many(unique_addresses)
@@ -1223,7 +1288,9 @@ async def get_market_holders(
                         params={"user": address, "limit": "500"},
                     )
                     if r.status_code == 200:
-                        closed_positions = r.json() if isinstance(r.json(), list) else []
+                        closed_positions = (
+                            r.json() if isinstance(r.json(), list) else []
+                        )
                 except Exception:
                     pass
 
@@ -1304,7 +1371,9 @@ async def get_market_holders(
 
                     holder_info = {
                         "address": address,
-                        "name": holder.get("name") or holder.get("pseudonym") or "Unknown",
+                        "name": holder.get("name")
+                        or holder.get("pseudonym")
+                        or "Unknown",
                         "amount": float(holder.get("amount", 0)),
                         "img": holder.get("profileImage"),
                         "market_pnl": market_pnl,

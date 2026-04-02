@@ -22,7 +22,7 @@ cp .env.example .env 2>/dev/null || echo "# Create .env manually with keys below
 
 **ENV VARS TO ADD** (append to .env):
 
-```
+```bash
 POLYGOD_MODE=0
 TELEGRAM_BOT_TOKEN=your_bot_token_here
 TELEGRAM_CHAT_ID=your_chat_id_here
@@ -70,7 +70,7 @@ npm install
 
 **FILE: `backend/.env.example`**
 
-```
+```env
 POLYMARKET_API_KEY=
 NEWSAPI_KEY=
 GEMINI_API_KEY=
@@ -91,7 +91,7 @@ DEXTER_PATH=../dexter
 
 **FILE: `.gitignore`** (if not present)
 
-```
+```text
 .env
 .env.local
 node_modules/

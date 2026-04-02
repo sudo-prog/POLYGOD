@@ -17,6 +17,7 @@ load_dotenv()
 # --- Agent Configuration ---
 class AgentConfig(TypedDict):
     """Configuration for which agents to include in the debate."""
+
     statistics_expert: bool
     generalist_expert: bool
     devils_advocate: bool
@@ -47,20 +48,21 @@ tavily_tool = TavilySearchResults(
     max_results=3,
     search_depth="advanced",
     include_answer=True,
-    include_raw_content=True
+    include_raw_content=True,
 )
 
 
 # --- Statistics Calculation Tools ---
 
+
 def calculate_expected_value(yes_price: float, estimated_prob: float) -> Dict[str, Any]:
     """
     Calculate Expected Value for YES and NO bets.
-    
+
     Args:
         yes_price: Current market price (0-100 scale)
         estimated_prob: Your estimated probability of YES (0-100 scale)
-    
+
     Returns:
         Dict with EV calculations and recommendation
     """
@@ -94,17 +96,17 @@ def calculate_expected_value(yes_price: float, estimated_prob: float) -> Dict[st
         "yes_ev": round(yes_ev * 100, 2),  # As percentage return
         "no_ev": round(no_ev * 100, 2),
         "edge": round(abs(yes_price - estimated_prob), 2),
-        "recommendation": recommendation
+        "recommendation": recommendation,
     }
 
 
 def calculate_implied_probability(yes_price: float) -> Dict[str, Any]:
     """
     Extract market-implied probabilities and vig.
-    
+
     Args:
         yes_price: Current YES price (0-100 scale)
-    
+
     Returns:
         Dict with implied probabilities and market efficiency metrics
     """
@@ -124,18 +126,20 @@ def calculate_implied_probability(yes_price: float) -> Dict[str, Any]:
         "implied_no_prob": round(100 - yes_price, 2),
         "vig_percentage": round(vig, 3),
         "breakeven_yes": round(yes_price, 2),  # Need this % to break even on YES
-        "breakeven_no": round(100 - yes_price, 2)  # Need this % to break even on NO
+        "breakeven_no": round(100 - yes_price, 2),  # Need this % to break even on NO
     }
 
 
-def calculate_kelly_criterion(yes_price: float, estimated_prob: float) -> Dict[str, Any]:
+def calculate_kelly_criterion(
+    yes_price: float, estimated_prob: float
+) -> Dict[str, Any]:
     """
     Calculate Kelly Criterion for optimal bet sizing.
-    
+
     Args:
         yes_price: Current market price (0-100 scale)
         estimated_prob: Your estimated probability (0-100 scale)
-    
+
     Returns:
         Dict with Kelly fractions and recommendations
     """
@@ -179,17 +183,21 @@ def calculate_kelly_criterion(yes_price: float, estimated_prob: float) -> Dict[s
         "half_kelly": round(optimal_kelly * 50, 2),
         "quarter_kelly": round(optimal_kelly * 25, 2),
         "optimal_side": optimal_side,
-        "recommendation": f"Bet {round(optimal_kelly * 25, 1)}%-{round(optimal_kelly * 50, 1)}% of bankroll on {optimal_side}" if optimal_kelly > 0.01 else "No bet recommended (no edge)"
+        "recommendation": (
+            f"Bet {round(optimal_kelly * 25, 1)}%-{round(optimal_kelly * 50, 1)}% of bankroll on {optimal_side}"
+            if optimal_kelly > 0.01
+            else "No bet recommended (no edge)"
+        ),
     }
 
 
 def analyze_price_volatility(prices: List[float]) -> Dict[str, Any]:
     """
     Compute volatility metrics from price history.
-    
+
     Args:
         prices: List of historical prices (0-100 scale)
-    
+
     Returns:
         Dict with volatility metrics and regime classification
     """
@@ -199,7 +207,7 @@ def analyze_price_volatility(prices: List[float]) -> Dict[str, Any]:
             "mean": 50,
             "coefficient_of_variation": 0,
             "volatility_regime": "Unknown (insufficient data)",
-            "range": 0
+            "range": 0,
         }
 
     n = len(prices)
@@ -227,17 +235,17 @@ def analyze_price_volatility(prices: List[float]) -> Dict[str, Any]:
         "volatility_regime": regime,
         "range": round(price_range, 2),
         "high": round(max(prices), 2),
-        "low": round(min(prices), 2)
+        "low": round(min(prices), 2),
     }
 
 
 def calculate_momentum_indicators(prices: List[float]) -> Dict[str, Any]:
     """
     Calculate momentum indicators (SMA, EMA, trend signals).
-    
+
     Args:
         prices: List of historical prices (oldest to newest)
-    
+
     Returns:
         Dict with momentum indicators and signals
     """
@@ -247,7 +255,7 @@ def calculate_momentum_indicators(prices: List[float]) -> Dict[str, Any]:
             "sma_long": None,
             "ema": None,
             "current_price": prices[-1] if prices else 0,
-            "trend_signal": "Insufficient data"
+            "trend_signal": "Insufficient data",
         }
 
     current = prices[-1]
@@ -263,7 +271,7 @@ def calculate_momentum_indicators(prices: List[float]) -> Dict[str, Any]:
     ema_period = min(10, len(prices))
     alpha = 2 / (ema_period + 1)
     ema = prices[-ema_period]
-    for p in prices[-ema_period + 1:]:
+    for p in prices[-ema_period + 1 :]:
         ema = alpha * p + (1 - alpha) * ema
 
     # Determine trend signal
@@ -290,17 +298,17 @@ def calculate_momentum_indicators(prices: List[float]) -> Dict[str, Any]:
         "sma_long": round(sma_long, 2),
         "ema": round(ema, 2),
         "rate_of_change": round(roc, 2),
-        "trend_signal": trend
+        "trend_signal": trend,
     }
 
 
 def compute_support_resistance(prices: List[float]) -> Dict[str, Any]:
     """
     Identify support and resistance levels from price data.
-    
+
     Args:
         prices: List of historical prices
-    
+
     Returns:
         Dict with support/resistance levels and current position
     """
@@ -308,7 +316,7 @@ def compute_support_resistance(prices: List[float]) -> Dict[str, Any]:
         return {
             "support": None,
             "resistance": None,
-            "current_position": "Insufficient data"
+            "current_position": "Insufficient data",
         }
 
     current = prices[-1]
@@ -347,18 +355,20 @@ def compute_support_resistance(prices: List[float]) -> Dict[str, Any]:
         "resistance": round(resistance, 2),
         "period_low": round(low, 2),
         "period_high": round(high, 2),
-        "current_position": position
+        "current_position": position,
     }
 
 
-def calculate_time_decay_metrics(end_date_str: str, current_price: float) -> Dict[str, Any]:
+def calculate_time_decay_metrics(
+    end_date_str: str, current_price: float
+) -> Dict[str, Any]:
     """
     Calculate time decay metrics for a prediction market.
-    
+
     Args:
         end_date_str: Market end/resolution date as string
         current_price: Current YES price (0-100 scale)
-    
+
     Returns:
         Dict with time decay analysis
     """
@@ -366,9 +376,16 @@ def calculate_time_decay_metrics(end_date_str: str, current_price: float) -> Dic
         # Parse end date
         if end_date_str and end_date_str != "Unknown":
             # Try multiple date formats
-            for fmt in ["%Y-%m-%d %H:%M:%S", "%Y-%m-%d", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M:%SZ"]:
+            for fmt in [
+                "%Y-%m-%d %H:%M:%S",
+                "%Y-%m-%d",
+                "%Y-%m-%dT%H:%M:%S",
+                "%Y-%m-%dT%H:%M:%SZ",
+            ]:
                 try:
-                    end_date = datetime.datetime.strptime(str(end_date_str).split(".")[0], fmt)
+                    end_date = datetime.datetime.strptime(
+                        str(end_date_str).split(".")[0], fmt
+                    )
                     break
                 except ValueError:
                     continue
@@ -388,7 +405,7 @@ def calculate_time_decay_metrics(end_date_str: str, current_price: float) -> Dic
                 "hours_remaining": 0,
                 "status": "EXPIRED",
                 "urgency": "Market has ended",
-                "theta_impact": "N/A"
+                "theta_impact": "N/A",
             }
 
         # Classify urgency
@@ -420,12 +437,16 @@ def calculate_time_decay_metrics(end_date_str: str, current_price: float) -> Dic
         # Markets at extreme prices with little time = likely priced correctly
         # Markets at 40-60% with little time = high uncertainty, volatile
         price_uncertainty = 1 - abs(current_price - 50) / 50  # 0 at extremes, 1 at 50%
-        time_pressure = min(1, 7 / max(days_remaining, 0.1))  # 1 if <7 days, lower if more
+        time_pressure = min(
+            1, 7 / max(days_remaining, 0.1)
+        )  # 1 if <7 days, lower if more
 
         volatility_risk = price_uncertainty * time_pressure
 
         if volatility_risk > 0.7:
-            vol_assessment = "HIGH - Uncertain outcome with little time = expect large swings"
+            vol_assessment = (
+                "HIGH - Uncertain outcome with little time = expect large swings"
+            )
         elif volatility_risk > 0.4:
             vol_assessment = "MODERATE - Some price movement expected"
         else:
@@ -437,9 +458,13 @@ def calculate_time_decay_metrics(end_date_str: str, current_price: float) -> Dic
         elif current_price < 20 and days_remaining < 7:
             theta_advice = "Time favors NO holders - market pricing in low likelihood"
         elif 40 < current_price < 60 and days_remaining < 3:
-            theta_advice = "Coin flip with clock ticking - high risk, wait for clarity or avoid"
+            theta_advice = (
+                "Coin flip with clock ticking - high risk, wait for clarity or avoid"
+            )
         elif days_remaining > 30:
-            theta_advice = "Plenty of time for information to emerge - patience may be rewarded"
+            theta_advice = (
+                "Plenty of time for information to emerge - patience may be rewarded"
+            )
         else:
             theta_advice = "Monitor for catalysts that could accelerate price discovery"
 
@@ -452,7 +477,7 @@ def calculate_time_decay_metrics(end_date_str: str, current_price: float) -> Dic
             "theta_factor": round(theta, 3),
             "volatility_risk": round(volatility_risk, 2),
             "volatility_assessment": vol_assessment,
-            "theta_advice": theta_advice
+            "theta_advice": theta_advice,
         }
 
     except Exception as e:
@@ -466,8 +491,9 @@ class DebateState(TypedDict):
     market_question: str
     verdict: str
     price_history_24h: Optional[List[float]]  # Price history for calculations
-    price_history_7d: Optional[List[float]]   # 7-day price history
+    price_history_7d: Optional[List[float]]  # 7-day price history
     top_traders: Optional[List[Dict[str, Any]]]
+
 
 # --- Agents ---
 
@@ -475,10 +501,11 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+
 def statistics_expert(state: DebateState):
     """
     Statistical analysis agent with actual calculation tools.
-    
+
     Computes Expected Value, Kelly Criterion, volatility, momentum indicators,
     and support/resistance levels before synthesizing with LLM.
     """
@@ -515,7 +542,9 @@ def statistics_expert(state: DebateState):
         # Use current price as baseline estimate (assume market efficiency)
         # Then show what EV would be at different probability estimates
         ev_at_market = calculate_expected_value(current_price, current_price)
-        ev_bullish = calculate_expected_value(current_price, min(95, current_price + 10))
+        ev_bullish = calculate_expected_value(
+            current_price, min(95, current_price + 10)
+        )
         ev_bearish = calculate_expected_value(current_price, max(5, current_price - 10))
 
         # 6. Kelly Criterion (if there's perceived edge from momentum)
@@ -580,19 +609,19 @@ def statistics_expert(state: DebateState):
         prompt = f"""
         You are a Statistics Expert for prediction markets.
         Today's date is: {today}
-        
+
         Market Question: "{question}"
-        
+
         I have computed the following quantitative analysis:
-        
+
         {stats_report}
-        
+
         Based on these calculations:
         1. Is the market efficiently priced or is there an edge?
         2. What does the momentum and volatility suggest about near-term price action?
         3. Given the support/resistance levels, where are the key entry/exit points?
         4. Final recommendation: BUY YES, BUY NO, or AVOID?
-        
+
         Be specific and reference the calculated numbers.
         """
 
@@ -600,12 +629,28 @@ def statistics_expert(state: DebateState):
         response = llm.invoke([HumanMessage(content=prompt)])
 
         # Combine computed stats with LLM synthesis
-        full_response = f"{stats_report}\n\n---\n\n### Expert Interpretation\n\n{response.content}"
+        full_response = (
+            f"{stats_report}\n\n---\n\n### Expert Interpretation\n\n{response.content}"
+        )
 
-        return {"messages": [HumanMessage(content=f"**Statistics Expert**: {full_response}", name="Statistics Expert")]}
+        return {
+            "messages": [
+                HumanMessage(
+                    content=f"**Statistics Expert**: {full_response}",
+                    name="Statistics Expert",
+                )
+            ]
+        }
     except Exception as e:
         logger.error(f"Statistics Expert failed: {e}")
-        return {"messages": [HumanMessage(content=f"**Statistics Expert**: (Failed to analyze) {e}", name="Statistics Expert")]}
+        return {
+            "messages": [
+                HumanMessage(
+                    content=f"**Statistics Expert**: (Failed to analyze) {e}",
+                    name="Statistics Expert",
+                )
+            ]
+        }
 
 
 def top_traders_analyst(state: DebateState):
@@ -619,7 +664,14 @@ def top_traders_analyst(state: DebateState):
         current_price = market_data.get("price", 50.0)
 
         if not top_traders:
-            return {"messages": [HumanMessage(content="**Top Traders Analyst**: No top trader data available for this market.", name="Top Traders Analyst")]}
+            return {
+                "messages": [
+                    HumanMessage(
+                        content="**Top Traders Analyst**: No top trader data available for this market.",
+                        name="Top Traders Analyst",
+                    )
+                ]
+            }
 
         def format_usd(value: float) -> str:
             return f"${value:,.0f}"
@@ -641,11 +693,19 @@ def top_traders_analyst(state: DebateState):
             outcome_index = trader.get("outcome_index")
 
             pnl_text = format_usd(pnl) if isinstance(pnl, (int, float)) else "N/A"
-            balance_text = format_usd(balance) if isinstance(balance, (int, float)) else "N/A"
+            balance_text = (
+                format_usd(balance) if isinstance(balance, (int, float)) else "N/A"
+            )
 
             if source == "holders":
-                side = "YES" if outcome_index == 0 else "NO" if outcome_index == 1 else "?"
-                shares = float(position_amount) if isinstance(position_amount, (int, float)) else 0.0
+                side = (
+                    "YES" if outcome_index == 0 else "NO" if outcome_index == 1 else "?"
+                )
+                shares = (
+                    float(position_amount)
+                    if isinstance(position_amount, (int, float))
+                    else 0.0
+                )
                 trader_lines.append(
                     f"- **{name}** (`{address[:6]}…{address[-4:]}`) | "
                     f"Position: {shares:,.0f} shares ({side}) | "
@@ -683,41 +743,65 @@ def top_traders_analyst(state: DebateState):
         response = llm.invoke([HumanMessage(content=prompt)])
         full_response = f"## Top Traders Snapshot\n\n{traders_report}\n\n---\n\n### Expert Interpretation\n\n{response.content}"
 
-        return {"messages": [HumanMessage(content=f"**Top Traders Analyst**: {full_response}", name="Top Traders Analyst")]}
+        return {
+            "messages": [
+                HumanMessage(
+                    content=f"**Top Traders Analyst**: {full_response}",
+                    name="Top Traders Analyst",
+                )
+            ]
+        }
     except Exception as e:
         logger.error(f"Top Traders Analyst failed: {e}")
-        return {"messages": [HumanMessage(content=f"**Top Traders Analyst**: (Failed to analyze) {e}", name="Top Traders Analyst")]}
+        return {
+            "messages": [
+                HumanMessage(
+                    content=f"**Top Traders Analyst**: (Failed to analyze) {e}",
+                    name="Top Traders Analyst",
+                )
+            ]
+        }
+
 
 def generalist_expert(state: DebateState):
     """Searches for recent news using Tavily."""
     try:
         question = state.get("market_question", "")
         if not question:
-            return {"messages": [HumanMessage(content="**Generalist Expert**: No market question provided.", name="Generalist Expert")]}
+            return {
+                "messages": [
+                    HumanMessage(
+                        content="**Generalist Expert**: No market question provided.",
+                        name="Generalist Expert",
+                    )
+                ]
+            }
 
         today = datetime.datetime.now().strftime("%Y-%m-%d")
 
         # Step 1: Brainstorm search queries
         query_prompt = f"""
-        You are a smart News Researcher. 
+        You are a smart News Researcher.
         Today's date is: {today}
-        
+
         To answer this prediction market: "{question}"
         Generate 3 distinct search queries to find the most relevant and up-to-date information.
-        
+
         1. Query 1: The exact market terms.
         2. Query 2: Related entities, specific locations, or people involved (e.g. if it's about "Insurrection Act", search for "Minneapolis ICE shooting" or "troops deployment").
         3. Query 3: Broader context or recent breaking news affecting this topic.
-        
+
         Output ONLY the 3 queries, one per line.
         """
         try:
-             queries_response = llm.invoke([HumanMessage(content=query_prompt)])
-             queries = [q.strip() for q in queries_response.content.split('\n') if q.strip()][:3]
-             logger.info(f"Generated search queries: {queries}")
+            queries_response = llm.invoke([HumanMessage(content=query_prompt)])
+            queries = [
+                q.strip() for q in queries_response.content.split("\n") if q.strip()
+            ][:3]
+            logger.info(f"Generated search queries: {queries}")
         except Exception as e:
-             logger.warning(f"Failed to generate queries, falling back to default: {e}")
-             queries = [f"latest news {question}"]
+            logger.warning(f"Failed to generate queries, falling back to default: {e}")
+            queries = [f"latest news {question}"]
 
         # Step 2: Perform searches
         all_results = []
@@ -725,9 +809,9 @@ def generalist_expert(state: DebateState):
             try:
                 res = tavily_tool.invoke(q)
                 if isinstance(res, list):
-                     all_results.extend(res)
+                    all_results.extend(res)
                 else:
-                     all_results.append(str(res))
+                    all_results.append(str(res))
             except Exception as tool_err:
                 logger.error(f"Tavily search failed for query '{q}': {tool_err}")
 
@@ -742,23 +826,38 @@ def generalist_expert(state: DebateState):
         prompt = f"""
         You are a Generalist Expert / News Analyst.
         Today's date is: {today}
-        
+
         Your goal is to find the latest real-world events that impact this market: "{question}"
-        
+
         You performed these searches: {queries}
-        
-        Search Results: 
+
+        Search Results:
         {search_context}
-        
+
         Analyze how these recent news stories affect the likelihood of the event resolving YES or NO.
         Cite specific articles or events found (e.g. "According to reports on [Topic]...").
         """
         logger.info(f"Generalist Expert Prompt: {prompt[:100]}...")
         response = llm.invoke([HumanMessage(content=prompt)])
-        return {"messages": [HumanMessage(content=f"**Generalist Expert**: {response.content}", name="Generalist Expert")]}
+        return {
+            "messages": [
+                HumanMessage(
+                    content=f"**Generalist Expert**: {response.content}",
+                    name="Generalist Expert",
+                )
+            ]
+        }
     except Exception as e:
         logger.error(f"Generalist Expert failed: {e}")
-        return {"messages": [HumanMessage(content=f"**Generalist Expert**: (Failed to analyze) {e}", name="Generalist Expert")]}
+        return {
+            "messages": [
+                HumanMessage(
+                    content=f"**Generalist Expert**: (Failed to analyze) {e}",
+                    name="Generalist Expert",
+                )
+            ]
+        }
+
 
 def devils_advocate(state: DebateState):
     """Challenges the previous arguments."""
@@ -767,7 +866,9 @@ def devils_advocate(state: DebateState):
         question = state.get("market_question", "")
 
         # Extract previous arguments
-        context = "\n".join([m.content for m in messages if isinstance(m, HumanMessage)])
+        context = "\n".join(
+            [m.content for m in messages if isinstance(m, HumanMessage)]
+        )
         if not context:
             context = "No previous arguments provided."
 
@@ -775,21 +876,36 @@ def devils_advocate(state: DebateState):
         prompt = f"""
         You are the Devil's Advocate.
         Today's date is: {today}
-        
+
         Your job is to challenge the consensus or finding logical fallacies in the arguments presented so far.
-        
+
         Market: "{question}"
         Previous Arguments:
         {context}
-        
+
         Identify risks, alternative interpretations, or missing data points. If everyone says YES, argue why NO might happen, and vice versa.
         """
         logger.info(f"Devil's Advocate Prompt: {prompt[:100]}...")
         response = llm.invoke([HumanMessage(content=prompt)])
-        return {"messages": [HumanMessage(content=f"**Devil's Advocate**: {response.content}", name="Devil's Advocate")]}
+        return {
+            "messages": [
+                HumanMessage(
+                    content=f"**Devil's Advocate**: {response.content}",
+                    name="Devil's Advocate",
+                )
+            ]
+        }
     except Exception as e:
         logger.error(f"Devil's Advocate failed: {e}")
-        return {"messages": [HumanMessage(content=f"**Devil's Advocate**: (Failed to analyze) {e}", name="Devil's Advocate")]}
+        return {
+            "messages": [
+                HumanMessage(
+                    content=f"**Devil's Advocate**: (Failed to analyze) {e}",
+                    name="Devil's Advocate",
+                )
+            ]
+        }
+
 
 def crypto_macro_analyst(state: DebateState):
     """Analyzes broader context."""
@@ -800,23 +916,37 @@ def crypto_macro_analyst(state: DebateState):
         prompt = f"""
         You are a Crypto and Macroeconomics Analyst.
         Today's date is: {today}
-        
+
         Analyze the market "{question}" from a structural, macro, or crypto-native perspective.
-        
+
         Does general market sentiment, crypto correlation, or macro events (Fed rates, elections, etc.) impact this?
         """
         logger.info(f"Crypto/Macro Analyst Prompt: {prompt[:100]}...")
         response = llm.invoke([HumanMessage(content=prompt)])
-        return {"messages": [HumanMessage(content=f"**Crypto/Macro Analyst**: {response.content}", name="Crypto/Macro Analyst")]}
+        return {
+            "messages": [
+                HumanMessage(
+                    content=f"**Crypto/Macro Analyst**: {response.content}",
+                    name="Crypto/Macro Analyst",
+                )
+            ]
+        }
     except Exception as e:
         logger.error(f"Crypto/Macro Analyst failed: {e}")
-        return {"messages": [HumanMessage(content=f"**Crypto/Macro Analyst**: (Failed to analyze) {e}", name="Crypto/Macro Analyst")]}
+        return {
+            "messages": [
+                HumanMessage(
+                    content=f"**Crypto/Macro Analyst**: (Failed to analyze) {e}",
+                    name="Crypto/Macro Analyst",
+                )
+            ]
+        }
 
 
 def time_decay_analyst(state: DebateState):
     """
     Time Decay & Resolution Analyst.
-    
+
     Specializes in understanding time-to-resolution dynamics,
     theta decay, and optimal entry/exit timing based on market expiration.
     """
@@ -873,7 +1003,7 @@ Proceed with caution and rely on other signals.
                 "HIGH": "🟠",
                 "MODERATE": "🟡",
                 "LOW": "🟢",
-                "MINIMAL": "⚪"
+                "MINIMAL": "⚪",
             }.get(urgency, "⚪")
 
             time_report = f"""
@@ -901,32 +1031,48 @@ Proceed with caution and rely on other signals.
         prompt = f"""
         You are a Time Decay & Resolution Analyst for prediction markets.
         Today's date is: {today}
-        
+
         Market Question: "{question}"
         Current Price: {current_price:.1f}%
-        
+
         I have computed the following time-based analysis:
-        
+
         {time_report}
-        
+
         Based on this time analysis:
         1. Is the timing favorable for entering a position now, or should the user wait?
         2. What specific catalysts or events should occur before resolution that could move the price?
         3. Is the current price "priced in" given the time remaining, or is there mispricing?
         4. What's the optimal strategy considering time decay (hold, take profits, cut losses, wait)?
-        
+
         Be specific about timing recommendations. Reference the calculated metrics.
         """
 
         logger.info("Time Decay Analyst computed report, invoking LLM for synthesis...")
         response = llm.invoke([HumanMessage(content=prompt)])
 
-        full_response = f"{time_report}\n\n---\n\n### Expert Interpretation\n\n{response.content}"
+        full_response = (
+            f"{time_report}\n\n---\n\n### Expert Interpretation\n\n{response.content}"
+        )
 
-        return {"messages": [HumanMessage(content=f"**Time Decay Analyst**: {full_response}", name="Time Decay Analyst")]}
+        return {
+            "messages": [
+                HumanMessage(
+                    content=f"**Time Decay Analyst**: {full_response}",
+                    name="Time Decay Analyst",
+                )
+            ]
+        }
     except Exception as e:
         logger.error(f"Time Decay Analyst failed: {e}")
-        return {"messages": [HumanMessage(content=f"**Time Decay Analyst**: (Failed to analyze) {e}", name="Time Decay Analyst")]}
+        return {
+            "messages": [
+                HumanMessage(
+                    content=f"**Time Decay Analyst**: (Failed to analyze) {e}",
+                    name="Time Decay Analyst",
+                )
+            ]
+        }
 
 
 def moderator(state: DebateState):
@@ -935,7 +1081,9 @@ def moderator(state: DebateState):
         messages = state.get("messages", [])
         question = state.get("market_question", "")
 
-        context = "\n".join([str(m.content) for m in messages if isinstance(m, HumanMessage)])
+        context = "\n".join(
+            [str(m.content) for m in messages if isinstance(m, HumanMessage)]
+        )
         if not context:
             context = "No arguments presented."
 
@@ -943,32 +1091,42 @@ def moderator(state: DebateState):
         prompt = f"""
         You are the Moderator of the Debate Floor.
         Today's date is: {today}
-        
+
         Review the arguments from the experts:
-        
+
         {context}
-        
+
         Market: "{question}"
-        
+
         1. Summarize the key points for YES and NO.
         2. Weigh the evidence.
         3. Provide a Final Verdict: "Buy YES", "Buy NO", or "Stay Neutral".
         4. Provide a confidence score (0-100%).
-        
+
         Format nicely with Markdown.
         """
         logger.info(f"Moderator Prompt: {prompt[:100]}...")
         response = llm.invoke([HumanMessage(content=prompt)])
         return {
-            "messages": [HumanMessage(content=f"**Moderator**: {response.content}", name="Moderator")],
-            "verdict": response.content
+            "messages": [
+                HumanMessage(
+                    content=f"**Moderator**: {response.content}", name="Moderator"
+                )
+            ],
+            "verdict": response.content,
         }
     except Exception as e:
         logger.error(f"Moderator failed: {e}")
         return {
-            "messages": [HumanMessage(content=f"**Moderator**: (Failed to reach verdict) {e}", name="Moderator")],
-            "verdict": "Verdict generation failed."
+            "messages": [
+                HumanMessage(
+                    content=f"**Moderator**: (Failed to reach verdict) {e}",
+                    name="Moderator",
+                )
+            ],
+            "verdict": "Verdict generation failed.",
         }
+
 
 # --- Graph Construction ---
 
@@ -997,11 +1155,11 @@ AGENT_ORDER = [
 def build_debate_graph(config: Optional[AgentConfig] = None) -> StateGraph:
     """
     Build a debate graph with only the enabled agents.
-    
+
     Args:
         config: Agent configuration specifying which agents to enable.
                 If None, all agents are enabled.
-    
+
     Returns:
         Compiled LangGraph workflow.
     """

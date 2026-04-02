@@ -26,7 +26,7 @@ A real-time market tracking dashboard that displays the top 50 Polymarket market
 
 ### Data Pipeline
 - **Caching Layer**: SQLite database with TTL-based invalidation
-- **Update Frequency**: 
+- **Update Frequency**:
   - Market data: Every 5 minutes
   - News feed: Real-time via polling (30s intervals)
   - Top 50 ranking: Every 15 minutes
@@ -132,7 +132,7 @@ polymarket-news-tracker/
    npm install react-query zustand axios tailwindcss @headlessui/react lucide-react
 ```
 3. Implement components:
-   - **MarketList**: 
+   - **MarketList**:
      - Display top 50 markets in a scrollable, searchable list
      - Show market title, 7-day volume, current Yes %
      - Highlight selected market with glassmorphism effect

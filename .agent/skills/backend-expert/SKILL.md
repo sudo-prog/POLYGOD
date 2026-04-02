@@ -139,14 +139,14 @@ class TTLCache:
     def __init__(self, ttl_seconds: int = 300):
         self._cache: dict = {}
         self._ttl = timedelta(seconds=ttl_seconds)
-    
+
     def get(self, key: str) -> tuple[bool, any]:
         if key in self._cache:
             value, timestamp = self._cache[key]
             if datetime.now() - timestamp < self._ttl:
                 return True, value
         return False, None
-    
+
     def set(self, key: str, value: any) -> None:
         self._cache[key] = (value, datetime.now())
 ```
@@ -195,7 +195,7 @@ When providing code review feedback, use this format:
 ### 🔴 Critical Issues
 - [Security vulnerabilities, data loss risks, breaking bugs]
 
-### 🟡 Warnings  
+### 🟡 Warnings
 - [Performance issues, bad practices, potential bugs]
 
 ### 🟢 Suggestions

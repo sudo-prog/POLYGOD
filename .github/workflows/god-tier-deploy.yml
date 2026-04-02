@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Create .env file for CI
         run: |
           cat > .env << 'EOF'
@@ -29,7 +29,7 @@ jobs:
           POLYGOD_MODE=0
           MEM0_CONFIG={"provider": "qdrant", "vector_store": {"url": "http://qdrant:6333"}}
           EOF
-      
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
       - name: Build & push Docker image
@@ -44,7 +44,7 @@ jobs:
       - name: Run GOD TIER tests
         run: |
           docker compose run --rm backend uv run pytest tests/ -v --tb=short || echo "No tests found, skipping..."
-          
+
       - name: Verify backend health
         run: |
           docker compose up -d backend

@@ -42,27 +42,31 @@ class PolymarketClient:
 
     def _get_clob_client(self):
         """Get or create the CLOB client."""
-        if self._clob_client is None:
-            if settings.POLYMARKET_API_KEY and settings.POLYMARKET_SECRET and settings.POLYMARKET_PASSPHRASE:
-                try:
-                    from py_clob_client.client import ClobClient
-                    from py_clob_client.clob_types import ApiCreds
-                    from py_clob_client.constants import POLYGON
+        has_creds = (
+            settings.POLYMARKET_API_KEY
+            and settings.POLYMARKET_SECRET
+            and settings.POLYMARKET_PASSPHRASE
+        )
+        if self._clob_client is None and has_creds:
+            try:
+                from py_clob_client.client import ClobClient
+                from py_clob_client.clob_types import ApiCreds
+                from py_clob_client.constants import POLYGON
 
-                    creds = ApiCreds(
-                        api_key=settings.POLYMARKET_API_KEY,
-                        api_secret=settings.POLYMARKET_SECRET,
-                        api_passphrase=settings.POLYMARKET_PASSPHRASE,
-                    )
-                    self._clob_client = ClobClient(
-                        host="https://clob.polymarket.com",
-                        creds=creds,
-                        chain_id=POLYGON,
-                        signature_type=2,
-                    )
-                except Exception as e:
-                    logger.error(f"Failed to initialize ClobClient: {e}")
-                    return None
+                creds = ApiCreds(
+                    api_key=settings.POLYMARKET_API_KEY,
+                    api_secret=settings.POLYMARKET_SECRET,
+                    api_passphrase=settings.POLYMARKET_PASSPHRASE,
+                )
+                self._clob_client = ClobClient(
+                    host="https://clob.polymarket.com",
+                    creds=creds,
+                    chain_id=POLYGON,
+                    signature_type=2,
+                )
+            except Exception as e:
+                logger.error(f"Failed to initialize ClobClient: {e}")
+                return None
         return self._clob_client
 
     async def close(self) -> None:
@@ -124,8 +128,6 @@ class PolymarketClient:
         except httpx.HTTPError as e:
             logger.error(f"HTTP error fetching markets: {e}")
             raise
-            logger.error(f"Error fetching markets: {e}")
-            raise
 
     async def get_market_by_slug(self, slug: str) -> MarketResponse | None:
         """
@@ -174,7 +176,7 @@ class PolymarketClient:
                     offset=offset,
                     active=True,
                     closed=False,
-                    order="volume24hr", # standard ordering
+                    order="volume24hr",  # standard ordering
                     ascending=False,
                 )
                 if not batch:
@@ -224,9 +226,9 @@ class PolymarketClient:
                 logger.debug(f"Could not parse end_date: {e}")
 
             # Use actual volume fields from API
-            volume_24h = market.volume_24hr if market.volume_24hr else 0.0
-            volume_7d = market.volume_1wk if market.volume_1wk else 0.0
-            liquidity = market.liquidity_num if market.liquidity_num else 0.0
+            volume_24h = market.volume_24hr or 0.0
+            volume_7d = market.volume_1wk or 0.0
+            liquidity = market.liquidity_num or 0.0
 
             # Fallback to volume_num if specific fields are zero
             if volume_24h == 0 and market.volume_num:
@@ -260,8 +262,7 @@ class PolymarketClient:
 
         # Sort by 7d volume (or 24h if 7d is zero)
         processed_markets.sort(
-            key=lambda x: (x["volume_7d"], x["volume_24h"]),
-            reverse=True
+            key=lambda x: (x["volume_7d"], x["volume_24h"]), reverse=True
         )
         return processed_markets[:limit]
 
@@ -280,23 +281,85 @@ class PolymarketClient:
             client = await self._get_client()
             response = await client.get(
                 "https://data-api.polymarket.com/trades",
-                params={"market": market_slug, "limit": limit}
+                params={"market": market_slug, "limit": limit},
             )
 
             if response.status_code == 200:
                 return response.json()
-            else:
-                logger.warning(f"Data API returned status {response.status_code}: {response.text}")
-                return []
+
+            logger.warning(
+                f"Data API returned status {response.status_code}: {response.text}"
+            )
+            return []
 
         except Exception as e:
             logger.error(f"Error fetching trades from Data API: {e}")
             return []
 
+    async def get_order_book(self, market_id: str) -> dict:
+        """
+        Fetch order book (bids/asks) from the CLOB public endpoint.
+        Free, no auth required for reads.
+
+        Args:
+            market_id: The market condition ID or slug.
+
+        Returns:
+            Order book dict with 'bids' and 'asks' lists, or empty dict on failure.
+        """
+        try:
+            client = await self._get_client()
+            response = await client.get(
+                f"{settings.POLYMARKET_API_HOST}/book", params={"market": market_id}
+            )
+            if response.status_code == 200:
+                return response.json()
+            logger.warning(
+                f"CLOB book API returned {response.status_code}: {response.text}"
+            )
+            return {}
+        except Exception as e:
+            logger.error(f"Error fetching order book for {market_id}: {e}")
+            return {}
+
+    async def get_recent_fills(self, market_id: str, limit: int = 20) -> list[dict]:
+        """
+        Fetch recent fills (matched trades) from the CLOB trade history.
+        Free, no auth required for reads.
+
+        Args:
+            market_id: The market condition ID.
+            limit: Max number of fills to return.
+
+        Returns:
+            List of fill dicts, or empty list on failure.
+        """
+        try:
+            client = await self._get_client()
+            response = await client.get(
+                f"{settings.POLYMARKET_API_HOST}/trades",
+                params={"market": market_id, "limit": limit},
+            )
+            if response.status_code == 200:
+                data = response.json()
+                # CLOB returns a list of trades
+                if isinstance(data, list):
+                    return data[:limit]
+                elif isinstance(data, dict) and "trades" in data:
+                    return data["trades"][:limit]
+                return []
+            logger.warning(
+                f"CLOB trades API returned {response.status_code}: {response.text}"
+            )
+            return []
+        except Exception as e:
+            logger.error(f"Error fetching recent fills for {market_id}: {e}")
+            return []
 
 
 # Global client instance
 polymarket_client = PolymarketClient()
+
 
 async def create_empty_market_data() -> list[dict]:
     """Create empty market data structure for fallback scenarios."""

@@ -80,10 +80,10 @@ from functools import lru_cache
 
 class PolymarketService:
     BASE_URL = "https://clob.polymarket.com"
-    
+
     def __init__(self):
         self._client: httpx.AsyncClient | None = None
-    
+
     async def get_client(self) -> httpx.AsyncClient:
         if self._client is None:
             self._client = httpx.AsyncClient(
@@ -92,10 +92,10 @@ class PolymarketService:
                 headers={"Accept": "application/json"}
             )
         return self._client
-    
+
     async def get_markets(
-        self, 
-        limit: int = 100, 
+        self,
+        limit: int = 100,
         active: bool = True
     ) -> list[dict]:
         client = await self.get_client()
@@ -105,13 +105,13 @@ class PolymarketService:
         )
         response.raise_for_status()
         return response.json()
-    
+
     async def get_market(self, market_id: str) -> dict:
         client = await self.get_client()
         response = await client.get(f"/markets/{market_id}")
         response.raise_for_status()
         return response.json()
-    
+
     async def close(self):
         if self._client:
             await self._client.aclose()

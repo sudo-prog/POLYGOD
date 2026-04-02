@@ -86,17 +86,17 @@ from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
     news_api_key: str
-    
+
     class Config:
         env_file = ".env"
 
 class NewsService:
     BASE_URL = "https://newsapi.org/v2"
-    
+
     def __init__(self, api_key: str):
         self.api_key = api_key
         self._client: httpx.AsyncClient | None = None
-    
+
     async def get_client(self) -> httpx.AsyncClient:
         if self._client is None:
             self._client = httpx.AsyncClient(
@@ -105,7 +105,7 @@ class NewsService:
                 headers={"Authorization": f"Bearer {self.api_key}"}
             )
         return self._client
-    
+
     async def search_news(
         self,
         query: str,
@@ -114,7 +114,7 @@ class NewsService:
     ) -> dict:
         if from_date is None:
             from_date = datetime.now() - timedelta(days=7)
-        
+
         client = await self.get_client()
         response = await client.get(
             "/everything",
@@ -128,7 +128,7 @@ class NewsService:
         )
         response.raise_for_status()
         return response.json()
-    
+
     async def get_headlines(
         self,
         country: str = "us",
@@ -141,7 +141,7 @@ class NewsService:
         )
         response.raise_for_status()
         return response.json()
-    
+
     async def close(self):
         if self._client:
             await self._client.aclose()
@@ -166,14 +166,14 @@ class NewsCacheService:
         self.news = news_service
         self.cache: dict[str, tuple[dict, datetime]] = {}
         self.ttl = timedelta(seconds=cache_ttl)
-    
+
     async def search_cached(self, query: str) -> dict:
         key = f"search:{query}"
         if key in self.cache:
             data, timestamp = self.cache[key]
             if datetime.now() - timestamp < self.ttl:
                 return data
-        
+
         data = await self.news.search_news(query)
         self.cache[key] = (data, datetime.now())
         return data
