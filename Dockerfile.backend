@@ -14,6 +14,9 @@ COPY pyproject.toml uv.lock README.md ./
 # create uv vend and install dependencies
 RUN uv venv && uv sync --no-cache
 
+# NEW: ensure DB directory exists and is writable
+RUN mkdir -p /app/data && touch /app/data/polymarket.db
+
 # copy app sources
 COPY src ./src
 

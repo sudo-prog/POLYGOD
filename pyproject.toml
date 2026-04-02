@@ -34,6 +34,7 @@ dependencies = [
     "cryptography>=44.0.0",  # ← for LLM Hub API key encryption (Fernet)
     "slowapi>=0.1.9",        # ← rate limiting middleware
     "redis>=5.2.0",          # ← Redis client for rate limit storage
+    "langchain-core>=0.3.20",   # ← EXPLICIT FIX for direct imports + langgraph
 ]
 
 [project.optional-dependencies]

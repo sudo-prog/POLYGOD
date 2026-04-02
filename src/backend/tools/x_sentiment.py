@@ -48,10 +48,9 @@ async def get_x_sentiment(market_slug: str) -> Dict:
                 search_results = await response.json()
 
             # Get user details for author information
-            author_ids = [
+            if author_ids := [
                 tweet["author_id"] for tweet in search_results.get("data", [])
-            ]
-            if author_ids:
+            ]:
                 users_url = "https://api.x.com/2/users"
                 users_params = {
                     "ids": ",".join(author_ids),
@@ -75,7 +74,7 @@ async def get_x_sentiment(market_slug: str) -> Dict:
 
             # Process tweets and calculate sentiment
             posts = []
-            total_sentiment = 0
+            total_sentiment = 0.0
             valid_posts = 0
 
             for tweet in search_results.get("data", []):
@@ -91,7 +90,7 @@ async def get_x_sentiment(market_slug: str) -> Dict:
                 positive_keywords = ["bullish", "moon", "buy", "strong", "up"]
                 negative_keywords = ["bearish", "sell", "down", "weak", "dump"]
 
-                sentiment_score = 0
+                sentiment_score = 0.0
                 for word in positive_keywords:
                     if word in text:
                         sentiment_score += 0.2
@@ -125,18 +124,17 @@ async def get_x_sentiment(market_slug: str) -> Dict:
                 bull_score = (avg_sentiment + 1) / 2
 
             # Identify whale mentions (high engagement posts)
-            whale_mentions = []
-            for post in posts:
-                if post["engagement"] > 100:  # Threshold for whale activity
-                    whale_mentions.append(
-                        {
-                            "text": post["text"],
-                            "author": post["author"],
-                            "verified": post["verified"],
-                            "engagement": post["engagement"],
-                            "sentiment": post["sentiment"],
-                        }
-                    )
+            whale_mentions = [
+                {
+                    "text": post["text"],
+                    "author": post["author"],
+                    "verified": post["verified"],
+                    "engagement": post["engagement"],
+                    "sentiment": post["sentiment"],
+                }
+                for post in posts
+                if post["engagement"] > 100  # Threshold for whale activity
+            ]
 
             return {
                 "bull_score": round(bull_score, 3),

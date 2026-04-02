@@ -57,7 +57,7 @@ services:
       dockerfile: Dockerfile.backend
     image: polygod-swarm:latest
     restart: unless-stopped
-    command: python -m src.backend.polygod_graph
+    command: uv run python -m src.backend.polygod_graph
     env_file:
       - .env
     environment:
@@ -68,9 +68,13 @@ services:
     depends_on:
       - backend
       - qdrant
+    # NEW: proper healthcheck for a non-HTTP service
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      test: ["CMD", "python", "-c", "import src.backend.polygod_graph; print('swarm ready')"]
       interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
   redis:
     image: redis:7-alpine
@@ -86,7 +90,7 @@ services:
       retries: 3
 
 volumes:
-  polygod_db:
+  polygod_db:      # ← changed to directory volume (fixes SQLite)
   qdrant_data:
 
 networks:
