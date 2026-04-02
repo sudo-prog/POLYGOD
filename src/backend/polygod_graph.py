@@ -40,6 +40,7 @@ from src.backend.config import settings
 from src.backend.parallel_tournament import parallel_paper_tournament
 from src.backend.polymarket.client import polymarket_client
 from src.backend.self_improving_memory_loop import memory_loop
+from src.backend.whale_copy_rag import whale_rag
 
 logger = logging.getLogger(__name__)
 
@@ -523,8 +524,8 @@ async def onchain_verification_node(state: AgentState) -> AgentState:
 # ==================== WHALE RAG NODE ====================
 async def whale_copy_rag_node(state: AgentState) -> AgentState:
     """
-    WhaleRAG — Ingest latest whale fills → Property Graph → extract strategies.
-    Queries the PropertyGraphIndex for profitable wallet patterns and niche strategies.
+    WhaleRAG — Delegates to WhaleCopyRAG for PropertyGraphIndex-based
+    whale copy-trading intelligence. Beast mode only (mode >= 3).
     """
     state = await memory_loop.remember_node(state, "whale_copy_rag")
     mode = state.get("mode", POLYGOD_MODE)
@@ -533,65 +534,8 @@ async def whale_copy_rag_node(state: AgentState) -> AgentState:
         state["whale_context"] = ""
         return state
 
-    market_id = state.get("market_id", "")
-    logger.info(f"WhaleRAG: fetching recent fills for market {market_id}")
-
-    try:
-        # Fetch latest whale fills
-        fills = await polymarket_client.get_recent_fills(market_id, limit=50)
-        logger.info(f"WhaleRAG: {len(fills)} fills retrieved")
-
-        # Build query for whale strategies
-        market_title = state.get("question", market_id)
-        query = f"Top profitable wallets on {market_title} and similar niches"
-
-        # Try to load PropertyGraphIndex (nightly rebuilt)
-        whale_strategies = ""
-        if HAS_LLAMA_INDEX:
-            try:
-                # Attempt to load existing index from Qdrant
-                from llama_index.core import VectorStoreIndex
-                from llama_index.vector_stores.qdrant import QdrantVectorStore
-                from qdrant_client import AsyncQdrantClient
-
-                qdrant_client = AsyncQdrantClient(
-                    url=state.get("market_data", {}).get(
-                        "qdrant_url", "http://qdrant:6333"
-                    )
-                )
-                vector_store = QdrantVectorStore(
-                    client=qdrant_client, collection_name="whale_fills"
-                )
-                index = VectorStoreIndex.from_vector_store(vector_store)
-                query_engine = index.as_query_engine()
-                response = await query_engine.aquery(query)
-                whale_strategies = str(response)
-                logger.info(
-                    f"WhaleRAG: strategies extracted ({len(whale_strategies)} chars)"
-                )
-            except Exception as e:
-                logger.debug(f"WhaleRAG: PropertyGraphIndex not available: {e}")
-                # Fallback: use fill data directly
-                if fills:
-                    whale_strategies = (
-                        f"Recent {len(fills)} fills analyzed. "
-                        f"Largest fill: {fills[0] if fills else 'N/A'}. "
-                        "Whale patterns require nightly index rebuild."
-                    )
-        else:
-            # No llama_index: use raw fill data
-            if fills:
-                whale_strategies = (
-                    f"Recent {len(fills)} fills detected. "
-                    "Install llama-index for full RAG capabilities."
-                )
-
-        state["whale_context"] = whale_strategies
-
-    except Exception as e:
-        logger.error(f"WhaleRAG failed: {e}")
-        state["whale_context"] = ""
-
+    # Delegate to the WhaleCopyRAG singleton
+    state = await whale_rag.enrich_state(state)
     return state
 
 

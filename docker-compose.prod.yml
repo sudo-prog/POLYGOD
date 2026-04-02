@@ -7,73 +7,31 @@ services:
     restart: unless-stopped
     volumes:
       - redis_data:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 3s
-      retries: 3
-    networks:
-      - polygod_net
 
   qdrant:
-    image: qdrant/qdrant
+    image: qdrant/qdrant:latest
     restart: unless-stopped
     volumes:
       - qdrant_storage:/qdrant/storage
-    ports:
-      - "6333:6333"
-      - "6334:6334"
-    environment:
-      - QDRANT__SERVICE__GRPC_PORT=6334
-    healthcheck:
-      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/6333'"]
-      interval: 5s
-      timeout: 3s
-      retries: 3
-    networks:
-      - polygod_net
 
   backend:
-    build:
-      context: .
-      dockerfile: Dockerfile.backend
+    build: .
     env_file: .env.prod
     restart: unless-stopped
     depends_on:
-      redis:
-        condition: service_healthy
-      qdrant:
-        condition: service_healthy
+      - redis
+      - qdrant
     volumes:
       - ./checkpoints.db:/app/checkpoints.db
-      - ./polymarket.db:/app/polymarket.db
-    ports:
-      - "8000:8000"
+      - ./qdrant_storage:/app/qdrant_storage
     command: uvicorn src.backend.main:app --host 0.0.0.0 --port 8000
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
-    networks:
-      - polygod_net
 
   frontend:
-    build:
-      context: .
-      dockerfile: Dockerfile.frontend
+    build: ./frontend
     restart: unless-stopped
     ports:
       - "5173:80"
-    depends_on:
-      - backend
-    networks:
-      - polygod_net
 
 volumes:
   redis_data:
   qdrant_storage:
-
-networks:
-  polygod_net:
-    driver: bridge
