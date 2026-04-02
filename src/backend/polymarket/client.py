@@ -153,6 +153,107 @@ class PolymarketClient:
             logger.error(f"Error fetching market by slug {slug}: {e}")
             return None
 
+    def _parse_yes_percentage(self, outcome_prices: str | None) -> float:
+        """Parse yes percentage from outcome prices JSON string."""
+        if not outcome_prices:
+            return 50.0
+
+        try:
+            prices = json.loads(outcome_prices)
+            if not prices or len(prices) == 0:
+                return 50.0
+
+            price_val = float(prices[0])
+            return price_val * 100 if 0 <= price_val <= 1 else 50.0
+        except (json.JSONDecodeError, ValueError, IndexError) as e:
+            logger.debug(f"Could not parse outcome_prices: {e}")
+            return 50.0
+
+    def _parse_end_date(self, end_date_iso: str | None) -> datetime | None:
+        """Parse end date from ISO format string."""
+        if not end_date_iso:
+            return None
+
+        try:
+            date_str = (
+                end_date_iso.replace("Z", "+00:00")
+                if "T" in end_date_iso
+                else end_date_iso
+            )
+            return datetime.fromisoformat(date_str)
+        except ValueError as e:
+            logger.debug(f"Could not parse end_date: {e}")
+            return None
+
+    def _calculate_volumes(self, market: MarketResponse) -> tuple[float, float, float]:
+        """Calculate 24h, 7d volumes and liquidity with fallback logic."""
+        volume_24h = market.volume_24hr or 0.0
+        volume_7d = market.volume_1wk or 0.0
+        liquidity = market.liquidity_num or 0.0
+
+        volume_fallback = market.volume_num or 0.0
+        volume_24h = volume_24h or volume_fallback
+        volume_7d = volume_7d or volume_fallback or volume_24h
+
+        return volume_24h, volume_7d, liquidity
+
+    def _is_market_active(self, market: MarketResponse) -> bool:
+        """Check if market is active and not closed/archived."""
+        return market.active and not market.closed and not market.archived
+
+    def _transform_market_to_dict(self, market: MarketResponse) -> dict:
+        """Transform a MarketResponse to a database-ready dictionary."""
+        volume_24h, volume_7d, liquidity = self._calculate_volumes(market)
+
+        return {
+            "id": market.condition_id or market.id or market.slug,
+            "slug": market.slug or market.market_slug,
+            "title": market.question,
+            "description": market.description,
+            "volume_24h": volume_24h,
+            "volume_7d": volume_7d,
+            "liquidity": liquidity,
+            "yes_percentage": round(
+                self._parse_yes_percentage(market.outcome_prices), 2
+            ),
+            "is_active": market.active and not market.closed,
+            "end_date": self._parse_end_date(market.end_date_iso),
+            "image_url": market.image or market.icon,
+            "clob_token_ids": market.clob_token_ids,
+        }
+
+    async def _fetch_all_active_markets(
+        self, target_count: int
+    ) -> list[MarketResponse]:
+        """Fetch markets in batches until we have enough or run out of data."""
+        all_markets: list[MarketResponse] = []
+        offset = 0
+        fetch_limit = 100
+
+        while len(all_markets) < target_count * 2:
+            try:
+                batch = await self.fetch_markets(
+                    limit=fetch_limit,
+                    offset=offset,
+                    active=True,
+                    closed=False,
+                    order="volume24hr",
+                    ascending=False,
+                )
+                if not batch:
+                    break
+
+                all_markets.extend(batch)
+                offset += fetch_limit
+
+                if len(batch) < fetch_limit:
+                    break
+            except Exception as e:
+                logger.error(f"Error fetching markets batch: {e}")
+                break
+
+        return all_markets
+
     async def get_top_markets_by_volume(self, limit: int = 100) -> list[dict]:
         """
         Get the top active markets by 7-day volume.
@@ -163,106 +264,17 @@ class PolymarketClient:
         Returns:
             List of market dictionaries ready for database storage.
         """
-        all_markets: list[MarketResponse] = []
-        offset = 0
-        fetch_limit = 100
+        all_markets = await self._fetch_all_active_markets(limit)
 
-        # Fetch enough markets to get requested number of active ones
-        # We fetch more because some might be inactive/closed
-        while len(all_markets) < limit * 2:
-            try:
-                batch = await self.fetch_markets(
-                    limit=fetch_limit,
-                    offset=offset,
-                    active=True,
-                    closed=False,
-                    order="volume24hr",  # standard ordering
-                    ascending=False,
-                )
-                if not batch:
-                    break
-                all_markets.extend(batch)
-                offset += fetch_limit
+        processed_markets = [
+            self._transform_market_to_dict(market)
+            for market in all_markets
+            if self._is_market_active(market)
+        ]
 
-                # Break early if we got fewer than limit (no more data)
-                if len(batch) < fetch_limit:
-                    break
-            except Exception as e:
-                logger.error(f"Error fetching markets batch: {e}")
-                break
-
-        # Filter and transform markets
-        processed_markets = []
-        for market in all_markets:
-            if not market.active or market.closed or market.archived:
-                continue
-
-            # Parse yes percentage from outcome_prices
-            yes_percentage = 50.0
-            try:
-                if market.outcome_prices:
-                    prices = json.loads(market.outcome_prices)
-                    if prices and len(prices) > 0:
-                        # First price is typically the "Yes" outcome
-                        price_val = float(prices[0])
-                        if 0 <= price_val <= 1:
-                            yes_percentage = price_val * 100
-            except Exception as e:
-                logger.debug(f"Could not parse outcome_prices: {e}")
-
-            # Parse end date
-            end_date = None
-            try:
-                if market.end_date_iso:
-                    # Handle various date formats
-                    date_str = market.end_date_iso
-                    if "T" in date_str:
-                        end_date = datetime.fromisoformat(
-                            date_str.replace("Z", "+00:00")
-                        )
-                    else:
-                        end_date = datetime.fromisoformat(date_str)
-            except Exception as e:
-                logger.debug(f"Could not parse end_date: {e}")
-
-            # Use actual volume fields from API
-            volume_24h = market.volume_24hr or 0.0
-            volume_7d = market.volume_1wk or 0.0
-            liquidity = market.liquidity_num or 0.0
-
-            # Fallback to volume_num if specific fields are zero
-            if volume_24h == 0 and market.volume_num:
-                volume_24h = market.volume_num
-            if volume_7d == 0 and market.volume_num:
-                volume_7d = market.volume_num
-
-            # Additional check for volume_7d being 0 but volume_24h > 0
-            if volume_7d == 0 and volume_24h > 0:
-                volume_7d = volume_24h
-
-            # Get market ID - prefer condition_id, fallback to id or slug
-            market_id = market.condition_id or market.id or market.slug
-
-            processed_markets.append(
-                {
-                    "id": market_id,
-                    "slug": market.slug or market.market_slug,
-                    "title": market.question,
-                    "description": market.description,
-                    "volume_24h": volume_24h,
-                    "volume_7d": volume_7d,
-                    "liquidity": liquidity,
-                    "yes_percentage": round(yes_percentage, 2),
-                    "is_active": market.active and not market.closed,
-                    "end_date": end_date,
-                    "image_url": market.image or market.icon or None,
-                    "clob_token_ids": market.clob_token_ids or None,
-                }
-            )
-
-        # Sort by 7d volume (or 24h if 7d is zero)
         processed_markets.sort(
-            key=lambda x: (x["volume_7d"], x["volume_24h"]), reverse=True
+            key=lambda x: (x["volume_7d"], x["volume_24h"]),
+            reverse=True,
         )
         return processed_markets[:limit]
 

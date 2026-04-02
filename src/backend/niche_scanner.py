@@ -16,6 +16,21 @@ from mem0 import Memory
 from src.backend.config import settings
 from src.backend.parallel_tournament import parallel_paper_tournament
 from src.backend.polymarket.client import polymarket_client
+from src.backend.whale_copy_rag import whale_rag
+
+# City-based scanning configuration
+CITIES = [
+    "NYC",
+    "London",
+    "Chicago",
+    "Los Angeles",
+    "Miami",
+    "Seattle",
+    "Dallas",
+    "Atlanta",
+    "Toronto",
+    "Seoul",
+]
 
 logger = logging.getLogger(__name__)
 
@@ -57,10 +72,141 @@ class MicroNicheScanner:
             "tweet_counter": "https://xtracker.polymarket.com/user/elonmusk",  # live counts
             "noaa_gfs": "https://api.weather.gov/gridpoints",  # fallback
         }
+        # City coordinates mapping for weather forecasts
+        self.city_coords = {
+            "NYC": (40.7128, -74.0060),
+            "New York": (40.7128, -74.0060),
+            "London": (51.5074, -0.1278),
+            "Chicago": (41.8781, -87.6298),
+            "Los Angeles": (34.0522, -118.2437),
+            "Miami": (25.7617, -80.1918),
+            "Seattle": (47.6062, -122.3321),
+            "Dallas": (32.7767, -96.7970),
+            "Atlanta": (33.7490, -84.3880),
+            "Toronto": (43.6532, -79.3832),
+            "Seoul": (37.5665, 126.9780),
+            "Tokyo": (35.6762, 139.6503),
+        }
+
+    async def scan_city_niche(
+        self, city: str, markets: List[Dict[str, Any]], mode: int = 1
+    ) -> List[Dict[str, Any]]:
+        """
+        Scan niche opportunities for a specific city.
+
+        Args:
+            city: City name to scan
+            markets: List of markets to scan
+            mode: 0=observe, 1=paper, 2=low, 3=beast
+
+        Returns:
+            List of opportunities found for this city
+        """
+        logger.info(f"Scanning city: {city}")
+        city_opportunities = []
+
+        # Step 1: Get weather forecast for this city
+        forecast = await self.get_weather_forecast(city)
+        logger.info(
+            f"Weather forecast retrieved for {city}: {len(forecast)} data points"
+        )
+
+        # Step 2: Scan markets related to this city
+        city_keywords = [city.lower(), city.replace(" ", "").lower()]
+        for market in markets:
+            try:
+                title_lower = market.get("title", "").lower()
+                slug_lower = market.get("slug", "").lower()
+
+                # Check if market is related to this city
+                is_city_related = any(
+                    kw in title_lower or kw in slug_lower for kw in city_keywords
+                )
+
+                # Also include weather markets that might be city-specific
+                is_weather = "weather" in title_lower or "temperature" in title_lower
+
+                if not (is_city_related or is_weather):
+                    continue
+
+                liquidity = market.get("liquidity", 0)
+                if liquidity >= 5000:
+                    continue
+
+                market_id = market.get("id", "")
+                prices = {"yes": market.get("yes_percentage", 50) / 100}
+                edge = 0.0
+                niche_type = "weather"
+
+                if is_weather:
+                    edge = self.calculate_weather_edge(forecast, prices)
+                elif (
+                    "tweet" in title_lower
+                    or "post" in title_lower
+                    or "elon" in title_lower
+                ):
+                    count_data = await self.get_tweet_count()
+                    edge = self.calculate_tweet_edge(count_data, prices)
+                    niche_type = "tweets"
+                else:
+                    edge = self.calculate_mentions_edge(market)
+                    niche_type = "mentions"
+
+                if edge > 0.20:
+                    kelly_size = self.kelly_fraction(edge)
+
+                    # Step 3: Enrich with WhaleCopyRAG
+                    whale_context = "No whale data"
+                    try:
+                        state = {
+                            "market_id": market_id,
+                            "question": market.get("title", ""),
+                        }
+                        enriched_state = await whale_rag.enrich_state(state)
+                        whale_context = enriched_state.get(
+                            "whale_context", "No whale data"
+                        )
+                    except Exception as e:
+                        logger.warning(
+                            f"WhaleCopyRAG enrichment failed for {market_id}: {e}"
+                        )
+
+                    city_opportunities.append(
+                        {
+                            "market_id": market_id,
+                            "slug": market.get("slug", ""),
+                            "title": market.get("title", ""),
+                            "city": city,
+                            "niche": niche_type,
+                            "edge": round(edge, 4),
+                            "kelly_size": round(kelly_size, 4),
+                            "liquidity": liquidity,
+                            "yes_percentage": market.get("yes_percentage", 50),
+                            "whale_context": (
+                                whale_context[:200] if whale_context else "No data"
+                            ),
+                        }
+                    )
+                    logger.info(
+                        f"City edge found: {city} | {niche_type} | "
+                        f"{market.get('title', '')[:50]}... | "
+                        f"Edge: {edge:.2%}"
+                    )
+
+            except Exception as e:
+                logger.warning(f"Error scanning market for {city}: {e}")
+                continue
+
+        return city_opportunities
 
     async def scan_niches(self, mode: int = 1) -> List[Dict[str, Any]]:
         """
         Scan for micro-niche opportunities in low-liquidity markets.
+
+        Now includes city-based scanning loop that triggers for each city:
+        - Weather forecast
+        - Market scan
+        - WhaleCopyRAG enrichment
 
         Args:
             mode: 0=observe, 1=paper, 2=low, 3=beast
@@ -105,25 +251,37 @@ class MicroNicheScanner:
 
         opportunities = []
 
+        # Step 2: City-based scanning loop
+        for city in CITIES:
+            try:
+                city_opps = await self.scan_city_niche(city, markets, mode)
+                opportunities.extend(city_opps)
+            except Exception as e:
+                logger.error(f"City scan failed for {city}: {e}")
+                continue
+
+        # Step 3: Also scan remaining markets not covered by city loop
         for market in markets:
             try:
                 liquidity = market.get("liquidity", 0)
                 if liquidity >= 5000:
-                    continue  # skip high-liquidity markets
+                    continue
 
                 title_lower = market.get("title", "").lower()
                 market_id = market.get("id", "")
-                prices = {"yes": market.get("yes_percentage", 50) / 100}
 
+                # Skip if already covered by city scan
+                if any(opp["market_id"] == market_id for opp in opportunities):
+                    continue
+
+                prices = {"yes": market.get("yes_percentage", 50) / 100}
                 edge = 0.0
+                niche_type = "mentions"
 
                 if "weather" in title_lower or "temperature" in title_lower:
-                    forecast = await self.get_weather_forecast(
-                        market.get("city", "New York")
-                    )
+                    forecast = await self.get_weather_forecast("New York")
                     edge = self.calculate_weather_edge(forecast, prices)
                     niche_type = "weather"
-
                 elif (
                     "tweet" in title_lower
                     or "post" in title_lower
@@ -132,12 +290,10 @@ class MicroNicheScanner:
                     count_data = await self.get_tweet_count()
                     edge = self.calculate_tweet_edge(count_data, prices)
                     niche_type = "tweets"
-
                 else:
                     edge = self.calculate_mentions_edge(market)
-                    niche_type = "mentions"
 
-                if edge > 0.20:  # threshold for actionable edge
+                if edge > 0.20:
                     kelly_size = self.kelly_fraction(edge)
                     opportunities.append(
                         {
@@ -163,12 +319,13 @@ class MicroNicheScanner:
                 )
                 continue
 
-        # Step 2: Debate + tournament in swarm (if opportunities found and mode >= 1)
+        # Step 4: Debate + tournament in swarm (if opportunities found and mode >= 1)
         if opportunities and mode >= 1:
             await self.run_swarm_debate(opportunities, mode)
 
         logger.info(
-            f"MICRO NICHE SCANNER COMPLETE: Found {len(opportunities)} opportunities"
+            f"MICRO NICHE SCANNER COMPLETE: Found {len(opportunities)} "
+            f"opportunities across {len(CITIES)} cities"
         )
         return opportunities
 
@@ -178,16 +335,7 @@ class MicroNicheScanner:
 
         Returns list of temperature probabilities for hedge analysis.
         """
-        # Default coordinates (NYC) — can be extended to map city names
-        coords = {
-            "New York": (40.7128, -74.0060),
-            "London": (51.5074, -0.1278),
-            "Tokyo": (35.6762, 139.6503),
-            "Miami": (25.7617, -80.1918),
-            "Chicago": (41.8781, -87.6298),
-        }
-
-        lat, lon = coords.get(city, (40.7128, -74.0060))
+        lat, lon = self.city_coords.get(city, (40.7128, -74.0060))
 
         params = {
             "latitude": lat,
