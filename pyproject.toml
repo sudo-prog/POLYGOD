@@ -30,6 +30,7 @@ dependencies = [
     "litellm>=1.60.0",   # ← upgraded for latency-based-routing
     "gitpython>=3.1.0",  # ← for AutoResearch Lab git mutations
     "mem0ai>=0.1.0",     # ← re-enabled for long-term memory
+    "cryptography>=44.0.0",  # ← for LLM Hub API key encryption (Fernet)
 ]
 
 [project.optional-dependencies]

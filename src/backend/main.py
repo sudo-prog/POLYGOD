@@ -21,7 +21,7 @@ from src.backend.database import close_db, init_db
 from src.backend.news.aggregator import news_aggregator
 from src.backend.polygod_graph import polygod_graph, paper, POLYGOD_MODE, run_polygod
 from src.backend.polymarket.client import polymarket_client
-from src.backend.routes import debate, markets, news, users
+from src.backend.routes import debate, llm, markets, news, users
 from src.backend.tasks.update_markets import get_scheduler, update_top_markets
 from prometheus_fastapi_instrumentator import Instrumentator
 
@@ -217,6 +217,7 @@ app.include_router(markets.router, prefix="/api/markets")
 app.include_router(news.router, prefix="/api/news")
 app.include_router(debate.router, prefix="/api/debate")
 app.include_router(users.router, prefix="/api/users")
+app.include_router(llm.router, prefix="/api/llm")
 
 
 # ─── WebSocket streams ────────────────────────────────────────────────────────
