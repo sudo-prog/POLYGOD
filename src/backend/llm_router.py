@@ -76,14 +76,18 @@ class GodTierLLMRouter:
 
     @traceable
     async def route(self, prompt: str, agent_name: str, priority: str = "cheap"):
-        # Mem0 daily guard
-        usage = mem0.search("daily_token_usage", user_id="polygod_swarm")
-        if usage and int(usage[0].get("content", 0)) > 900_000:
-            # emergency fallback to Puter only
-            return await self.router.acompletion(
-                model="puter/claude-sonnet-4.5",
-                messages=[{"role": "user", "content": prompt}],
-            )
+        # Mem0 daily guard (only if mem0 is available)
+        if mem0 is not None:
+            try:
+                usage = mem0.search("daily_token_usage", user_id="polygod_swarm")
+                if usage and int(usage[0].get("content", 0)) > 900_000:
+                    # emergency fallback to Puter only
+                    return await self.router.acompletion(
+                        model="puter/claude-sonnet-4.5",
+                        messages=[{"role": "user", "content": prompt}],
+                    )
+            except Exception:
+                pass  # Continue without mem0 guard
 
         model = "puter/claude-sonnet-4.5" if priority == "cheap" else "openrouter/free"
         if "evolution" in agent_name.lower():
@@ -95,11 +99,15 @@ class GodTierLLMRouter:
             metadata={"agent": agent_name, "priority": priority},
         )
 
-        # Auto Mem0 write + budget track
-        mem0.add(
-            f"Used {len(prompt)} tokens on {model} for {agent_name}",
-            user_id="polygod_swarm",
-        )
+        # Auto Mem0 write + budget track (only if mem0 is available)
+        if mem0 is not None:
+            try:
+                mem0.add(
+                    f"Used {len(prompt)} tokens on {model} for {agent_name}",
+                    user_id="polygod_swarm",
+                )
+            except Exception:
+                pass  # Continue without mem0 write
         self.token_budget += len(prompt)
         return response.choices[0].message.content
 

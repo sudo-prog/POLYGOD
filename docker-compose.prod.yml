@@ -15,19 +15,25 @@ services:
       - qdrant_storage:/qdrant/storage
 
   backend:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
     env_file: .env.prod
     restart: unless-stopped
     depends_on:
       - redis
       - qdrant
+    ports:
+      - "8000:8000"
     volumes:
       - ./checkpoints.db:/app/checkpoints.db
       - ./qdrant_storage:/app/qdrant_storage
-    command: uvicorn src.backend.main:app --host 0.0.0.0 --port 8000
+    command: uv run uvicorn src.backend.main:app --host 0.0.0.0 --port 8000
 
   frontend:
-    build: ./frontend
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
     restart: unless-stopped
     ports:
       - "5173:80"

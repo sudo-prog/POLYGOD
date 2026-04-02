@@ -13,7 +13,7 @@ from src.backend.db_models import Market, NewsArticle
 from src.backend.news.aggregator import news_aggregator
 from src.backend.news.schemas import NewsArticleOut, NewsListResponse
 
-router = APIRouter(prefix="/api/news", tags=["news"])
+router = APIRouter(tags=["news"])
 
 
 @router.get("/{market_id}", response_model=NewsListResponse)

@@ -27,7 +27,7 @@ from src.backend.polymarket.schemas import (
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/markets", tags=["markets"])
+router = APIRouter(tags=["markets"])
 
 CLOB_API_URL = "https://clob.polymarket.com"
 

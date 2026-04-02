@@ -19,7 +19,7 @@ from src.backend.models.llm import AgentConfig, Provider, UsageLog
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/llm", tags=["LLM Hub"])
+router = APIRouter(tags=["LLM Hub"])
 
 
 # ─── Pydantic schemas ─────────────────────────────────────────────────────────
