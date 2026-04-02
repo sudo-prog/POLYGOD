@@ -70,7 +70,7 @@ class DebateResponse(BaseModel):
 
 def _parse_float(value: object) -> float:
     try:
-        return float(value)
+        return float(value)  # type: ignore[arg-type]
     except (TypeError, ValueError):
         return 0.0
 

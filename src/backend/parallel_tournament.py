@@ -82,11 +82,11 @@ def evaluate_with_langsmith(pnl_result: dict, config: dict) -> float:
 
     Combines PnL, risk-adjusted returns, and config efficiency.
     """
-    net_pnl = pnl_result.get("net_pnl", 0)
-    max_drawdown = pnl_result.get("max_drawdown", 0)
-    win = pnl_result.get("win", False)
-    kelly = config.get("kelly_fraction", 0.25)
-    temp = config.get("model_temp", 0.7)
+    net_pnl: float = float(pnl_result.get("net_pnl", 0))
+    max_drawdown: float = float(pnl_result.get("max_drawdown", 0))
+    win: bool = bool(pnl_result.get("win", False))
+    kelly: float = float(config.get("kelly_fraction", 0.25))
+    temp: float = float(config.get("model_temp", 0.7))
 
     # Base score from PnL (normalized)
     pnl_score = max(0, min(1, (net_pnl + 100) / 200))  # Normalize to 0-1 range
@@ -112,7 +112,7 @@ def evaluate_with_langsmith(pnl_result: dict, config: dict) -> float:
         - temp_penalty * 0.1
     )
 
-    return max(0, min(1, score))
+    return float(max(0, min(1, score)))
 
 
 # ==================== PARALLEL TOURNAMENT NODE ====================
@@ -152,9 +152,10 @@ async def offload_to_lightning_ai(variants: List[dict]) -> List[dict]:
                 timeout=60.0,
             )
             response.raise_for_status()
-            result = response.json()
+            result: dict = response.json()
             logger.info(f"Lightning AI offload successful: {len(variants)} variants")
-            return result.get("results", [])
+            results: list[dict] = list(result.get("results", []))
+            return results
     except Exception as e:
         logger.warning(f"Lightning AI offload failed: {e}")
         # Fallback to Colab webhook if available
@@ -179,9 +180,10 @@ async def offload_to_colab(variants: List[dict]) -> List[dict]:
                 timeout=120.0,
             )
             response.raise_for_status()
-            result = response.json()
+            result: dict = response.json()
             logger.info(f"Colab offload successful: {len(variants)} variants")
-            return result.get("results", [])
+            results: list[dict] = list(result.get("results", []))
+            return results
     except Exception as e:
         logger.error(f"Colab offload failed: {e}")
         return []

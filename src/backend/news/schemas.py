@@ -15,7 +15,7 @@ class NewsArticleIn(BaseModel):
     title: str = ""
     description: str | None = None
     url: str = ""
-    source: dict | str = Field(default_factory=dict)
+    source: dict | str = Field(default_factory=lambda: {})
     author: str | None = None
     urlToImage: str | None = None
     publishedAt: str | None = None

@@ -285,7 +285,8 @@ class PolymarketClient:
             )
 
             if response.status_code == 200:
-                return response.json()
+                data: list[dict] = list(response.json())
+                return data
 
             logger.warning(
                 f"Data API returned status {response.status_code}: {response.text}"
@@ -313,7 +314,8 @@ class PolymarketClient:
                 f"{settings.POLYMARKET_API_HOST}/book", params={"market": market_id}
             )
             if response.status_code == 200:
-                return response.json()
+                book: dict = dict(response.json())
+                return book
             logger.warning(
                 f"CLOB book API returned {response.status_code}: {response.text}"
             )
@@ -341,12 +343,14 @@ class PolymarketClient:
                 params={"market": market_id, "limit": limit},
             )
             if response.status_code == 200:
-                data = response.json()
+                raw_data = response.json()
                 # CLOB returns a list of trades
-                if isinstance(data, list):
-                    return data[:limit]
-                elif isinstance(data, dict) and "trades" in data:
-                    return data["trades"][:limit]
+                if isinstance(raw_data, list):
+                    trades: list[dict] = list(raw_data)
+                    return trades[:limit]
+                elif isinstance(raw_data, dict) and "trades" in raw_data:
+                    dict_trades: list[dict] = list(raw_data["trades"])
+                    return dict_trades[:limit]
                 return []
             logger.warning(
                 f"CLOB trades API returned {response.status_code}: {response.text}"

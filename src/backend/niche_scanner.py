@@ -226,7 +226,7 @@ class MicroNicheScanner:
             async with httpx.AsyncClient(timeout=10.0) as client:
                 resp = await client.get(self.free_apis["tweet_counter"])
                 resp.raise_for_status()
-                return resp.json()
+                return dict(resp.json())
         except Exception as e:
             logger.warning(f"Tweet counter API error: {e}")
             return {"current_count": 1000, "avg_daily": 100}  # fallback values

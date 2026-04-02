@@ -44,7 +44,7 @@ class Provider(Base):
         """Decrypt and return the stored API key."""
         if not self.api_key_encrypted:
             return None
-        return cipher.decrypt(self.api_key_encrypted.encode()).decode()
+        return str(cipher.decrypt(self.api_key_encrypted.encode()).decode())
 
     def to_dict(self, include_key: bool = False) -> dict:
         """Convert model to dictionary."""

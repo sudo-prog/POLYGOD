@@ -10,7 +10,7 @@ import random
 import re
 import uuid
 from datetime import datetime
-from typing import TypedDict
+from typing import Any, TypedDict
 
 from langchain_core.messages import HumanMessage
 from langchain_core.runnables import RunnableConfig
@@ -294,6 +294,7 @@ async def _fetch_market_data(market_id: str, question: str = "") -> tuple[dict, 
 
 async def statistics_agent(state: AgentState) -> AgentState:
     """Statistics Expert — quantitative analysis with Monte Carlo."""
+    state = await memory_loop.remember_node(state, "statistics")
     llm = get_llm("gemini")
     market_data = state.get("market_data", {})
     question = state.get("question", "")
@@ -332,6 +333,7 @@ Is there statistical edge? What do the numbers actually say?"""
 
 async def time_decay_agent(state: AgentState) -> AgentState:
     """Time Decay Analyst — resolution timing and theta analysis."""
+    state = await memory_loop.remember_node(state, "time_decay")
     llm = get_llm("gemini")
     market_data = state.get("market_data", {})
     question = state.get("question", "")
@@ -393,6 +395,7 @@ Analyze:
 
 async def generalist_agent(state: AgentState) -> AgentState:
     """Generalist — broad reasoning about real-world likelihood."""
+    state = await memory_loop.remember_node(state, "generalist")
     llm = get_llm("gemini")
     market_data = state.get("market_data", {})
     question = state.get("question", "")
@@ -431,6 +434,7 @@ Analyze from a real-world perspective:
 
 async def macro_agent(state: AgentState) -> AgentState:
     """Macro Analyst — macro environment, correlations, regime shifts."""
+    state = await memory_loop.remember_node(state, "macro")
     llm = get_llm("gemini")
     question = state.get("question", "")
 
@@ -467,6 +471,7 @@ Analyze the macro context:
 
 async def devil_agent(state: AgentState) -> AgentState:
     """Devil's Advocate — challenges consensus and finds logical fallacies."""
+    state = await memory_loop.remember_node(state, "devil")
     llm = get_llm("gemini")
     question = state.get("question", "")
     prior_args = "\n".join(
@@ -535,7 +540,8 @@ async def whale_copy_rag_node(state: AgentState) -> AgentState:
         return state
 
     # Delegate to the WhaleCopyRAG singleton
-    state = await whale_rag.enrich_state(state)
+    enriched: dict[str, Any] = await whale_rag.enrich_state(dict(state))
+    state = AgentState(**enriched)  # type: ignore[typeddict-item]
     return state
 
 
@@ -581,7 +587,7 @@ async def tournament_auto_entrant_node(state: AgentState) -> AgentState:
                     f"TOURNAMENT WINNER (sharpe={sharpe:.3f} > 2.0) — "
                     "promoting to AutoResearchLab for mutation"
                 )
-                await autoresearch_lab.mutate_and_evolve(state)
+                await autoresearch_lab.mutate_and_evolve(dict(state))  # type: ignore[arg-type]
             else:
                 logger.info(
                     f"Tournament complete but sharpe={sharpe:.3f} <= 2.0 — skipping AutoResearchLab"
@@ -860,7 +866,9 @@ def mode_router(state: AgentState) -> str:
 
 def risk_router(state: AgentState) -> str:
     """Risk gate → execute or approve."""
-    return state.get("decision", {}).get("next", "approve")
+    decision: dict = state.get("decision", {})
+    next_step: str = str(decision.get("next", "approve"))
+    return next_step
 
 
 # ==================== GRAPH CONSTRUCTION ====================
@@ -1029,12 +1037,13 @@ async def run_polygod(market_id: str, mode: int = 0, question: str = "") -> dict
     config: RunnableConfig = {
         "configurable": {"thread_id": f"polygod-{market_id}-{run_id}"}
     }
-    result = await polygod_graph.ainvoke(initial_state, config=config)
+    raw_result = await polygod_graph.ainvoke(initial_state, config=config)
+    result: dict = raw_result if isinstance(raw_result, dict) else {}
 
     logger.info(
         f"POLYGOD RUN [{run_id}] COMPLETE: "
         f"verdict='{result.get('verdict', '')[:80]}...', "
-        f"pnl=${result.get('paper_pnl', 0):.2f}, "
+        f"pnl=${float(result.get('paper_pnl', 0)):.2f}, "
         f"risk={result.get('risk_status', 'unknown')}"
     )
 

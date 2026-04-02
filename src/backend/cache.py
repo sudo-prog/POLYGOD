@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass
+from typing import Set
 
 """
 In-memory TTL cache for Polymarket user stats.
@@ -54,8 +55,8 @@ class UserStatsCache:
         )
 
     def get_many(
-        self, addresses: set[str]
-    ) -> tuple[dict[str, CachedUserStats], set[str]]:
+        self, addresses: Set[str]
+    ) -> tuple[dict[str, CachedUserStats], Set[str]]:
         """Bulk lookup. Returns (cached_map, uncached_addresses)."""
         cached: dict[str, CachedUserStats] = {}
         uncached: set[str] = set()

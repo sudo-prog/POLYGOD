@@ -50,7 +50,7 @@ class PriceHistoryResponse(BaseModel):
 
 def _parse_float(value: object) -> float:
     try:
-        return float(value)
+        return float(value)  # type: ignore[arg-type]
     except (TypeError, ValueError):
         return 0.0
 
@@ -248,7 +248,7 @@ async def fetch_price_history_from_clob(
             )
             response.raise_for_status()
             data = response.json()
-            return data.get("history", [])
+            return list(data.get("history", []))
     except Exception as e:
         logger.error(f"Failed to fetch price history from CLOB: {e}")
         return []
@@ -423,8 +423,8 @@ async def get_market_stats(
     volume_7d = market.volume_7d or 0
 
     # Fetch price history for 24h and 7d
-    history_24h = []
-    history_7d = []
+    history_24h: list[dict] = []
+    history_7d: list[dict] = []
 
     if market.clob_token_ids:
         try:
@@ -445,8 +445,12 @@ async def get_market_stats(
             if not isinstance(item, dict):
                 continue
             try:
-                ts = int(item.get("t"))
-                price = float(item.get("p")) * 100
+                t_val = item.get("t")
+                p_val = item.get("p")
+                if t_val is None or p_val is None:
+                    continue
+                ts = int(t_val)
+                price = float(p_val) * 100
             except (TypeError, ValueError):
                 continue
             points.append((ts, price))
@@ -1072,8 +1076,8 @@ async def get_market_trades(
                 continue
 
         if include_user_stats and whale_trades:
-            addresses = {
-                trade.get("address")
+            addresses: set[str] = {
+                str(trade.get("address"))
                 for trade in whale_trades
                 if trade.get("address") and trade.get("address") != "Unknown"
             }
@@ -1173,9 +1177,11 @@ async def get_market_trades(
                             stats_map[addr] = stats
 
                 for trade in whale_trades:
-                    stats = stats_map.get(trade.get("address"))
-                    if stats:
-                        trade.update(stats)
+                    addr = trade.get("address")
+                    if addr:
+                        stats = stats_map.get(str(addr))
+                        if stats:
+                            trade.update(stats)
 
         # Sort by timestamp (newest first)
         whale_trades.sort(key=lambda x: x["timestamp"], reverse=True)
@@ -1324,7 +1330,7 @@ async def get_market_holders(market_id: str, db: AsyncSession = Depends(get_db))
                 return address, positions, (global_pnl, global_roi, total_balance)
 
             # ── 3. Fan-out only the calls we actually need ───────────────
-            cached_addresses = set(cached_map.keys())
+            cached_addresses: set[str] = set(cached_map.keys())
 
             # For cached addresses: only fetch /positions (1 call each)
             pos_tasks = [fetch_positions_only(a) for a in cached_addresses]

@@ -528,7 +528,7 @@ def statistics_expert(state: DebateState):
         implied = calculate_implied_probability(current_price)
 
         # 2. Volatility analysis (use 7d data if available, else 24h)
-        price_data = prices_7d if prices_7d else prices_24h
+        price_data = prices_7d if prices_7d else prices_24h if prices_24h else []
         volatility = analyze_price_volatility(price_data)
 
         # 3. Momentum indicators

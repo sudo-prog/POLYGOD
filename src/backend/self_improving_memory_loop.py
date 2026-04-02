@@ -2,9 +2,9 @@
 SELF-IMPROVING MEMORY LOOP — God-Tier autonomous evolution.
 
 Connects Mem0 long-term memory with AutoResearchLab for weekly self-improvement:
-- remembver_node(): auto-write every node output to Mem0
-- hindsight_replay(): weekly replay of last 7 days trades
-- notebooklm_reflection(): Sunday podcast-style reflection → mutation instructions
+- remember_node(): auto-write EVERY node output to Mem0 (including WhaleContext)
+- hindsight_replay(): weekly replay of last 7 days trades (200 memories)
+- notebooklm_reflection(): Sunday podcast-style reflection → 5 mutation instructions
 """
 
 import json
@@ -54,7 +54,7 @@ class SelfImprovingMemoryLoop:
 
     @traceable
     async def remember_node(self, state, node_name: str):
-        """Auto-write EVERY node output to Mem0."""
+        """Auto-remember on EVERY node — this is the core of self-improvement"""
         if mem0 is None:
             logger.debug(f"Memory loop: Mem0 not available, skipping {node_name}")
             return state
@@ -69,9 +69,15 @@ class SelfImprovingMemoryLoop:
                 if pnl == 0:
                     pnl = execution_result.get("result", {}).get("pnl", 0)
 
+            # God-tier memory format: includes WhaleContext for pattern recognition
             memory_text = (
-                f"Node {node_name} at {datetime.utcnow().isoformat()}: "
-                f"{verdict[:200]} | Confidence {confidence}% | PnL {pnl}"
+                f"[{datetime.utcnow().isoformat()}] "
+                f"Node: {node_name} | "
+                f"Market: {state.get('market_id')} | "
+                f"Verdict: {verdict[:200]} | "
+                f"Confidence: {confidence}% | "
+                f"PnL: {pnl} | "
+                f"WhaleContext: {state.get('whale_context', '')[:200]}"
             )
 
             mem0.add(
@@ -94,7 +100,7 @@ class SelfImprovingMemoryLoop:
         return state
 
     async def hindsight_replay(self):
-        """Weekly replay of last 7 days — score trades, extract lessons."""
+        """Weekly hindsight replay of last 7 days — score trades, extract lessons."""
         if mem0 is None:
             logger.warning("Memory loop: Mem0 not available, skipping hindsight replay")
             return "Mem0 not available"
@@ -104,16 +110,22 @@ class SelfImprovingMemoryLoop:
             memories = mem0.search(
                 "trade OR debate OR tournament OR execution",
                 user_id=self.user_id,
-                limit=100,
+                limit=200,
             )
             logger.info(f"Hindsight replay: found {len(memories)} memories")
 
             # Generate hindsight summary via LLM
-            summary = await self._generate_hindsight_summary(memories)
+            summary_prompt = (
+                f"Summarize key lessons, winning patterns, and mistakes from these memories: "
+                f"{memories[:50]}"
+            )
+            summary = await router.route(
+                summary_prompt, "Hindsight_Replay", priority="cheap"
+            )
 
             # Store the insight
             mem0.add(
-                f"Hindsight weekly replay at {datetime.utcnow().isoformat()}: {summary}",
+                f"Hindsight Weekly Replay Summary: {summary}",
                 user_id=self.user_id,
             )
             logger.info(f"=== Hindsight Replay Complete: {len(summary)} chars ===")
@@ -123,7 +135,7 @@ class SelfImprovingMemoryLoop:
             return f"Hindsight replay failed: {e}"
 
     async def notebooklm_reflection(self):
-        """Sunday NotebookLM-style podcast reflection — generates mutation instructions."""
+        """Sunday NotebookLM-style podcast reflection → 5 concrete mutations"""
         if mem0 is None:
             logger.warning("Memory loop: Mem0 not available, skipping reflection")
             return []
@@ -134,24 +146,19 @@ class SelfImprovingMemoryLoop:
             # Lazy import to avoid circular dependency
             from src.backend.autoresearch_lab import autoresearch_lab
 
-            memories = mem0.search("all", user_id=self.user_id, limit=50)
+            memories = mem0.search("all", user_id=self.user_id, limit=100)
             logger.info(f"NotebookLM reflection: {len(memories)} memories loaded")
 
             week_str = datetime.utcnow().strftime("%Y-%m-%d")
             prompt = (
-                "You are NotebookLM, creating a podcast episode titled "
-                f'"POLYGOD Weekly Reflection — Week of {week_str}".\n'
-                "Two hosts discuss the week's trading activity "
-                "based on these memories:\n"
-                f"{json.dumps(memories[:20], default=str)[:3000]}\n\n"
-                "Extract exactly 5 concrete mutation instructions for "
-                "an AutoResearchLab that improves:\n"
-                "- Kelly tweaks (e.g., adjust fraction by X% if pattern Y)\n"
-                "- Hedge rules (e.g., always hedge when condition Z)\n"
-                "- Niche filters (e.g., ignore markets with volume < $N)\n"
-                "- Risk guard adjustments\n"
-                "- Agent prompt improvements\n\n"
-                "Return ONLY a JSON array of 5 strings, nothing else."
+                f"Act as NotebookLM. Generate a 2-minute podcast episode: "
+                f'"POLYGOD Weekly Evolution - {week_str}". '
+                f"Discuss best trades, worst edges, whale copy patterns, "
+                f"and self-improvement opportunities. At the end, output ONLY "
+                f"a JSON array of exactly 5 targeted mutation instructions "
+                f"for the AutoResearchLab (e.g. Kelly fraction tweaks, "
+                f"new hedge rules, niche filters, confidence thresholds). "
+                f"Memories: {memories}"
             )
             reflection = await router.route(
                 prompt, "NotebookLM_Reflection", priority="cheap"
@@ -163,26 +170,26 @@ class SelfImprovingMemoryLoop:
             # Parse mutation instructions
             instructions = []
             try:
-                # Try to find JSON array in response
+                instructions = json.loads(reflection)
+            except json.JSONDecodeError:
+                # Fallback: try to find JSON array in response
                 json_start = reflection.find("[")
                 json_end = reflection.rfind("]") + 1
                 if json_start >= 0 and json_end > json_start:
                     instructions = json.loads(reflection[json_start:json_end])
                 else:
-                    # Fallback: parse line by line
-                    instructions = [
-                        line.strip().lstrip("0123456789.-) ")
-                        for line in reflection.strip().split("\n")
-                        if line.strip() and len(line.strip()) > 10
-                    ]
-                    instructions = instructions[:5]
-            except json.JSONDecodeError as e:
-                logger.warning(f"NotebookLM: JSON parse failed ({e}), using fallback")
-                instructions = [f"Review week of {week_str}: {reflection[:200]}"]
+                    logger.warning("NotebookLM: JSON parse failed, raw output saved")
+                    raw_preview = reflection[:500]
+                    mem0.add(
+                        f"NotebookLM Reflection failed to parse — "
+                        f"raw output saved: {raw_preview}",
+                        user_id=self.user_id,
+                    )
+                    return []
 
-            # Apply mutations to AutoResearchLab
+            # Apply 5 mutations to AutoResearchLab
             mutations_applied = 0
-            for instr in instructions:
+            for instr in instructions[:5]:
                 try:
                     await autoresearch_lab.mutate_and_evolve(
                         {"evolution_instruction": instr}
@@ -195,8 +202,8 @@ class SelfImprovingMemoryLoop:
 
             # Log completion
             completion_msg = (
-                f"NotebookLM reflection complete: {mutations_applied}/{len(instructions)} "
-                f"mutations promoted"
+                f"NotebookLM Reflection: {mutations_applied}/{len(instructions)} "
+                f"mutations promoted to AutoResearchLab"
             )
             logger.info(f"=== {completion_msg} ===")
 
@@ -210,27 +217,6 @@ class SelfImprovingMemoryLoop:
         except Exception as e:
             logger.error(f"NotebookLM reflection failed: {e}")
             return []
-
-    async def _generate_hindsight_summary(self, memories: list) -> str:
-        """Generate a concise hindsight summary from memories via LLM."""
-        try:
-            memories_text = json.dumps(memories[:10], default=str)[:2000]
-            prompt = f"""Summarize the key hindsight lessons from these trading memories.
-Focus on:
-1. What went well (wins, good timing, correct predictions)
-2. What went wrong (losses, missed signals, bad timing)
-3. Patterns that should be reinforced or avoided
-4. Concrete adjustments for next week
-
-Memories:
-{memories_text}
-
-Be concise — 3-5 sentences max."""
-
-            return await router.route(prompt, "Hindsight_Summary", priority="cheap")
-        except Exception as e:
-            logger.warning(f"Hindsight summary generation failed: {e}")
-            return f"Hindsight summary generation failed: {e}"
 
 
 memory_loop = SelfImprovingMemoryLoop()

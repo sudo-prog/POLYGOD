@@ -90,4 +90,4 @@ def calculate_position_size(market_data: dict, confidence: float) -> float:
     position = min(position, base_size * MAX_POSITION_PCT)
     position = max(position, MIN_POSITION_SIZE)
 
-    return round(position, 2)
+    return float(round(position, 2))

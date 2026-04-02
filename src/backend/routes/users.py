@@ -116,10 +116,12 @@ def _extract_user_from_candidate(
 ) -> UserProfile | None:
     if not isinstance(candidate, dict):
         return None
-    if isinstance(candidate.get("profile"), dict):
-        candidate = candidate.get("profile")
-    if isinstance(candidate.get("user"), dict):
-        candidate = candidate.get("user")
+    profile = candidate.get("profile")
+    if isinstance(profile, dict):
+        candidate = profile
+    user = candidate.get("user")
+    if isinstance(user, dict):
+        candidate = user
 
     username = (
         candidate.get("username")
@@ -252,11 +254,12 @@ async def _fetch_positions(user_identifier: str, limit: int) -> list[dict]:
             data = response.json()
             if isinstance(data, dict):
                 for key in ("positions", "results", "data", "items"):
-                    if isinstance(data.get(key), list):
-                        return data.get(key, [])
+                    val = data.get(key)
+                    if isinstance(val, list):
+                        return list(val)
                 return []
             if isinstance(data, list):
-                return data
+                return list(data)
             return []
         except Exception as e:
             logger.error(f"Failed to fetch positions: {e}")
@@ -278,11 +281,12 @@ async def _fetch_closed_positions(user_identifier: str, limit: int) -> list[dict
             data = response.json()
             if isinstance(data, dict):
                 for key in ("positions", "results", "data", "items"):
-                    if isinstance(data.get(key), list):
-                        return data.get(key, [])
+                    val = data.get(key)
+                    if isinstance(val, list):
+                        return list(val)
                 return []
             if isinstance(data, list):
-                return data
+                return list(data)
             return []
         except Exception as e:
             logger.error(f"Failed to fetch closed positions: {e}")
@@ -292,10 +296,11 @@ async def _fetch_closed_positions(user_identifier: str, limit: int) -> list[dict
 def _extract_list_from_response(data: object) -> list[dict]:
     if isinstance(data, dict):
         for key in ("positions", "results", "data", "items"):
-            if isinstance(data.get(key), list):
-                return data.get(key, [])
+            val = data.get(key)
+            if isinstance(val, list):
+                return list(val)
     if isinstance(data, list):
-        return data
+        return list(data)
     return []
 
 
