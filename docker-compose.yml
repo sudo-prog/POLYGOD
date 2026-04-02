@@ -10,7 +10,7 @@ services:
     env_file:
       - .env
     volumes:
-      - polygod_db:/app/polymarket.db
+      - polygod_db:/app/data
     ports:
       - "8000:8000"
     networks:
@@ -48,8 +48,10 @@ services:
     networks:
       - pnet
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:6333/health"]
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/6333'"]
       interval: 5s
+      timeout: 3s
+      retries: 3
 
   polygod-swarm:  # Parallel tournament + Lightning AI offload
     build:
