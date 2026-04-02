@@ -25,7 +25,7 @@ from src.backend.middleware.rate_limit import limiter
 from src.backend.news.aggregator import news_aggregator
 from src.backend.polygod_graph import POLYGOD_MODE, paper, polygod_graph, run_polygod
 from src.backend.polymarket.client import polymarket_client
-from src.backend.routes import debate, llm, markets, news, users
+from src.backend.routes import debate, llm, markets, news, telegram, users
 from src.backend.tasks.update_markets import get_scheduler, update_top_markets
 
 # Force IPv4 to avoid IPv6 timeouts (helps in some Docker/network setups)
@@ -247,7 +247,25 @@ async def lifespan(app: FastAPI):
             f"🚀 MODE {settings.POLYGOD_MODE} — swarm runs via polygod-swarm container"
         )
 
+    # Start Telegram bot in background (if token configured)
+    telegram_task = None
+    if settings.TELEGRAM_BOT_TOKEN:
+        try:
+            from src.backend.routes.telegram import run_telegram_bot
+
+            telegram_task = asyncio.create_task(run_telegram_bot())
+            logger.info("Telegram bot starting in background...")
+        except Exception as e:
+            logger.error(f"Failed to start Telegram bot: {e}")
+    else:
+        logger.info("TELEGRAM_BOT_TOKEN not set — Telegram bot disabled")
+
     yield
+
+    # Cancel Telegram bot on shutdown
+    if telegram_task:
+        telegram_task.cancel()
+        logger.info("Telegram bot task cancelled")
 
     # Shutdown
     logger.info("Shutting down POLYGOD...")
@@ -307,6 +325,7 @@ app.include_router(news.router, prefix="/api/news")
 app.include_router(debate.router, prefix="/api/debate")
 app.include_router(users.router, prefix="/api/users")
 app.include_router(llm.router, prefix="/api/llm")
+app.include_router(telegram.router, prefix="/api/telegram")
 
 
 # ─── WebSocket streams ────────────────────────────────────────────────────────

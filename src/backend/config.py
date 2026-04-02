@@ -32,6 +32,7 @@ class Settings(BaseSettings):
     X_BEARER_TOKEN: str = Field(default="")
     ENCRYPTION_KEY: str = Field(default="")
     REDIS_URL: str = Field(default="redis://redis:6379/0")
+    TELEGRAM_BOT_TOKEN: str = Field(default="")
 
     @property
     def cors_origins_list(self) -> list[str]:
