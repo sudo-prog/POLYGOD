@@ -16,7 +16,7 @@ dependencies = [
     "apscheduler>=3.11.0",
     "python-dotenv>=1.0.0",
     "py-clob-client>=0.34.5",
-    "polymarket-agent-skills @ git+https://github.com/Polymarket/agent-skills.git",  # ← enabled for god-tier
+    # "polymarket-agent-skills @ git+https://github.com/Polymarket/agent-skills.git",  # ← disabled (missing pyproject.toml)
     "langchain>=1.2.7",
     "langchain-google-genai>=4.2.0",
     "langchain-community>=0.4.1",
@@ -28,6 +28,8 @@ dependencies = [
     "langgraph-checkpoint-sqlite>=1.0.0",
     "langsmith>=0.3.0",
     "litellm>=1.60.0",   # ← upgraded for latency-based-routing
+    "gitpython>=3.1.0",  # ← for AutoResearch Lab git mutations
+    "mem0ai>=0.1.0",     # ← re-enabled for long-term memory
 ]
 
 [project.optional-dependencies]

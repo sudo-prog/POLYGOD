@@ -23,17 +23,18 @@ except ImportError:
 class GodTierLLMRouter:
     def __init__(self):
         # LiteLLM router with god-tier free fallbacks (Apr 2026 meta)
+        # Build model list with proper litellm format
+        self.model_list = [
+            {"model_name": "puter/claude-sonnet-4.5", "litellm_params": {"model": "openai/claude-sonnet-4.5", "api_base": "https://api.puter.com/ai/openai/v1", "api_key": "sk-free-puter"}},  # ZERO cost
+            {"model_name": "openrouter/free", "litellm_params": {"model": "openrouter/auto", "api_base": "https://openrouter.ai/api/v1", "api_key": os.getenv("OPENROUTER_API_KEY", "")}},
+            {"model_name": "gemini/gemini-2.5-flash", "litellm_params": {"model": "gemini/gemini-2.5-flash", "api_key": os.getenv("GEMINI_API_KEY", "")}},
+            {"model_name": "groq/llama-3.3-70b", "litellm_params": {"model": "groq/llama-3.3-70b", "api_key": os.getenv("GROQ_API_KEY", "")}},
+            {"model_name": "nvidia-auto", "litellm_params": {"model": "openai/nvidia", "api_key": os.getenv("NVIDIA_API_KEY", "")}},
+        ]
         self.router = Router(
-            model_list=[
-                {"model": "puter/claude-sonnet-4.5", "api_base": "https://api.puter.com/ai/openai/v1", "api_key": "sk-free-puter"},  # ZERO cost
-                {"model": "openrouter/free", "api_base": "https://openrouter.ai/api/v1", "api_key": os.getenv("OPENROUTER_API_KEY")},
-                {"model": "gemini/gemini-2.5-flash", "api_key": os.getenv("GEMINI_API_KEY")},
-                {"model": "groq/llama-3.3-70b", "api_key": os.getenv("GROQ_API_KEY")},
-                {"model": "nvidia-auto", "api_key": os.getenv("NVIDIA_API_KEY")},  # 31 free APIs, latency winner
-            ],
-            routing_strategy="latency-based-routing",  # picks fastest free model
-            fallbacks=["openrouter/free", "gemini/gemini-2.5-flash", "groq/llama-3.3-70b"],
-            retry_after=60,  # cooldown on rate limits
+            model_list=self.model_list,
+            routing_strategy="latency-based-routing",
+            retry_after=60,
         )
         self.token_budget = 0
 

@@ -24,12 +24,15 @@ import httpx
 from langchain_core.messages import HumanMessage
 from langchain_google_genai import ChatGoogleGenerativeAI
 try:
-    from langgraph_checkpoint_sqlite import SqliteSaver
+    from langgraph.checkpoint.sqlite import SqliteSaver
+    from langgraph.checkpoint.memory import MemorySaver
 except ImportError:
     try:
-        from langgraph.checkpoint.sqlite import SqliteSaver
+        from langgraph_checkpoint_sqlite import SqliteSaver
+        from langgraph.checkpoint.memory import MemorySaver
     except ImportError:
         SqliteSaver = None
+        MemorySaver = None
 from langgraph.graph import END, StateGraph
 
 try:
@@ -41,6 +44,7 @@ from src.backend.llm_router import router
 from src.backend.tools.x_sentiment import get_x_sentiment
 from src.backend.parallel_tournament import parallel_paper_tournament
 from src.backend.niche_scanner import scanner
+from src.backend.autoresearch_lab import autoresearch_lab
 
 logger = logging.getLogger(__name__)
 
@@ -60,12 +64,20 @@ except ImportError:
 # Persistent SQLite checkpointing (survives restarts)
 _CHECKPOINT_DB = os.path.join(os.path.dirname(__file__), "..", "..", "checkpoints.db")
 try:
-    checkpointer = SqliteSaver.from_conn_string(_CHECKPOINT_DB)
-    logger.info(f"SqliteSaver initialized: {_CHECKPOINT_DB}")
+    if SqliteSaver:
+        import sqlite3
+        conn = sqlite3.connect(_CHECKPOINT_DB)
+        checkpointer = SqliteSaver(conn=conn)
+        logger.info(f"SqliteSaver initialized: {_CHECKPOINT_DB}")
+    elif MemorySaver:
+        checkpointer = MemorySaver()
+        logger.warning("SqliteSaver unavailable, using MemorySaver")
+    else:
+        checkpointer = None
+        logger.warning("No checkpointing available")
 except Exception as e:
     logger.warning(f"SqliteSaver failed ({e}), falling back to MemorySaver")
-    from langgraph.checkpoint.memory import MemorySaver
-    checkpointer = MemorySaver()
+    checkpointer = MemorySaver() if MemorySaver else None
 
 # Mem0 long-term memory (Qdrant-backed)
 try:
@@ -750,6 +762,28 @@ async def execute_node(state: AgentState) -> AgentState:
 
 # ==================== META REFLECTION ====================
 
+async def karpathy_loop_node(state: AgentState) -> AgentState:
+    """Karpathy-style self-improving mutation loop.
+
+    Wired after parallel tournament in beast mode (mode >= 3):
+    - AutoResearch Lab mutates strategy code
+    - Tests via parallel paper tournament
+    - Keeps winners (Sharpe > 2.0, PnL > 0), discards losers
+    """
+    mode = state.get("mode", 0)
+    logger.info(f"KARPATY LOOP NODE: Running in mode {mode}")
+
+    try:
+        state = await autoresearch_lab.mutate_and_evolve(state)
+        status = state.get("evolution_status", "unknown")
+        logger.info(f"KARPATY LOOP: evolution_status={status}")
+    except Exception as e:
+        logger.error(f"Karpathy loop failed: {e}")
+        state["evolution_status"] = "error"
+
+    return state
+
+
 async def niche_scanner_node(state: AgentState) -> AgentState:
     """Micro Niche Scanner — detect edge in low-liquidity recurring markets."""
     mode = state.get("mode", 0)
@@ -848,6 +882,7 @@ def build_polygod_graph() -> StateGraph:
     workflow.add_node("parallel_tournament", parallel_paper_tournament)
     workflow.add_node("execute", execute_node)
     workflow.add_node("niche_scanner", niche_scanner_node)
+    workflow.add_node("karpathy_loop", karpathy_loop_node)
     workflow.add_node("meta_reflection", meta_reflection_node)
 
     # ==================== EDGES ====================
@@ -914,15 +949,18 @@ def build_polygod_graph() -> StateGraph:
     # Evolution lab → parallel_tournament (god-tier 50-variant tournament)
     workflow.add_edge("evolution_lab", "parallel_tournament")
 
-    # Parallel tournament → moderator (if final_decision) or END
+    # Parallel tournament → Karpathy loop (beast mode) or meta_reflection
     workflow.add_conditional_edges(
         "parallel_tournament",
-        lambda s: "moderator" if s.get("final_decision") else "meta_reflection",
+        lambda s: "karpathy_loop" if s.get("mode", 0) >= 3 else "meta_reflection",
         {
-            "moderator": "moderator",
+            "karpathy_loop": "karpathy_loop",
             "meta_reflection": "meta_reflection",
         },
     )
+
+    # Karpathy loop → meta_reflection (self-improvement complete)
+    workflow.add_edge("karpathy_loop", "meta_reflection")
 
     # Execute → meta_reflection
     workflow.add_edge("execute", "meta_reflection")
