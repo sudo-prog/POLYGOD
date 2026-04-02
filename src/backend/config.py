@@ -8,19 +8,13 @@ from pydantic_settings import BaseSettings
 class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
 
-    DATABASE_URL: str = Field(
-        default="sqlite+aiosqlite:///./polymarket.db"
-    )
+    DATABASE_URL: str = Field(default="sqlite+aiosqlite:///./polymarket.db")
     NEWS_API_KEY: str = Field(default="")
-    POLYMARKET_API_HOST: str = Field(
-        default="https://clob.polymarket.com"
-    )
+    POLYMARKET_API_HOST: str = Field(default="https://clob.polymarket.com")
     POLYMARKET_API_KEY: str = Field(default="")
     POLYMARKET_SECRET: str = Field(default="")
     POLYMARKET_PASSPHRASE: str = Field(default="")
-    CORS_ORIGINS: str = Field(
-        default="http://localhost:5173,http://127.0.0.1:5173"
-    )
+    CORS_ORIGINS: str = Field(default="http://localhost:5173,http://127.0.0.1:5173")
     HOST: str = Field(default="0.0.0.0")
     PORT: int = Field(default=8000)
     DEBUG: bool = Field(default=False)
@@ -33,12 +27,8 @@ class Settings(BaseSettings):
         default='{"provider": "qdrant", "vector_store": {"url": "http://qdrant:6333"}}'
     )
     FORCE_IPV4: bool = Field(default=False)
-    ALLOW_IN_MEMORY_DB_FALLBACK: bool = Field(
-        default=False
-    )
-    POLYGOD_ADMIN_TOKEN: str = Field(
-        default="super-secret-admin-token-change-me"
-    )
+    ALLOW_IN_MEMORY_DB_FALLBACK: bool = Field(default=False)
+    POLYGOD_ADMIN_TOKEN: str = Field(default="super-secret-admin-token-change-me")
     X_BEARER_TOKEN: str = Field(default="")
     ENCRYPTION_KEY: str = Field(default="")
     REDIS_URL: str = Field(default="redis://redis:6379/0")

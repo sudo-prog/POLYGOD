@@ -282,12 +282,6 @@ app = FastAPI(
 # Rate limiting setup
 app.state.limiter = limiter
 
-
-@app.exception_handler(RateLimitExceeded)
-async def rate_limit_handler(request, exc):
-    return JSONResponse({"error": "Rate limit exceeded"}, status_code=429)
-
-
 # Prometheus metrics — exposes /metrics endpoint
 Instrumentator().instrument(app).expose(app)
 
@@ -299,6 +293,13 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# Rate limiting + auth middleware
+@app.exception_handler(RateLimitExceeded)
+async def rate_limit_handler(request, exc):
+    return JSONResponse({"error": "Rate limit exceeded"}, status_code=429)
+
 
 # ─── Route includes ───────────────────────────────────────────────────────────
 app.include_router(markets.router, prefix="/api/markets")
