@@ -14,11 +14,13 @@ class Settings(BaseSettings):
     POLYMARKET_API_KEY: str = Field(default="")
     POLYMARKET_SECRET: str = Field(default="")
     POLYMARKET_PASSPHRASE: str = Field(default="")
-    CORS_ORIGINS: str = Field(default="http://localhost:5173,http://127.0.0.1:5173")
+    CORS_ORIGINS: str = Field(
+        default="http://localhost:5173,http://127.0.0.1:5173,http://localhost:5174,http://127.0.0.1:5174"
+    )
     HOST: str = Field(default="0.0.0.0")
     PORT: int = Field(default=8000)
-    DEBUG: bool = Field(default=False)
-    GEMINI_API_KEY: str = Field(default="")
+    DEBUG: bool = Field(default=False, alias="debug")
+    GEMINI_API_KEY: str = Field(default="", alias="gemini_api_key")
     GROK_API_KEY: str = Field(default="")
     TAVILY_API_KEY: str = Field(default="")
     LIGHTNING_AI_TOKEN: str = Field(default="")
@@ -33,11 +35,23 @@ class Settings(BaseSettings):
     ENCRYPTION_KEY: str = Field(default="")
     REDIS_URL: str = Field(default="redis://redis:6379/0")
     TELEGRAM_BOT_TOKEN: str = Field(default="")
-    INTERNAL_API_KEY: str = Field(default="change-this-before-use")
+    INTERNAL_API_KEY: str = Field(
+        default="change-this-before-use", alias="internal_api_key"
+    )
 
     @property
     def cors_origins_list(self) -> list[str]:
         return [o.strip() for o in self.CORS_ORIGINS.split(",") if o.strip()]
+
+    @property
+    def debug(self) -> bool:
+        """Alias for DEBUG for backward compatibility."""
+        return self.DEBUG
+
+    @property
+    def internal_api_key(self) -> str:
+        """Alias for INTERNAL_API_KEY for backward compatibility."""
+        return self.INTERNAL_API_KEY
 
     model_config = {"env_file": ".env", "extra": "ignore"}
 

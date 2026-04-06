@@ -35,6 +35,7 @@ dependencies = [
     "llama-index-vector-stores-qdrant>=0.4.0",  # ← Qdrant vector store for llama-index
     "cryptography>=44.0.0",  # ← for LLM Hub API key encryption (Fernet)
     "slowapi>=0.1.9",        # ← rate limiting middleware
+    "aiobreaker>=1.0",       # ← circuit breaker for NewsAPI
     "redis>=5.2.0",          # ← Redis client for rate limit storage
     "langchain-core>=0.3.20",   # ← EXPLICIT FIX for direct imports + langgraph
     "python-telegram-bot>=21.0",  # ← Telegram Bot API (god-tier command surface)
@@ -55,6 +56,7 @@ test = [
     "httpx>=0.27", # for async test client
     "respx>=0.21", # mock httpx requests
     "faker>=24.0",
+    "prometheus-fastapi-instrumentator>=0.4.0",
 ]
 
 [build-system]

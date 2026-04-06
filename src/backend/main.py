@@ -17,6 +17,7 @@ from typing import Final
 import uvicorn
 from fastapi import Depends, FastAPI, HTTPException, Query, WebSocket
 from fastapi.responses import JSONResponse
+from sqlalchemy import text
 
 SECRET_KEYS = [
     "POLYMARKET_API_KEY",
@@ -538,7 +539,24 @@ async def polygod_run(market_id: str, mode: int = 0, question: str = ""):
 @app.get("/api/health")
 async def health():
     """GOD TIER health check."""
-    return {"status": "god-tier", "mode": settings.POLYGOD_MODE, "scanner": "active"}
+    from src.backend.database import engine
+    from src.backend.tasks.update_markets import get_scheduler
+
+    scheduler = get_scheduler()
+    db_connected = False
+    try:
+        async with engine.connect() as conn:
+            await conn.execute(text("SELECT 1"))
+            db_connected = True
+    except Exception:
+        pass
+
+    return {
+        "status": "god-tier",
+        "version": "0.1.0",
+        "database": "connected" if db_connected else "disconnected",
+        "scheduler": scheduler.running if scheduler else False,
+    }
 
 
 @app.get("/")

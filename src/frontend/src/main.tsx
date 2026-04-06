@@ -7,8 +7,11 @@ import './styles/globals.css';
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      staleTime: 1000 * 60 * 5, // 5 minutes
-      refetchOnWindowFocus: false,
+      staleTime: 30_000, // 30s default — data stays fresh
+      gcTime: 5 * 60_000, // 5min garbage collection
+      retry: 2, // retry failed requests twice
+      retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 10000),
+      refetchOnWindowFocus: false, // prevents tab-switch hammering
     },
   },
 });

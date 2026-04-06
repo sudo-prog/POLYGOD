@@ -13,6 +13,8 @@ import {
   Bell,
 } from 'lucide-react';
 import { MarketList } from './components/MarketList';
+import { TickerBanner } from './components/TickerBanner';
+import { useMarkets } from './hooks/useMarkets';
 import PriceChart from './components/PriceChart';
 import { NewsFeed } from './components/NewsFeed';
 import { WhaleList } from './components/WhaleList';
@@ -56,6 +58,8 @@ function App() {
     'news'
   );
   const [activeView, setActiveView] = useState<'markets' | 'user' | 'llm'>('markets');
+  const tickerHeight = 33;
+  const { data: marketsData } = useMarkets();
 
   // Safely parse polyGodData with proper type checking
   const polyGodData: PolyGodData | null = (() => {
@@ -157,18 +161,30 @@ function App() {
 
   return (
     <div className="min-h-screen bg-surface-950 pg-mesh-bg">
-      {/* Whale Alert Banner */}
-      {lastAlert && (
-        <div className="bg-gradient-to-r from-emerald-600/20 via-emerald-500/30 to-emerald-600/20 border-b border-emerald-500/30">
-          <div className="max-w-[1920px] mx-auto px-4 py-2 flex items-center justify-center gap-2">
-            <Zap className="w-4 h-4 text-emerald-400 animate-pulse" />
-            <span className="text-sm text-emerald-300 font-medium">{lastAlert}</span>
-          </div>
-        </div>
-      )}
+      <TickerBanner
+        items={[
+          ...(lastAlert
+            ? [
+                {
+                  id: 'whale-alert',
+                  label: '🐋 WHALE ALERT',
+                  value: lastAlert,
+                  type: 'whale' as const,
+                  positive: true,
+                },
+              ]
+            : []),
+          ...(marketsData?.markets?.slice(0, 5).map((market: any, idx: number) => ({
+            id: `market-${idx}`,
+            label: market.title.length > 20 ? market.title.slice(0, 17) + '...' : market.title,
+            value: `${market.yes_percentage.toFixed(1)}%`,
+            type: 'market' as const,
+          })) || []),
+        ]}
+      />
 
       {/* Header */}
-      <header className="glass border-b border-white/10 sticky top-0 z-50">
+      <header className="glass border-b border-white/10 sticky z-50" style={{ top: tickerHeight }}>
         <div className="max-w-[1920px] mx-auto px-4 py-4 flex flex-col md:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <HamburgerMenu setActiveView={setActiveView} />

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { useStore } from '../store';
+import { useMarketStore } from '../stores/marketStore';
 
 const WS_URL = `ws://localhost:8000/ws/polygod?token=${import.meta.env.VITE_WS_TOKEN}`;
 const RECONNECT_INTERVAL = 3000; // 3 seconds
@@ -27,7 +27,7 @@ export function usePolyGodWS() {
         try {
           const messageData = JSON.parse(event.data);
           setData(messageData);
-          useStore.getState().updatePolyGod?.(messageData);
+          useMarketStore.getState().updatePolyGod(messageData);
 
           // Set last alert if the message contains alert information
           if (messageData.whale_alert) {

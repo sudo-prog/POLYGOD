@@ -54,6 +54,7 @@ interface MarketStore {
   setSearchQuery: (query: string) => void;
   setRagGodState: (state: Partial<RAGGodState>) => void;
   resetRagGodState: () => void;
+  updatePolyGod: (data: Partial<RAGGodData>) => void;
 }
 
 const initialRagGodState: RAGGodState = {
@@ -78,4 +79,11 @@ export const useMarketStore = create<MarketStore>((set) => ({
       ragGodState: { ...prev.ragGodState, ...state },
     })),
   resetRagGodState: () => set({ ragGodState: initialRagGodState }),
+  updatePolyGod: (data) =>
+    set((state) => ({
+      ragGodState: {
+        ...state.ragGodState,
+        data: { ...state.ragGodState.data, ...data } as RAGGodData,
+      },
+    })),
 }));

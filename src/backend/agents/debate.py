@@ -572,37 +572,37 @@ def statistics_expert(state: DebateState):
 - **End Date**: {end_date}
 
 ### Implied Probability
-- Market implies **{implied['implied_yes_prob']:.1f}%** chance of YES
-- Breakeven: Need {implied['breakeven_yes']:.1f}%+ true probability for YES bet to be +EV
+- Market implies **{implied["implied_yes_prob"]:.1f}%** chance of YES
+- Breakeven: Need {implied["breakeven_yes"]:.1f}%+ true probability for YES bet to be +EV
 
-### Price Volatility ({volatility['volatility_regime']})
-- Standard Deviation: {volatility['std_dev']:.2f}%
-- Price Range: {volatility['low']:.1f}% - {volatility['high']:.1f}% (Δ{volatility['range']:.1f}%)
-- Coefficient of Variation: {volatility['coefficient_of_variation']:.1f}%
+### Price Volatility ({volatility["volatility_regime"]})
+- Standard Deviation: {volatility["std_dev"]:.2f}%
+- Price Range: {volatility["low"]:.1f}% - {volatility["high"]:.1f}% (Δ{volatility["range"]:.1f}%)
+- Coefficient of Variation: {volatility["coefficient_of_variation"]:.1f}%
 
 ### Momentum Analysis
-- **Trend**: {momentum['trend_signal']}
-- Current: {momentum['current_price']:.1f}%
-- Short SMA: {momentum.get('sma_short', 'N/A')}
-- Long SMA: {momentum.get('sma_long', 'N/A')}
-- Rate of Change: {momentum.get('rate_of_change', 0):.1f}%
+- **Trend**: {momentum["trend_signal"]}
+- Current: {momentum["current_price"]:.1f}%
+- Short SMA: {momentum.get("sma_short", "N/A")}
+- Long SMA: {momentum.get("sma_long", "N/A")}
+- Rate of Change: {momentum.get("rate_of_change", 0):.1f}%
 
 ### Support & Resistance
-- **Support**: {sr_levels.get('support', 'N/A')}%
-- **Resistance**: {sr_levels.get('resistance', 'N/A')}%
-- **Position**: {sr_levels.get('current_position', 'N/A')}
+- **Support**: {sr_levels.get("support", "N/A")}%
+- **Resistance**: {sr_levels.get("resistance", "N/A")}%
+- **Position**: {sr_levels.get("current_position", "N/A")}
 
 ### Expected Value Analysis
 - If market is efficient (true prob = {current_price:.0f}%): EV ≈ 0%
-- If bullish edge (+10%): YES EV = {ev_bullish['yes_ev']:.1f}%, {ev_bullish['recommendation']}
-- If bearish edge (-10%): NO EV = {ev_bearish['no_ev']:.1f}%, {ev_bearish['recommendation']}
+- If bullish edge (+10%): YES EV = {ev_bullish["yes_ev"]:.1f}%, {ev_bullish["recommendation"]}
+- If bearish edge (-10%): NO EV = {ev_bearish["no_ev"]:.1f}%, {ev_bearish["recommendation"]}
 
 ### Kelly Criterion (Momentum-Adjusted)
 - Adjusted probability estimate: {adjusted_prob:.1f}%
-- **Optimal Side**: {kelly['optimal_side']}
-- Quarter Kelly (conservative): {kelly['quarter_kelly']:.1f}% of bankroll
-- Half Kelly (moderate): {kelly['half_kelly']:.1f}% of bankroll
-- {kelly['recommendation']}
+- **Optimal Side**: {kelly["optimal_side"]}
+- Quarter Kelly (conservative): {kelly["quarter_kelly"]:.1f}% of bankroll
+- Half Kelly (moderate): {kelly["half_kelly"]:.1f}% of bankroll
+- {kelly["recommendation"]}
         """.strip()
 
         # --- LLM Synthesis ---
@@ -668,8 +668,7 @@ def top_traders_analyst(state: DebateState):
                 "messages": [
                     HumanMessage(
                         content=(
-                            "**Top Traders Analyst**: "
-                            "No top trader data available for this market."
+                            "**Top Traders Analyst**: No top trader data available for this market."
                         ),
                         name="Top Traders Analyst",
                     )
@@ -984,15 +983,9 @@ def time_decay_analyst(state: DebateState):
         if prices_24h and len(prices_24h) >= 2:
             recent_change = prices_24h[-1] - prices_24h[0]
             if abs(recent_change) > 5:
-                velocity_analysis = (
-                    f"Price moved {recent_change:+.1f}% in last 24h "
-                    "- active information flow"
-                )
+                velocity_analysis = f"Price moved {recent_change:+.1f}% in last 24h - active information flow"
             else:
-                velocity_analysis = (
-                    f"Price stable (Δ{recent_change:+.1f}%)"
-                    " - market in wait-and-see mode"
-                )
+                velocity_analysis = f"Price stable (Δ{recent_change:+.1f}%) - market in wait-and-see mode"
         else:
             velocity_analysis = "Insufficient price data for velocity analysis"
 
@@ -1001,7 +994,7 @@ def time_decay_analyst(state: DebateState):
             time_report = f"""
 ## Time Decay Analysis
 
-⚠️ **Unable to analyze**: {time_metrics.get('error')}
+⚠️ **Unable to analyze**: {time_metrics.get("error")}
 
 Without a resolution date, time-based analysis is not possible.
 Proceed with caution and rely on other signals.
@@ -1225,3 +1218,29 @@ def build_debate_graph(config: Optional[AgentConfig] = None) -> StateGraph:
 
 # Default app with all agents enabled (for backwards compatibility)
 debate_app = build_debate_graph()
+
+
+async def run_debate_graph_stream(
+    market_id: str, agent_config: AgentConfig, initial_state: DebateState
+):
+    debate_graph = build_debate_graph(agent_config)
+    yielded_messages = 0
+    verdict_yielded = False
+
+    async for state in debate_graph.astream(initial_state):
+        # Yield new messages
+        current_messages = len(state["messages"])
+        for i in range(yielded_messages, current_messages):
+            msg = state["messages"][i]
+            if isinstance(msg, HumanMessage) and msg.name:
+                yield {
+                    "agent": msg.name,
+                    "content": str(msg.content),
+                    "type": "message",
+                }
+        yielded_messages = current_messages
+
+        # Yield verdict if available
+        if not verdict_yielded and state.get("verdict"):
+            yield {"type": "verdict", "content": state["verdict"]}
+            verdict_yielded = True

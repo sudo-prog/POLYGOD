@@ -7,14 +7,19 @@ Uses NewsAPI to fetch articles related to market topics.
 import hashlib
 import logging
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import httpx
+from aiobreaker import CircuitBreaker
 
-from src.backend.config import settings
 from src.backend.news.schemas import NewsArticleIn
 
 logger = logging.getLogger(__name__)
+
+news_breaker = CircuitBreaker(
+    fail_max=3,  # open after 3 failures
+    timeout_duration=timedelta(minutes=30),  # retry after 30 min
+)
 
 NEWS_API_BASE = "https://newsapi.org/v2"
 EVERYTHING_ENDPOINT = f"{NEWS_API_BASE}/everything"
@@ -168,16 +173,11 @@ class NewsAggregator:
     """Aggregator for fetching news articles from multiple sources."""
 
     def __init__(self, api_key: str | None = None, timeout: float = 15.0):
-        """
-        Initialize the news aggregator.
+        self._circuit_breaker = news_breaker
 
-        Args:
-            api_key: NewsAPI API key. Uses settings if not provided.
-            timeout: Request timeout in seconds.
-        """
-        self.api_key = api_key or settings.NEWS_API_KEY
-        self.timeout = timeout
-        self._client: httpx.AsyncClient | None = None
+    async def _check_breaker(self) -> bool:
+        """Check if circuit is closed (allow requests)."""
+        return self._circuit_breaker.is_closed
 
     async def _get_client(self) -> httpx.AsyncClient:
         """Get or create the HTTP client."""
@@ -210,6 +210,10 @@ class NewsAggregator:
         """
         if not self.api_key:
             logger.warning("No NEWS_API_KEY configured, skipping news fetch")
+            return []
+
+        if not await self._check_breaker():
+            logger.warning("NewsAPI circuit breaker open - skipping fetch")
             return []
 
         query = extract_keywords(market_title)
@@ -292,6 +296,7 @@ class NewsAggregator:
             return articles[:limit]
 
         except httpx.HTTPStatusError as e:
+            self._circuit_breaker.fail()
             if e.response.status_code == 401:
                 logger.error("Invalid NEWS_API_KEY")
             elif e.response.status_code == 429:
@@ -300,8 +305,11 @@ class NewsAggregator:
                 logger.error(f"HTTP error fetching news: {e}")
             return []
         except Exception as e:
+            self._circuit_breaker.fail()
             logger.error(f"Error fetching news: {e}")
             return []
+
+        self._circuit_breaker.success()
 
 
 # Global aggregator instance

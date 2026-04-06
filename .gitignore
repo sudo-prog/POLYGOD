@@ -19,6 +19,12 @@ env/
 *.db
 polymarket.db
 
+# Qdrant vector store
+qdrant_storage/
+
+# Backups
+backups/
+
 # Node.js
 node_modules/
 dist/

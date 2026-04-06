@@ -8,12 +8,18 @@ from typing import Any, Dict, List, Optional
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
 from langchain_core.messages import HumanMessage
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.backend.agents.debate import AgentConfig, DebateState, build_debate_graph
+from src.backend.agents.debate import (
+    AgentConfig,
+    DebateState,
+    build_debate_graph,
+    run_debate_graph_stream,
+)
 from src.backend.database import get_db
 from src.backend.db_models import Market
 from src.backend.polymarket.client import polymarket_client
@@ -53,8 +59,7 @@ class DebateRequest(BaseModel):
     agents: Optional[AgentConfigRequest] = Field(
         default=None,
         description=(
-            "Configuration for which agents to include. "
-            "If not provided, all agents are enabled."
+            "Configuration for which agents to include. If not provided, all agents are enabled."
         ),
     )
 
@@ -645,4 +650,103 @@ async def initiate_debate(
         messages=formatted_messages,
         verdict=final_state.get("verdict", "No verdict reached."),
         enabled_agents=enabled_agents,
+    )
+
+
+@router.post("/{market_id}/stream")
+async def debate_stream(
+    market_id: str,
+    request: Optional[DebateRequest] = None,
+    db: AsyncSession = Depends(get_db),
+):
+    # Reuse the market fetching logic from above
+    result = await db.execute(select(Market).where(Market.id == market_id))
+    market = result.scalar_one_or_none()
+
+    if not market:
+        result = await db.execute(select(Market).where(Market.slug == market_id))
+        market = result.scalar_one_or_none()
+
+    if not market:
+        raise HTTPException(status_code=404, detail="Market not found")
+
+    # Prepare data (same as above)
+    price_history_24h: List[float] = []
+    price_history_7d: List[float] = []
+
+    if market.clob_token_ids:
+        try:
+            token_ids = json.loads(market.clob_token_ids)
+            if token_ids and len(token_ids) > 0:
+                yes_token_id = token_ids[0]
+                history_24h = await fetch_price_history_from_clob(
+                    yes_token_id, "1d", 15
+                )
+                if history_24h:
+                    price_history_24h = [h["p"] * 100 for h in history_24h]
+                history_7d = await fetch_price_history_from_clob(yes_token_id, "7d", 60)
+                if history_7d:
+                    price_history_7d = [h["p"] * 100 for h in history_7d]
+        except Exception as e:
+            logger.warning(f"Failed to fetch price history for debate: {e}")
+
+    market_data = {
+        "title": market.title,
+        "price": market.yes_percentage,
+        "volume_24h": market.volume_24h,
+        "volume_7d": market.volume_7d,
+        "liquidity": market.liquidity,
+        "end_date": str(market.end_date),
+    }
+
+    top_traders = []
+    try:
+        top_traders = await _fetch_top_traders(market)
+    except Exception as e:
+        logger.warning(f"Failed to fetch top traders for debate: {e}")
+
+    initial_state: DebateState = {
+        "messages": [],
+        "market_data": market_data,
+        "market_question": market.title,
+        "verdict": "",
+        "price_history_24h": price_history_24h,
+        "price_history_7d": price_history_7d,
+        "top_traders": top_traders,
+    }
+
+    agent_config: AgentConfig = {
+        "statistics_expert": True,
+        "generalist_expert": True,
+        "devils_advocate": True,
+        "crypto_macro_analyst": True,
+        "time_decay_analyst": True,
+        "top_traders_analyst": True,
+    }
+
+    if request and request.agents:
+        agent_config = {
+            "statistics_expert": request.agents.statistics_expert,
+            "generalist_expert": request.agents.generalist_expert,
+            "devils_advocate": request.agents.devils_advocate,
+            "crypto_macro_analyst": request.agents.crypto_macro_analyst,
+            "time_decay_analyst": request.agents.time_decay_analyst,
+            "top_traders_analyst": request.agents.top_traders_analyst,
+        }
+
+    async def event_generator():
+        try:
+            async for msg in run_debate_graph_stream(
+                market_id, agent_config, initial_state
+            ):
+                yield f"data: {json.dumps(msg)}\n\n"
+        except asyncio.TimeoutError:
+            yield 'data: {"type":"error","content":"timeout"}\n\n'
+        finally:
+            yield "data: [DONE]\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )

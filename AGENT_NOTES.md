@@ -139,3 +139,122 @@ Implemented all Phase 1 Critical Fixes and Test Suite Implementation as requeste
 - Generate secure API keys and tokens for production
 
 All critical production requirements have been implemented. The system is now hardened for live trading operations.
+
+---
+
+## 2026-04-06 - PHASE 2 & 3 Implementation (Medium Priority Fixes)
+
+### Document C - Medium Priority (M1-M8)
+
+#### M4 - clsx dependency
+- **src/frontend/package.json**: clsx already present (`^2.1.1`)
+
+#### M6 - Docker Port Bind to 127.0.0.1
+- **docker-compose.yml**: Changed backend ports from `"8000:8000"` to `"127.0.0.1:8000:8000"`
+
+#### M7 - Content-Security-Policy in Nginx
+- **docker/nginx/default.conf**: Added security headers:
+  - Content-Security-Policy with strict directives
+  - X-Content-Type-Options: nosniff
+  - X-Frame-Options: DENY
+  - Referrer-Policy: strict-origin-when-cross-origin
+
+#### M2 - WebSocket Reconnect Counter Reset
+- **src/frontend/src/hooks/usePolyGodWS.ts**: reconnectAttempts already resets in onopen handler (line 23)
+
+#### M3 - Merge store.ts into marketStore.ts
+- **src/frontend/src/stores/marketStore.ts**: Added `updatePolyGod()` method to interface and implementation
+- **src/frontend/src/hooks/usePolyGodWS.ts**: Updated to import from `marketStore` instead of `store`
+- **src/frontend/src/store.ts**: Deleted (merged into marketStore.ts)
+
+#### M1 - React Query Global Stale Time
+- **src/frontend/src/main.tsx**: Updated QueryClient config:
+  - staleTime: 30_000 (30s)
+  - gcTime: 5 * 60_000 (5min)
+  - retry: 2
+  - retryDelay with exponential backoff
+  - refetchOnWindowFocus: false
+
+#### M5 - React Error Boundaries
+- **src/frontend/src/components/WidgetErrorBoundary.tsx**: Created new component with:
+  - ErrorBoundary with FallbackComponent
+  - WidgetError displays error with retry button
+  - onReset reloads page
+- **src/frontend/src/App.tsx**: Wrapped all data-fetching components with WidgetErrorBoundary:
+  - TickerBanner, MarketList, PriceChart
+  - NewsFeed, WhaleList, TopHolders, PriceMovement, DebateFloor
+  - LLMHub, UserDashboard
+
+#### M8 - SSE Streaming for Debate Floor
+- **src/backend/agents/debate.py**: Added `run_debate_graph_stream()` async generator
+- **src/backend/routes/debate.py**: Added `/api/debate/{market_id}/stream` endpoint:
+  - Uses StreamingResponse with text/event-stream media type
+  - Yields messages progressively as they complete
+  - Handles timeout and client disconnect
+- **src/frontend/src/components/DebateFloor.tsx**: Updated to use streaming:
+  - Uses fetch() with ReadableStream reader
+  - Parses SSE data format
+  - Displays messages as they arrive
+  - Shows loading state during streaming
+
+---
+
+## 2026-04-06 - PHASE 4 Implementation (Infrastructure Hardening)
+
+### Document D - Low Priority (L1-L5)
+
+#### L4 - Remove qdrant_storage from Git
+- **.gitignore**: Added `qdrant_storage/` and `backups/`
+
+#### L2 - Pin Python Version in Dockerfile
+- **Dockerfile.backend**: Changed `python:3.12-slim` to `python:3.12.13-slim`
+
+#### L3 - Docker Healthchecks
+- **src/backend/main.py**: Enhanced `/api/health` endpoint:
+  - Returns database connection status
+  - Returns scheduler running status
+  - Returns version info
+
+#### L1 - TypeScript Strict Mode
+- **src/frontend/tsconfig.json**: Already has `"strict": true`
+
+#### L5 - NewsAPI Circuit Breaker
+- **pyproject.toml**: Added `aiobreaker>=1.0`
+- **src/backend/news/aggregator.py**: Added circuit breaker:
+  - CircuitBreaker with fail_max=3, timeout=30min
+  - `_check_breaker()` method to check circuit state
+  - Added `_circuit_breaker.fail()` and `_circuit_breaker.success()` calls in fetch methods
+
+---
+
+## Files Modified
+
+### Created
+- src/frontend/src/components/WidgetErrorBoundary.tsx
+
+### Deleted
+- src/frontend/src/store.ts
+
+### Updated
+- docker-compose.yml
+- docker/nginx/default.conf
+- src/frontend/src/stores/marketStore.ts
+- src/frontend/src/hooks/usePolyGodWS.ts
+- src/frontend/src/main.tsx
+- src/frontend/src/App.tsx
+- src/frontend/src/components/DebateFloor.tsx
+- src/backend/agents/debate.py
+- src/backend/routes/debate.py
+- src/backend/news/aggregator.py
+- src/backend/main.py
+- .gitignore
+- Dockerfile.backend
+- pyproject.toml
+- tsconfig.json (already strict)
+
+---
+
+## Session Instructions
+
+- **Always check AGENT_NOTES.md, PROGRESS.md and any other files with updates and recent changes of project at the start of every session.**
+- **Always add notes about and changes and updates you have made to AGENT_NOTES.md at the end of every session before finishing.**
