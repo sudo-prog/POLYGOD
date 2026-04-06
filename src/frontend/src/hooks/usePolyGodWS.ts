@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useStore } from '../store';
 
-const WS_URL = 'ws://localhost:8000/ws/polygod';
+const WS_URL = `ws://localhost:8000/ws/polygod?token=${import.meta.env.VITE_WS_TOKEN}`;
 const RECONNECT_INTERVAL = 3000; // 3 seconds
 const MAX_RECONNECT_ATTEMPTS = 10;
 

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   TrendingUp,
   Newspaper,
@@ -6,12 +6,11 @@ import {
   Wallet,
   Trophy,
   Activity,
-  User,
   MessageSquare,
   Zap,
   Brain,
   DollarSign,
-  Cpu,
+  Bell,
 } from 'lucide-react';
 import { MarketList } from './components/MarketList';
 import PriceChart from './components/PriceChart';
@@ -21,11 +20,17 @@ import { TopHolders } from './components/TopHolders';
 import { PriceMovement } from './components/PriceMovement';
 import { TimeframeSelector } from './components/TimeframeSelector';
 import { SearchBar } from './components/SearchBar';
-import DebateFloor from './components/DebateFloor';
-import UserDashboard from './components/UserDashboard';
+import { DebateFloor } from './components/DebateFloor';
+import { UserDashboard } from './components/UserDashboard';
 import LLMHub from './components/LLMHub';
 import { useMarketStore } from './stores/marketStore';
 import { usePolyGodWS } from './hooks/usePolyGodWS';
+import { useEditModeStore } from './stores/editModeStore';
+import { SettingsButton } from './components/SettingsButton';
+import { HamburgerMenu } from './components/HamburgerMenu';
+import { SettingsScreen } from './components/SettingsScreen';
+import { SpotlightSearch } from './components/SpotlightSearch';
+import { NotificationCentre } from './components/NotificationCentre';
 
 interface PolyGodData {
   mode?: number;
@@ -36,6 +41,17 @@ interface PolyGodData {
 function App() {
   const { selectedMarket } = useMarketStore();
   const { isConnected, data: rawPolyGodData, lastAlert } = usePolyGodWS();
+  const {
+    isEditMode,
+    setEditMode,
+    toggleSettings,
+    setHamburgerOpen,
+    settingsOpen,
+    setSpotlightOpen,
+    spotlightOpen,
+    setNotificationOpen,
+    notificationOpen,
+  } = useEditModeStore();
   const [activeTab, setActiveTab] = useState<'news' | 'whales' | 'holders' | 'stats' | 'debate'>(
     'news'
   );
@@ -90,8 +106,57 @@ function App() {
     );
   };
 
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      // Ctrl + E: Toggle Edit Mode
+      if (event.ctrlKey && event.key === 'e') {
+        event.preventDefault();
+        setEditMode(!isEditMode);
+      }
+      // Ctrl + ,: Open Settings Screen
+      else if (event.ctrlKey && event.key === ',') {
+        event.preventDefault();
+        toggleSettings();
+      }
+      // Ctrl + \: Toggle Hamburger Menu
+      else if (event.ctrlKey && event.key === '\\') {
+        event.preventDefault();
+        setHamburgerOpen(true);
+      }
+      // Cmd+K / Ctrl+K: Open Spotlight Search
+      else if ((event.metaKey || event.ctrlKey) && event.key === 'k') {
+        event.preventDefault();
+        setSpotlightOpen(true);
+      }
+      // Escape: Close panels in priority order (spotlight > settings > hamburger > editMode)
+      else if (event.key === 'Escape') {
+        if (spotlightOpen) {
+          setSpotlightOpen(false);
+        } else if (settingsOpen) {
+          toggleSettings();
+        } else if (document.querySelector('.hamburger-menu')) {
+          setHamburgerOpen(false);
+        } else if (isEditMode) {
+          setEditMode(false);
+        }
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [
+    isEditMode,
+    settingsOpen,
+    spotlightOpen,
+    setEditMode,
+    toggleSettings,
+    setHamburgerOpen,
+    setSpotlightOpen,
+  ]);
+
   return (
-    <div className="min-h-screen bg-surface-950">
+    <div className="min-h-screen bg-surface-950 pg-mesh-bg">
       {/* Whale Alert Banner */}
       {lastAlert && (
         <div className="bg-gradient-to-r from-emerald-600/20 via-emerald-500/30 to-emerald-600/20 border-b border-emerald-500/30">
@@ -106,6 +171,7 @@ function App() {
       <header className="glass border-b border-white/10 sticky top-0 z-50">
         <div className="max-w-[1920px] mx-auto px-4 py-4 flex flex-col md:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-3">
+            <HamburgerMenu setActiveView={setActiveView} />
             <div className="p-2 rounded-xl bg-primary-600 shadow-lg shadow-primary-900/20">
               <TrendingUp className="w-6 h-6 text-white" />
             </div>
@@ -181,40 +247,39 @@ function App() {
               {!isConnected && <Zap className="w-3 h-3 text-yellow-400 animate-pulse" />}
             </div>
 
-            <div className="flex items-center gap-1 bg-surface-900/70 border border-white/10 rounded-xl p-1">
+            <div className="ios-segmented">
               <button
                 onClick={() => setActiveView('markets')}
-                className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${
-                  activeView === 'markets'
-                    ? 'bg-primary-500/30 text-white'
-                    : 'text-surface-300 hover:text-white'
-                }`}
+                className={`ios-seg-item ${activeView === 'markets' ? 'active' : ''}`}
               >
                 Markets
               </button>
               <button
                 onClick={() => setActiveView('user')}
-                className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors flex items-center gap-1 ${
-                  activeView === 'user'
-                    ? 'bg-primary-500/30 text-white'
-                    : 'text-surface-300 hover:text-white'
-                }`}
+                className={`ios-seg-item ${activeView === 'user' ? 'active' : ''}`}
               >
-                <User className="w-3 h-3" />
                 User Lab
               </button>
               <button
                 onClick={() => setActiveView('llm')}
-                className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors flex items-center gap-1 ${
-                  activeView === 'llm'
-                    ? 'bg-primary-500/30 text-white'
-                    : 'text-surface-300 hover:text-white'
-                }`}
+                className={`ios-seg-item ${activeView === 'llm' ? 'active' : ''}`}
               >
-                <Cpu className="w-3 h-3" />
-                🧠 LLM Hub
+                LLM Hub
               </button>
             </div>
+
+            {/* Notification Bell */}
+            <button
+              onClick={() => setNotificationOpen(!notificationOpen)}
+              className="ios-icon-btn relative"
+            >
+              <Bell className="w-5 h-5" />
+              {/* Unread count badge */}
+              <div className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 rounded-full flex items-center justify-center text-xs font-bold text-white">
+                2
+              </div>
+            </button>
+
             {activeView === 'markets' && <SearchBar />}
           </div>
         </div>
@@ -226,7 +291,7 @@ function App() {
           <div className="grid grid-cols-12 gap-4 lg:gap-6">
             {/* Sidebar - Market List */}
             <aside className="col-span-12 lg:col-span-3 xl:col-span-3">
-              <div className="glass-card rounded-2xl p-4 sticky top-24">
+              <div className="ios-card rounded-2xl p-4 sticky top-24">
                 <div className="flex items-center gap-2 mb-4">
                   <BarChart3 className="w-5 h-5 text-primary-400" />
                   <h2 className="font-semibold text-white">Top 100 Markets</h2>
@@ -238,7 +303,7 @@ function App() {
             {/* Main Content Area */}
             <div className="col-span-12 lg:col-span-9 xl:col-span-9 space-y-4 lg:space-y-6">
               {/* Chart Section */}
-              <section className="glass-card rounded-2xl p-4 lg:p-6">
+              <section className="ios-card rounded-2xl p-4 lg:p-6">
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4">
                   <div className="flex-1 min-w-0">
                     <h2 className="font-semibold text-white truncate">
@@ -273,7 +338,7 @@ function App() {
               </section>
 
               {/* News & Whales Section */}
-              <section className="glass-card rounded-2xl p-4 lg:p-6">
+              <section className="ios-card rounded-2xl p-4 lg:p-6">
                 <div className="flex items-center gap-4 mb-4 border-b border-white/5 pb-2 overflow-x-auto">
                   <button
                     onClick={() => setActiveTab('news')}
@@ -393,6 +458,18 @@ function App() {
           <UserDashboard />
         )}
       </main>
+
+      {/* Settings Screen */}
+      <SettingsScreen />
+
+      {/* Spotlight Search */}
+      <SpotlightSearch isOpen={spotlightOpen} onClose={() => setSpotlightOpen(false)} />
+
+      {/* Notification Centre */}
+      <NotificationCentre isOpen={notificationOpen} onClose={() => setNotificationOpen(false)} />
+
+      {/* Settings Button */}
+      <SettingsButton />
 
       {/* Footer */}
       <footer className="glass border-t border-white/10 mt-8">

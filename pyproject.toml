@@ -38,6 +38,8 @@ dependencies = [
     "redis>=5.2.0",          # ← Redis client for rate limit storage
     "langchain-core>=0.3.20",   # ← EXPLICIT FIX for direct imports + langgraph
     "python-telegram-bot>=21.0",  # ← Telegram Bot API (god-tier command surface)
+    "asyncpg>=0.29",            # ← PostgreSQL async driver
+    "alembic>=1.13",            # ← Database migration tool
 ]
 
 [project.optional-dependencies]
@@ -45,6 +47,14 @@ dev = [
     "pytest>=0.8.0",
     "pytest-asyncio>=0.25.0",
     "ruff>=0.9.0",
+]
+test = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "pytest-cov>=5.0",
+    "httpx>=0.27", # for async test client
+    "respx>=0.21", # mock httpx requests
+    "faker>=24.0",
 ]
 
 [build-system]

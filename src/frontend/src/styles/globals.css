@@ -5,7 +5,7 @@
 /* Base styles */
 :root {
   font-family:
-    Inter,
+    'Work Sans',
     system-ui,
     -apple-system,
     BlinkMacSystemFont,
@@ -30,25 +30,82 @@ body {
 
 /* Scrollbar styling */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
 }
 
 ::-webkit-scrollbar-track {
   background: rgba(15, 23, 42, 0.5);
-  border-radius: 4px;
+  border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(51, 139, 255, 0.4);
-  border-radius: 4px;
+  background: rgba(201, 168, 76, 0.4);
+  border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(51, 139, 255, 0.6);
+  background: rgba(201, 168, 76, 0.6);
 }
 
-/* Glassmorphism utilities */
+/* iOS button system */
+@layer components {
+  .ios-btn {
+    @apply bg-surface-900/50 border border-white/10 text-white px-3 py-1.5 text-xs font-medium rounded-2xl transition-all;
+  }
+  .ios-btn-gold {
+    @apply bg-yellow-500/20 border border-yellow-500/40 text-yellow-400 px-3 py-1.5 text-xs font-medium rounded-2xl transition-all;
+  }
+  .ios-btn-red {
+    @apply bg-red-500/20 border border-red-500/40 text-red-400 px-3 py-1.5 text-xs font-medium rounded-2xl transition-all;
+  }
+  .ios-icon-btn {
+    @apply bg-surface-900/50 border border-white/10 text-white rounded-xl p-2 transition-all;
+  }
+  .ios-input {
+    @apply bg-surface-800/50 border border-white/10 text-white px-3 py-2 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-yellow-500/50 focus:border-yellow-500/50 transition-all;
+  }
+  .ios-toggle {
+    @apply relative inline-flex h-6 w-11 items-center rounded-full transition-colors bg-surface-900/50;
+  }
+  .ios-toggle.active {
+    @apply bg-yellow-500/30;
+  }
+  .ios-toggle span {
+    @apply inline-block h-4 w-4 transform rounded-full bg-white transition-transform translate-x-1;
+  }
+  .ios-toggle.active span {
+    @apply translate-x-6;
+  }
+}
+
+/* iOS segmented control */
+@layer components {
+  .ios-segmented {
+    @apply flex items-center gap-1 p-1 bg-surface-900/50 rounded-2xl;
+  }
+  .ios-seg-item {
+    @apply px-4 py-2 text-xs font-medium rounded-2xl transition-all;
+  }
+  .ios-seg-item.active {
+    @apply bg-surface-950/50 text-white shadow-lg shadow-yellow-500/25;
+  }
+}
+
+/* iOS card system */
+@layer components {
+  .ios-card {
+    @apply bg-surface-900/50 border border-white/10 rounded-2xl backdrop-blur-2xl shadow-lg shadow-surface-950/30;
+  }
+  .ios-card-sm {
+    @apply bg-surface-900/50 border border-white/10 rounded-lg backdrop-blur-xl shadow-lg shadow-surface-950/25;
+  }
+  .ios-inner {
+    @apply bg-surface-900/50 border border-white/10 rounded-lg backdrop-blur-sm shadow-sm shadow-surface-950/20;
+  }
+}
+
+/* iOS-specific utilities */
 @layer utilities {
   .glass {
     background: rgba(30, 41, 59, 0.6);
@@ -56,14 +113,12 @@ body {
     -webkit-backdrop-filter: blur(12px);
     border: 1px solid rgba(255, 255, 255, 0.08);
   }
-
   .glass-light {
     background: rgba(30, 41, 59, 0.4);
     backdrop-filter: blur(8px);
     -webkit-backdrop-filter: blur(8px);
     border: 1px solid rgba(255, 255, 255, 0.05);
   }
-
   .glass-card {
     background: linear-gradient(135deg, rgba(30, 41, 59, 0.7) 0%, rgba(30, 41, 59, 0.5) 100%);
     backdrop-filter: blur(16px);
@@ -74,11 +129,9 @@ body {
       0 2px 4px -1px rgba(0, 0, 0, 0.06),
       inset 0 1px 0 0 rgba(255, 255, 255, 0.05);
   }
-
   .gradient-accent {
     background: linear-gradient(135deg, #338bff 0%, #22c55e 100%);
   }
-
   .text-gradient {
     background: linear-gradient(135deg, #338bff 0%, #22c55e 100%);
     -webkit-background-clip: text;
@@ -121,4 +174,124 @@ body {
   100% {
     background-position: -200% 0;
   }
+}
+
+/* Jiggle animation for iOS edit mode */
+@keyframes jiggle {
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+  25% {
+    transform: rotate(-0.55deg);
+  }
+  75% {
+    transform: rotate(0.55deg);
+  }
+}
+.jiggle {
+  animation: jiggle 0.18s ease-in-out infinite;
+}
+
+/* Hold progress ring */
+.hold-ring {
+  position: absolute;
+  inset: -3px;
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: 10;
+}
+
+/* Reduce motion */
+body.reduce-motion * {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+}
+
+/* High contrast */
+body.high-contrast {
+  --pg-border: rgba(255, 255, 255, 0.22);
+  --pg-text: #ffffff;
+  --pg-muted: rgba(255, 255, 255, 0.7);
+}
+
+/* Bold text */
+body.bold-text {
+  --font-weight-base: 600;
+}
+body.bold-text * {
+  font-weight: var(--font-weight-base);
+}
+
+/* Text scale classes */
+body.text-scale-xs :root {
+  font-size: 14px;
+}
+body.text-scale-sm :root {
+  font-size: 15px;
+}
+body.text-scale-lg :root {
+  font-size: 18px;
+}
+body.text-scale-xl :root {
+  font-size: 20px;
+}
+
+/* Light mode */
+body.light-mode {
+  --pg-bg: #f5f5f7;
+  --pg-panel: rgba(255, 255, 255, 0.72);
+  --pg-glass: rgba(0, 0, 0, 0.04);
+  --pg-glass-border: rgba(0, 0, 0, 0.1);
+  --pg-border: rgba(0, 0, 0, 0.1);
+  --pg-text: #1c1c1e;
+  --pg-muted: rgba(60, 60, 67, 0.6);
+  --pg-surface: rgba(242, 242, 247, 0.9);
+}
+body.light-mode .pg-mesh-bg::before {
+  opacity: 0.12;
+}
+
+/* Colour blind filters */
+body.deuteranopia .pg-mesh-bg {
+  filter: url(#deuteranopia);
+}
+body.protanopia .pg-mesh-bg {
+  filter: url(#protanopia);
+}
+body.tritanopia .pg-mesh-bg {
+  filter: url(#tritanopia);
+}
+
+/* Context menu */
+.pg-context-menu {
+  position: fixed;
+  z-index: 500;
+  background: rgba(8, 12, 24, 0.92);
+  backdrop-filter: blur(24px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  padding: 6px;
+  min-width: 200px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+  animation: float-up 150ms cubic-bezier(0.34, 1.2, 0.64, 1);
+}
+.pg-context-item {
+  padding: 9px 12px;
+  border-radius: 10px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-family: var(--font-body);
+  font-size: 13px;
+  color: var(--pg-text);
+  transition: background 150ms ease;
+}
+.pg-context-item:hover {
+  background: rgba(255, 255, 255, 0.07);
+}
+.pg-context-item.danger {
+  color: var(--pg-red);
 }

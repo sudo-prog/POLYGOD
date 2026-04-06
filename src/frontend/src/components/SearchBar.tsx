@@ -1,73 +1,75 @@
 import { useState } from 'react';
-import { Search, Loader2 } from 'lucide-react';
+import { Search, X } from 'lucide-react';
 import { useMarketStore } from '../stores/marketStore';
-
-const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000';
+import { useMarkets } from '../hooks/useMarkets';
 
 export function SearchBar() {
-  const [query, setQuery] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const { setSelectedMarket } = useMarketStore();
+  const { data: marketsResponse } = useMarkets();
+  const [query, setQuery] = useState('');
+  const [isOpen, setIsOpen] = useState(false);
 
-  const handleSearch = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!query.trim()) return;
+  const filteredMarkets =
+    marketsResponse?.markets
+      ?.filter(
+        (market: any) =>
+          market.title.toLowerCase().includes(query.toLowerCase()) ||
+          market.slug.toLowerCase().includes(query.toLowerCase())
+      )
+      .slice(0, 5) || [];
 
-    setIsLoading(true);
-    setError(null);
-
-    try {
-      // Check if it's a full URL or just a slug
-      let slug = query.trim();
-      if (slug.includes('polymarket.com/event/')) {
-        const parts = slug.split('/');
-        slug = parts[parts.length - 1];
-      }
-
-      const response = await fetch(`${API_BASE}/api/markets/${slug}`);
-
-      if (!response.ok) {
-        if (response.status === 404) {
-          throw new Error('Market not found');
-        }
-        throw new Error('Failed to fetch market');
-      }
-
-      const market = await response.json();
-      setSelectedMarket(market);
-      setQuery('');
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Something went wrong');
-    } finally {
-      setIsLoading(false);
-    }
+  const handleSelect = (market: any) => {
+    setSelectedMarket(market);
+    setQuery('');
+    setIsOpen(false);
   };
 
   return (
-    <form onSubmit={handleSearch} className="relative w-full max-w-md">
-      <div className="relative">
+    <div className="relative">
+      <div className="ios-input flex items-center gap-2">
+        <Search className="w-4 h-4 text-surface-400" />
         <input
           type="text"
+          placeholder="Search markets..."
           value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search market by slug or URL..."
-          className="w-full bg-surface-800/50 border border-white/10 rounded-xl py-2 pl-10 pr-4 text-sm text-white placeholder-surface-400 focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500/50 transition-all"
-          disabled={isLoading}
+          onChange={(e) => {
+            setQuery(e.target.value);
+            setIsOpen(e.target.value.length > 0);
+          }}
+          onFocus={() => setIsOpen(query.length > 0)}
+          onBlur={() => setTimeout(() => setIsOpen(false), 200)}
+          className="flex-1 bg-transparent border-none outline-none text-white placeholder-surface-400"
         />
-        <div className="absolute left-3 top-1/2 -translate-y-1/2 text-surface-400">
-          {isLoading ? (
-            <Loader2 className="w-4 h-4 animate-spin text-primary-400" />
-          ) : (
-            <Search className="w-4 h-4" />
-          )}
-        </div>
+        {query && (
+          <button
+            onClick={() => {
+              setQuery('');
+              setIsOpen(false);
+            }}
+            className="text-surface-400 hover:text-white"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        )}
       </div>
-      {error && (
-        <div className="absolute top-full mt-2 left-0 right-0 bg-red-500/10 border border-red-500/20 text-red-200 text-xs px-3 py-2 rounded-lg backdrop-blur-md">
-          {error}
+
+      {/* Search Results */}
+      {isOpen && filteredMarkets.length > 0 && (
+        <div className="absolute top-full left-0 right-0 z-50 mt-2 bg-surface-900/95 border border-white/10 rounded-2xl backdrop-blur-xl max-h-64 overflow-y-auto">
+          {filteredMarkets.map((market: any) => (
+            <button
+              key={market.id}
+              onClick={() => handleSelect(market)}
+              className="w-full px-4 py-3 text-left hover:bg-surface-800/50 transition-colors first:rounded-t-2xl last:rounded-b-2xl"
+            >
+              <div className="font-medium text-white truncate">{market.title}</div>
+              <div className="text-sm text-surface-400">
+                {market.yes_percentage.toFixed(1)}% Yes • ${market.volume_24h.toLocaleString()}
+              </div>
+            </button>
+          ))}
         </div>
       )}
-    </form>
+    </div>
   );
 }

@@ -14,6 +14,18 @@ services:
     volumes:
       - qdrant_storage:/qdrant/storage
 
+  postgres:
+    image: postgres:15-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: polygod
+      POSTGRES_USER: polygod
+      POSTGRES_PASSWORD: polygod_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
   backend:
     build:
       context: .
@@ -41,3 +53,4 @@ services:
 volumes:
   redis_data:
   qdrant_storage:
+  postgres_data:

@@ -33,6 +33,7 @@ class Settings(BaseSettings):
     ENCRYPTION_KEY: str = Field(default="")
     REDIS_URL: str = Field(default="redis://redis:6379/0")
     TELEGRAM_BOT_TOKEN: str = Field(default="")
+    INTERNAL_API_KEY: str = Field(default="change-this-before-use")
 
     @property
     def cors_origins_list(self) -> list[str]:

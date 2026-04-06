@@ -1,208 +1,106 @@
-import { useQuery } from '@tanstack/react-query';
-import { Trophy, User } from 'lucide-react';
+import { useState } from 'react';
+import { Trophy, User, RefreshCw } from 'lucide-react';
 import { useMarketStore } from '../stores/marketStore';
-import { getUserTags } from '../utils/userTags';
-
-interface Holder {
-  address: string;
-  name: string;
-  amount: number;
-  img?: string;
-  market_pnl: number;
-  market_roi: number;
-  global_pnl: number;
-  global_roi: number;
-  total_balance?: number;
-}
-
-interface HoldersResponse {
-  yes_holders: Holder[];
-  no_holders: Holder[];
-}
-
-async function fetchHolders(marketId: string): Promise<HoldersResponse> {
-  const response = await fetch(`/api/markets/${marketId}/holders`);
-  if (!response.ok) {
-    throw new Error('Failed to fetch holders');
-  }
-  return response.json();
-}
-
-function PnLBadge({ value, isPercent = false }: { value: number; isPercent?: boolean }) {
-  const isPositive = value >= 0;
-  const formatted = isPercent
-    ? `${value > 0 ? '+' : ''}${value.toFixed(1)}%`
-    : `${value > 0 ? '+' : ''}$${Math.abs(value).toLocaleString(undefined, {
-        maximumFractionDigits: 0,
-      })}`;
-
-  return (
-    <span
-      className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${
-        isPositive
-          ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-          : 'bg-red-500/10 text-red-400 border border-red-500/20'
-      }`}
-    >
-      {formatted}
-    </span>
-  );
-}
-
-function HolderRow({ holder, rank }: { holder: Holder; rank: number }) {
-  function formatAddress(address: string): string {
-    if (!address) return 'Unknown';
-    if (address.length < 10) return address;
-    return `${address.slice(0, 4)}...${address.slice(-4)}`;
-  }
-
-  // Check if name is generic address or nickname
-  const displayName =
-    holder.name && holder.name !== '' ? holder.name : formatAddress(holder.address);
-
-  const tags = getUserTags({
-    global_pnl: holder.global_pnl,
-    total_balance: holder.total_balance ?? null,
-  });
-
-  const tagClass = (tone: 'positive' | 'negative' | 'neutral') => {
-    if (tone === 'positive') {
-      return 'bg-emerald-500/10 text-emerald-300 border-emerald-500/20';
-    }
-    if (tone === 'negative') {
-      return 'bg-red-500/10 text-red-300 border-red-500/20';
-    }
-    return 'bg-surface-700/30 text-surface-300 border-surface-600/30';
-  };
-
-  return (
-    <div className="flex items-center justify-between py-3 border-b border-white/5 last:border-0 hover:bg-white/5 px-2 rounded-lg transition-colors group">
-      <div className="flex items-center gap-3 min-w-0 flex-1">
-        <span
-          className={`text-xs font-mono w-4 shrink-0 ${
-            rank <= 3 ? 'text-amber-400' : 'text-surface-400'
-          }`}
-        >
-          {rank}
-        </span>
-        <div className="flex items-center gap-2 min-w-0">
-          {holder.img ? (
-            <img src={holder.img} alt={displayName} className="w-5 h-5 rounded-full shrink-0" />
-          ) : (
-            <div className="w-5 h-5 rounded-full bg-surface-700 flex items-center justify-center shrink-0">
-              <User className="w-3 h-3 text-surface-400" />
-            </div>
-          )}
-          <div className="min-w-0">
-            <a
-              href={`https://polymarket.com/profile/${holder.address}`}
-              target="_blank"
-              rel="noreferrer"
-              className="text-sm text-surface-200 truncate hover:text-white transition-colors block"
-              title={holder.name}
-            >
-              {displayName}
-            </a>
-            {tags.length > 0 && (
-              <div className="flex flex-wrap gap-1 mt-1">
-                {tags.map((tag) => (
-                  <span
-                    key={`${tag.label}-${tag.display}`}
-                    className={`text-[9px] font-semibold px-1.5 py-0.5 rounded border ${tagClass(
-                      tag.tone
-                    )}`}
-                  >
-                    {tag.label} {tag.display}
-                  </span>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-
-      <div className="flex flex-col items-end gap-1 ml-4 shrink-0">
-        <div className="flex items-center gap-2">
-          <span className="text-[10px] text-surface-400">Position P&L:</span>
-          <PnLBadge value={holder.market_pnl} />
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="text-[10px] text-surface-400">ROI:</span>
-          <PnLBadge value={holder.market_roi} isPercent />
-        </div>
-      </div>
-    </div>
-  );
-}
+import { formatCurrency, formatAddress } from '../utils/formatters';
 
 export function TopHolders() {
   const { selectedMarket } = useMarketStore();
-  const { data, isLoading } = useQuery({
-    queryKey: ['holders', selectedMarket?.id],
-    queryFn: () => fetchHolders(selectedMarket!.id),
-    enabled: !!selectedMarket?.id,
-    staleTime: 2 * 60 * 1000, // 2 min — skip refetch on tab switch
-    refetchInterval: 60_000,
-    placeholderData: (prev) => prev, // keep previous data while refetching
-  });
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
-  if (!selectedMarket) return null;
+  // Mock data for now
+  const mockHolders = [
+    { address: '0x1234567890abcdef1234567890abcdef12345678', amount: 150000, position: 'YES' },
+    { address: '0xabcdef1234567890abcdef1234567890abcdef12', amount: 120000, position: 'NO' },
+    { address: '0x7890abcdef1234567890abcdef1234567890abcd', amount: 98000, position: 'YES' },
+    { address: '0x4567890abcdef1234567890abcdef1234567890ab', amount: 85000, position: 'NO' },
+    { address: '0xcdef1234567890abcdef1234567890abcdef12345', amount: 72000, position: 'YES' },
+  ];
 
-  if (isLoading) {
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    // Simulate API call
+    setTimeout(() => setIsRefreshing(false), 1000);
+  };
+
+  if (!selectedMarket) {
     return (
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {[1, 2].map((i) => (
-          <div key={i} className="animate-pulse space-y-2">
-            <div className="h-4 w-24 bg-surface-700 rounded mb-4" />
-            {[1, 2, 3, 4, 5].map((j) => (
-              <div key={j} className="h-8 bg-surface-800/50 rounded" />
-            ))}
-          </div>
-        ))}
+      <div className="ios-inner p-8 text-center">
+        <Trophy className="w-12 h-12 text-surface-400 mx-auto mb-4" />
+        <h3 className="text-lg font-medium text-white mb-2">No Market Selected</h3>
+        <p className="text-surface-400">Select a market to view top holders</p>
       </div>
     );
   }
 
-  if (!data)
-    return <div className="text-center text-surface-400 py-4">No holder data available</div>;
-
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-      {/* Yes Holders */}
-      <div className="glass-light rounded-xl p-4 border border-emerald-500/20 bg-emerald-950/5">
-        <div className="flex items-center gap-2 mb-4 pb-2 border-b border-emerald-500/10">
-          <Trophy className="w-4 h-4 text-emerald-400" />
-          <h3 className="text-sm font-bold text-emerald-400 uppercase tracking-wider">
-            Top YES Holders
-          </h3>
-        </div>
-        <div className="max-h-[500px] overflow-y-auto custom-scrollbar pr-1">
-          {data.yes_holders.length > 0 ? (
-            data.yes_holders.map((holder, idx) => (
-              <HolderRow key={idx} holder={holder} rank={idx + 1} />
-            ))
-          ) : (
-            <p className="text-xs text-surface-400 text-center py-4">No holders found</p>
-          )}
-        </div>
+    <div className="space-y-4">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <h3 className="font-semibold text-white flex items-center gap-2">
+          <Trophy className="w-5 h-5 text-amber-400" />
+          Top Holders
+        </h3>
+        <button onClick={handleRefresh} className="ios-icon-btn" disabled={isRefreshing}>
+          <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+        </button>
       </div>
 
-      {/* No Holders */}
-      <div className="glass-light rounded-xl p-4 border border-red-500/20 bg-red-950/5">
-        <div className="flex items-center gap-2 mb-4 pb-2 border-b border-red-500/10">
-          <Trophy className="w-4 h-4 text-red-400" />
-          <h3 className="text-sm font-bold text-red-400 uppercase tracking-wider">
-            Top NO Holders
-          </h3>
-        </div>
-        <div className="max-h-[500px] overflow-y-auto custom-scrollbar pr-1">
-          {data.no_holders.length > 0 ? (
-            data.no_holders.map((holder, idx) => (
-              <HolderRow key={idx} holder={holder} rank={idx + 1} />
-            ))
-          ) : (
-            <p className="text-xs text-surface-400 text-center py-4">No holders found</p>
-          )}
+      {/* Holders Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {mockHolders.map((holder, index) => (
+          <div key={index} className="ios-card-sm p-4">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-8 h-8 bg-gradient-to-br from-primary-500 to-primary-600 rounded-full flex items-center justify-center text-white font-bold text-sm">
+                {index + 1}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 mb-1">
+                  <User className="w-4 h-4 text-surface-400" />
+                  <span className="text-sm font-medium text-white truncate">
+                    {formatAddress(holder.address)}
+                  </span>
+                </div>
+                <div
+                  className={`inline-flex px-2 py-1 rounded-full text-xs font-medium ${
+                    holder.position === 'YES'
+                      ? 'bg-emerald-500/20 text-emerald-400'
+                      : 'bg-red-500/20 text-red-400'
+                  }`}
+                >
+                  {holder.position}
+                </div>
+              </div>
+            </div>
+
+            <div className="text-right">
+              <div className="text-lg font-bold text-white">{formatCurrency(holder.amount)}</div>
+              <div className="text-xs text-surface-400">Position Size</div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Summary */}
+      <div className="ios-card-sm p-4">
+        <div className="grid grid-cols-3 gap-4 text-center">
+          <div>
+            <div className="text-lg font-bold text-emerald-400">
+              {mockHolders.filter((h) => h.position === 'YES').length}
+            </div>
+            <div className="text-xs text-surface-400">YES Positions</div>
+          </div>
+          <div>
+            <div className="text-lg font-bold text-red-400">
+              {mockHolders.filter((h) => h.position === 'NO').length}
+            </div>
+            <div className="text-xs text-surface-400">NO Positions</div>
+          </div>
+          <div>
+            <div className="text-lg font-bold text-white">
+              {formatCurrency(mockHolders.reduce((sum, h) => sum + h.amount, 0))}
+            </div>
+            <div className="text-xs text-surface-400">Total Volume</div>
+          </div>
         </div>
       </div>
     </div>

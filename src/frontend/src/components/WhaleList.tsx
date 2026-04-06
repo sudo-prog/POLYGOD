@@ -1,252 +1,38 @@
 import { useState } from 'react';
-import {
-  Wallet,
-  RefreshCw,
-  Clock,
-  ExternalLink,
-  TrendingUp,
-  TrendingDown,
-  ArrowUpCircle,
-  ArrowDownCircle,
-} from 'lucide-react';
-import { useWhales, WhaleTrade } from '../hooks/useWhales';
+import { Wallet, RefreshCw, Clock, TrendingUp, TrendingDown } from 'lucide-react';
+import { useWhales } from '../hooks/useWhales';
 import { useMarketStore } from '../stores/marketStore';
-import { getUserTags } from '../utils/userTags';
-
-function formatAddress(address: string): string {
-  if (!address) return 'Unknown';
-  if (address.length < 10) return address;
-  return `${address.slice(0, 6)}...${address.slice(-4)}`;
-}
-
-function formatCurrency(value: number): string {
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(value);
-}
-
-function formatTimeAgo(dateString: string): string {
-  if (!dateString) return '';
-
-  const date = new Date(dateString);
-  const now = new Date();
-  const diffMs = now.getTime() - date.getTime();
-  const diffMins = Math.floor(diffMs / (1000 * 60));
-  const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
-  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-
-  if (diffMins < 60) return `${diffMins}m ago`;
-  if (diffHours < 24) return `${diffHours}h ago`;
-  if (diffDays < 7) return `${diffDays}d ago`;
-  return date.toLocaleDateString();
-}
-
-function WhaleTradeCard({ trade, rank }: { trade: WhaleTrade; rank: number }) {
-  const isBuy = trade.side === 'BUY';
-  const displayName = trade.name || formatAddress(trade.address);
-  const tags = getUserTags({
-    global_pnl: trade.global_pnl,
-    total_balance: trade.total_balance,
-  });
-
-  const tagClass = (tone: 'positive' | 'negative' | 'neutral') => {
-    if (tone === 'positive') {
-      return 'bg-emerald-500/10 text-emerald-300 border-emerald-500/20';
-    }
-    if (tone === 'negative') {
-      return 'bg-red-500/10 text-red-300 border-red-500/20';
-    }
-    return 'bg-surface-700/30 text-surface-300 border-surface-600/30';
-  };
-
-  return (
-    <div className="p-4 glass-light rounded-xl hover:bg-white/5 transition-all group">
-      <div className="flex items-center gap-3">
-        {/* Rank */}
-        <div className="flex-shrink-0 w-7 h-7 rounded-full bg-surface-800 flex items-center justify-center text-xs font-bold text-surface-400">
-          #{rank}
-        </div>
-
-        {/* Bullish/Bearish indicator */}
-        <div
-          className={`flex-shrink-0 p-1.5 rounded-lg ${
-            trade.is_bullish ? 'bg-emerald-500/20' : 'bg-red-500/20'
-          }`}
-        >
-          {trade.is_bullish ? (
-            <TrendingUp className="w-4 h-4 text-emerald-400" />
-          ) : (
-            <TrendingDown className="w-4 h-4 text-red-400" />
-          )}
-        </div>
-
-        {/* Trade info */}
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2 flex-wrap">
-              <a
-                href={`https://polymarket.com/profile/${trade.address}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-sm font-medium text-white group-hover:text-primary-400 transition-colors font-mono truncate max-w-[120px]"
-              >
-                {displayName}
-              </a>
-
-              {/* BUY/SELL badge */}
-              <span
-                className={`text-[9px] font-bold px-1.5 py-0.5 rounded uppercase ${
-                  isBuy
-                    ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
-                    : 'bg-orange-500/20 text-orange-400 border border-orange-500/30'
-                }`}
-              >
-                {trade.side}
-              </span>
-
-              {/* Outcome badge */}
-              <span
-                className={`text-[9px] font-bold px-1.5 py-0.5 rounded uppercase ${
-                  trade.outcome.toLowerCase() === 'yes' || trade.outcome.toLowerCase() === 'up'
-                    ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                    : 'bg-red-500/20 text-red-400 border border-red-500/30'
-                }`}
-              >
-                {trade.outcome}
-              </span>
-
-              {/* Sentiment badge */}
-              <span
-                className={`text-[9px] font-bold px-1.5 py-0.5 rounded flex items-center gap-0.5 ${
-                  trade.is_bullish
-                    ? 'bg-emerald-500/10 text-emerald-400'
-                    : 'bg-red-500/10 text-red-400'
-                }`}
-              >
-                {trade.is_bullish ? (
-                  <>
-                    <ArrowUpCircle className="w-3 h-3" />
-                    BULLISH
-                  </>
-                ) : (
-                  <>
-                    <ArrowDownCircle className="w-3 h-3" />
-                    BEARISH
-                  </>
-                )}
-              </span>
-            </div>
-
-            {tags.length > 0 && (
-              <div className="mt-1 flex flex-wrap gap-1">
-                {tags.map((tag) => (
-                  <span
-                    key={`${tag.label}-${tag.display}`}
-                    className={`text-[9px] font-semibold px-1.5 py-0.5 rounded border ${tagClass(
-                      tag.tone
-                    )}`}
-                  >
-                    {tag.label} {tag.display}
-                  </span>
-                ))}
-              </div>
-            )}
-
-            {/* Volume */}
-            <span
-              className={`text-sm font-bold ml-2 ${
-                trade.is_bullish ? 'text-emerald-400' : 'text-red-400'
-              }`}
-            >
-              {formatCurrency(trade.volume)}
-            </span>
-          </div>
-
-          <div className="flex items-center justify-between mt-1.5 text-xs text-surface-200/60">
-            <div className="flex items-center gap-2">
-              <span>{trade.size.toLocaleString()} shares</span>
-              <span>•</span>
-              <span>@{(trade.price * 100).toFixed(0)}¢</span>
-            </div>
-            <div className="flex items-center gap-1">
-              <Clock className="w-3 h-3" />
-              {formatTimeAgo(trade.timestamp)}
-            </div>
-          </div>
-        </div>
-
-        {/* External link */}
-        <a
-          href={`https://polymarket.com/profile/${trade.address}`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="p-2 rounded-lg hover:bg-white/10 text-surface-400 hover:text-white transition-colors flex-shrink-0"
-        >
-          <ExternalLink className="w-4 h-4" />
-        </a>
-      </div>
-    </div>
-  );
-}
-
-function WhaleSkeleton() {
-  return (
-    <div className="p-4 glass-light rounded-xl animate-pulse">
-      <div className="flex items-center gap-4">
-        <div className="w-7 h-7 rounded-full skeleton" />
-        <div className="w-8 h-8 rounded-lg skeleton" />
-        <div className="flex-1 space-y-2">
-          <div className="flex justify-between">
-            <div className="h-4 w-32 rounded skeleton" />
-            <div className="h-4 w-16 rounded skeleton" />
-          </div>
-          <div className="flex justify-between">
-            <div className="h-3 w-24 rounded skeleton" />
-            <div className="h-3 w-12 rounded skeleton" />
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-const VOLUME_THRESHOLDS = [100, 250, 500, 1000, 5000];
-const LOOKBACK_OPTIONS = [
-  { label: '24H', days: 1 },
-  { label: '3D', days: 3 },
-  { label: '7D', days: 7 },
-  { label: '14D', days: 14 },
-];
+import { formatCurrency } from '../utils/formatters';
 
 export function WhaleList() {
   const { selectedMarket } = useMarketStore();
-  const [minVolume, setMinVolume] = useState(100);
-  const [lookbackDays, setLookbackDays] = useState(7);
-  const [sentimentFilter, setSentimentFilter] = useState<'ALL' | 'BULLISH' | 'BEARISH'>('ALL');
+  const { data: whales, isLoading, refetch } = useWhales(selectedMarket?.id || null);
+  const [filter, setFilter] = useState<'all' | 'buy' | 'sell'>('all');
 
-  const {
-    data: trades,
-    isLoading,
-    error,
-    refetch,
-    isFetching,
-  } = useWhales(selectedMarket?.id ?? null, minVolume, lookbackDays);
+  const formatTimeAgo = (dateString: string): string => {
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMinutes = Math.floor(diffMs / (1000 * 60));
+    const diffHours = Math.floor(diffMinutes / 60);
 
-  const filteredTrades = trades?.filter((trade: WhaleTrade) => {
-    if (sentimentFilter === 'ALL') return true;
-    if (sentimentFilter === 'BULLISH') return trade.is_bullish;
-    if (sentimentFilter === 'BEARISH') return !trade.is_bullish;
-    return true;
-  });
+    if (diffHours > 0) return `${diffHours}h ago`;
+    if (diffMinutes > 0) return `${diffMinutes}m ago`;
+    return 'Just now';
+  };
+
+  const filteredWhales =
+    whales?.filter((whale) => {
+      if (filter === 'all') return true;
+      return whale.side.toLowerCase() === filter;
+    }) || [];
 
   if (!selectedMarket) {
     return (
-      <div className="text-center py-12 text-surface-200">
-        <Wallet className="w-10 h-10 mx-auto mb-3 opacity-50" />
-        <p className="text-sm">Select a market to see whale trades</p>
+      <div className="ios-inner p-8 text-center">
+        <Wallet className="w-12 h-12 text-surface-400 mx-auto mb-4" />
+        <h3 className="text-lg font-medium text-white mb-2">No Market Selected</h3>
+        <p className="text-surface-400">Select a market to view large orders</p>
       </div>
     );
   }
@@ -254,134 +40,100 @@ export function WhaleList() {
   if (isLoading) {
     return (
       <div className="space-y-3">
-        {[1, 2, 3, 4, 5].map((i) => (
-          <WhaleSkeleton key={i} />
+        <div className="skeleton h-8 w-32 mb-4"></div>
+        {Array.from({ length: 5 }).map((_, i) => (
+          <div key={i} className="ios-inner p-4">
+            <div className="skeleton h-4 w-1/2 mb-2"></div>
+            <div className="skeleton h-3 w-3/4"></div>
+          </div>
         ))}
       </div>
     );
   }
 
-  if (error) {
-    return (
-      <div className="text-center py-8 text-surface-200">
-        <p className="text-sm">Failed to load trade data</p>
-        <button
-          onClick={() => refetch()}
-          className="mt-2 text-xs text-primary-400 hover:text-primary-300 inline-flex items-center gap-1"
-        >
-          <RefreshCw className="w-3 h-3" />
-          Try again
+  return (
+    <div className="space-y-4">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <h3 className="font-semibold text-white flex items-center gap-2">
+          <Wallet className="w-5 h-5 text-emerald-400" />
+          Recent Large Orders
+        </h3>
+        <button onClick={() => refetch()} className="ios-icon-btn" disabled={isLoading}>
+          <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
         </button>
       </div>
-    );
-  }
 
-  return (
-    <div>
-      {/* Controls */}
-      <div className="flex flex-col gap-3 mb-4 px-1">
-        {/* Threshold selector */}
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-surface-200/60 whitespace-nowrap">Min Order:</span>
-          <div className="flex bg-surface-800/50 rounded-lg p-0.5 flex-wrap">
-            {VOLUME_THRESHOLDS.map((threshold) => (
-              <button
-                key={threshold}
-                onClick={() => setMinVolume(threshold)}
-                className={`px-2 py-1 text-[10px] font-medium rounded-md transition-all ${
-                  minVolume === threshold
-                    ? 'bg-primary-500/20 text-primary-400 shadow-sm'
-                    : 'text-surface-400 hover:text-surface-200'
-                }`}
-              >
-                ${threshold >= 1000 ? `${threshold / 1000}k` : threshold}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Lookback selector */}
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-surface-200/60 whitespace-nowrap">Lookback:</span>
-          <div className="flex bg-surface-800/50 rounded-lg p-0.5 flex-wrap">
-            {LOOKBACK_OPTIONS.map((option) => (
-              <button
-                key={option.days}
-                onClick={() => setLookbackDays(option.days)}
-                className={`px-2 py-1 text-[10px] font-medium rounded-md transition-all ${
-                  lookbackDays === option.days
-                    ? 'bg-primary-500/20 text-primary-400 shadow-sm'
-                    : 'text-surface-400 hover:text-surface-200'
-                }`}
-              >
-                {option.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Sentiment filter + refresh */}
-        <div className="flex items-center justify-between">
-          <div className="flex bg-surface-800/50 rounded-lg p-0.5">
-            <button
-              onClick={() => setSentimentFilter('ALL')}
-              className={`px-2 py-1 text-[10px] font-medium rounded-md transition-all ${
-                sentimentFilter === 'ALL'
-                  ? 'bg-primary-500/20 text-primary-400 shadow-sm'
-                  : 'text-surface-400 hover:text-surface-200'
-              }`}
-            >
-              All
-            </button>
-            <button
-              onClick={() => setSentimentFilter('BULLISH')}
-              className={`px-2 py-1 text-[10px] font-medium rounded-md transition-all flex items-center gap-1 ${
-                sentimentFilter === 'BULLISH'
-                  ? 'bg-emerald-500/20 text-emerald-400 shadow-sm'
-                  : 'text-surface-400 hover:text-surface-200'
-              }`}
-            >
-              <TrendingUp className="w-3 h-3" />
-              Bullish
-            </button>
-            <button
-              onClick={() => setSentimentFilter('BEARISH')}
-              className={`px-2 py-1 text-[10px] font-medium rounded-md transition-all flex items-center gap-1 ${
-                sentimentFilter === 'BEARISH'
-                  ? 'bg-red-500/20 text-red-400 shadow-sm'
-                  : 'text-surface-400 hover:text-surface-200'
-              }`}
-            >
-              <TrendingDown className="w-3 h-3" />
-              Bearish
-            </button>
-          </div>
-
-          <button
-            onClick={() => refetch()}
-            disabled={isFetching}
-            className="text-xs text-surface-200/60 hover:text-white inline-flex items-center gap-1 transition-colors disabled:opacity-50"
-          >
-            <RefreshCw className={`w-3 h-3 ${isFetching ? 'animate-spin' : ''}`} />
-            <span className="hidden sm:inline">{isFetching ? 'Updating...' : 'Refresh'}</span>
-          </button>
-        </div>
+      {/* Filters */}
+      <div className="flex gap-2">
+        <button
+          onClick={() => setFilter('all')}
+          className={`ios-btn ${
+            filter === 'all' ? 'bg-primary-500/20 border-primary-500/40 text-primary-400' : ''
+          }`}
+        >
+          All
+        </button>
+        <button
+          onClick={() => setFilter('buy')}
+          className={`ios-btn ${
+            filter === 'buy' ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-400' : ''
+          }`}
+        >
+          Buy
+        </button>
+        <button
+          onClick={() => setFilter('sell')}
+          className={`ios-btn ${
+            filter === 'sell' ? 'bg-red-500/20 border-red-500/40 text-red-400' : ''
+          }`}
+        >
+          Sell
+        </button>
       </div>
 
-      {/* Trades List */}
-      {!filteredTrades || filteredTrades.length === 0 ? (
-        <div className="text-center py-8 text-surface-200">
-          <Wallet className="w-10 h-10 mx-auto mb-3 opacity-50" />
-          <p className="text-sm">No large trades found</p>
-          <p className="text-xs mt-1 opacity-60">Try lowering the minimum order threshold</p>
-        </div>
-      ) : (
-        <div className="space-y-3 max-h-[600px] overflow-y-auto pr-1 custom-scrollbar">
-          {filteredTrades.map((trade: WhaleTrade, index: number) => (
-            <WhaleTradeCard key={`${trade.trade_id}-${index}`} trade={trade} rank={index + 1} />
-          ))}
-        </div>
-      )}
+      {/* Whale Trades */}
+      <div className="space-y-3">
+        {filteredWhales && filteredWhales.length > 0 ? (
+          filteredWhales.slice(0, 20).map((trade, index) => (
+            <div key={index} className="ios-inner p-4">
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  {trade.side === 'BUY' ? (
+                    <TrendingUp className="w-4 h-4 text-emerald-400" />
+                  ) : (
+                    <TrendingDown className="w-4 h-4 text-red-400" />
+                  )}
+                  <span
+                    className={`font-medium ${
+                      trade.side === 'BUY' ? 'text-emerald-400' : 'text-red-400'
+                    }`}
+                  >
+                    {trade.side.toUpperCase()}
+                  </span>
+                </div>
+                <div className="text-right">
+                  <div className="text-sm font-mono text-white">{formatCurrency(trade.volume)}</div>
+                  <div className="text-xs text-surface-400 flex items-center gap-1">
+                    <Clock className="w-3 h-3" />
+                    {formatTimeAgo(trade.timestamp)}
+                  </div>
+                </div>
+              </div>
+
+              <div className="text-xs text-surface-400">
+                Order size indicates significant market interest
+              </div>
+            </div>
+          ))
+        ) : (
+          <div className="ios-inner p-8 text-center">
+            <Wallet className="w-12 h-12 text-surface-400 mx-auto mb-4" />
+            <h3 className="text-lg font-medium text-white mb-2">No Large Orders</h3>
+            <p className="text-surface-400">No significant orders detected for this market</p>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

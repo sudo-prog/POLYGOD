@@ -5,22 +5,45 @@ Configures CORS, routers, WebSocket streams, and lifespan events for database an
 """
 
 import asyncio
+import hashlib
 import itertools
 import logging
+import os
+import secrets
 import socket
 from contextlib import asynccontextmanager
 from typing import Final
 
 import uvicorn
-from fastapi import Depends, FastAPI, HTTPException, Request, WebSocket
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi import Depends, FastAPI, HTTPException, Query, WebSocket
 from fastapi.responses import JSONResponse
+
+SECRET_KEYS = [
+    "POLYMARKET_API_KEY",
+    "POLYMARKET_SECRET",
+    "POLYMARKET_PASSPHRASE",
+    "GEMINI_API_KEY",
+    "TAVILY_API_KEY",
+    "NEWS_API_KEY",
+    "INTERNAL_API_KEY",
+]
+
+
+def mask_secrets(text: str) -> str:
+    for key in SECRET_KEYS:
+        val = os.getenv(key, "")
+        if val and val in text:
+            text = text.replace(val, "***REDACTED***")
+    return text
+
+
+from fastapi.middleware.cors import CORSMiddleware
 from prometheus_fastapi_instrumentator import Instrumentator
 from slowapi.errors import RateLimitExceeded
 
+from src.backend.auth import verify_api_key
 from src.backend.config import settings
 from src.backend.database import close_db, init_db
-from src.backend.middleware.auth import admin_required
 from src.backend.middleware.rate_limit import limiter
 from src.backend.news.aggregator import news_aggregator
 from src.backend.polygod_graph import POLYGOD_MODE, paper, polygod_graph, run_polygod
@@ -323,6 +346,9 @@ app = FastAPI(
     description="POLYGOD - Advanced Polymarket intelligence and trading agent",
     version="0.1.0",
     lifespan=lifespan,
+    debug=settings.debug,
+    docs_url="/docs" if settings.debug else None,
+    redoc_url="/redoc" if settings.debug else None,
 )
 
 # Rate limiting setup
@@ -339,6 +365,23 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# Global exception handler to mask secrets
+@app.exception_handler(Exception)
+async def global_exception_handler(request, exc):
+    detail = mask_secrets(str(exc))
+    return JSONResponse(status_code=500, content={"detail": detail})
+
+
+# SecretFilter for logging
+class SecretFilter(logging.Filter):
+    def filter(self, record):
+        record.msg = mask_secrets(str(record.msg))
+        return True
+
+
+logging.getLogger().addFilter(SecretFilter())
 
 
 # Rate limiting + auth middleware
@@ -360,7 +403,14 @@ app.include_router(telegram.router, prefix="/api/telegram")
 
 
 @app.websocket("/ws/polygod")
-async def polygod_ws(websocket: WebSocket):
+async def polygod_ws(websocket: WebSocket, token: str = Query(default="")):
+    expected = settings.internal_api_key.encode()
+    provided = token.encode()
+    if not secrets.compare_digest(
+        hashlib.sha256(provided).digest(), hashlib.sha256(expected).digest()
+    ):
+        await websocket.close(code=4001)
+        return
     await websocket.accept()
     while True:
         await websocket.send_json(
@@ -418,9 +468,8 @@ async def monte_carlo_simulate(market_id: str, order_size: float = 1000):
     }
 
 
-@app.post("/api/scan-niches", dependencies=[Depends(admin_required)])
-@limiter.limit("60/minute")
-async def scan_niches(request: Request, mode: int = 1):
+@app.post("/api/scan-niches")
+async def scan_niches(mode: int = 0, _: str = Depends(verify_api_key)):
     """
     Start money printer — scan for micro-niche opportunities in low-liquidity markets.
 
