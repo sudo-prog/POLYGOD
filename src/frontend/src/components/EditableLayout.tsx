@@ -9,6 +9,9 @@ import { TopHolders } from './TopHolders';
 import { PriceMovement } from './PriceMovement';
 import { DebateFloor } from './DebateFloor';
 
+import 'react-grid-layout/css/styles.css';
+import 'react-resizable/css/styles.css';
+
 import { TimeframeSelector } from './TimeframeSelector';
 import { SettingsButton } from './SettingsButton';
 import { X, RefreshCw, Edit, Copy, Scissors, EyeOff, Target, RotateCcw } from 'lucide-react';

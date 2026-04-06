@@ -9,7 +9,7 @@ interface MarketListResponse {
 }
 
 async function fetchMarkets(): Promise<MarketListResponse> {
-  const response = await axios.get<MarketListResponse>('/api/markets/api/markets/top50');
+  const response = await axios.get<MarketListResponse>('/api/markets/top50');
   return response.data;
 }
 

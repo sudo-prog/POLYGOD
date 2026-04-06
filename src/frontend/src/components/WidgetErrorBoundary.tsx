@@ -1,12 +1,7 @@
-import { ErrorBoundary } from 'react-error-boundary';
+import { ErrorBoundary, FallbackProps } from 'react-error-boundary';
 
-function WidgetError({
-  error,
-  resetErrorBoundary,
-}: {
-  error: Error;
-  resetErrorBoundary: () => void;
-}) {
+function WidgetError({ error, resetErrorBoundary }: FallbackProps) {
+  const errorMessage = error instanceof Error ? error.message : String(error);
   return (
     <div
       style={{
@@ -16,7 +11,7 @@ function WidgetError({
         color: 'var(--pg-red)',
       }}
     >
-      <p style={{ fontFamily: 'var(--font-mono)', fontSize: 11 }}>WIDGET ERROR — {error.message}</p>
+      <p style={{ fontFamily: 'var(--font-mono)', fontSize: 11 }}>WIDGET ERROR — {errorMessage}</p>
       <button
         onClick={resetErrorBoundary}
         style={{ marginTop: 8, fontFamily: 'var(--font-mono)', fontSize: 10 }}

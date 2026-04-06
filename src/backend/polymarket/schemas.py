@@ -6,26 +6,24 @@ Defines data models for markets and related data structures.
 
 from datetime import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class TokenInfo(BaseModel):
     """Token information from Polymarket."""
+
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
 
     token_id: str = Field(alias="token_id", default="")
     outcome: str = Field(default="")
     price: float = Field(default=0.5)
     winner: bool = Field(default=False)
 
-    class Config:
-        """Pydantic config."""
-
-        populate_by_name = True
-        extra = "ignore"
-
 
 class MarketResponse(BaseModel):
     """Response model for a single market from the API."""
+
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
 
     # Use Field with alias for camelCase API fields
     id: str = Field(default="", alias="id")
@@ -63,15 +61,11 @@ class MarketResponse(BaseModel):
     icon: str = Field(default="")
     clob_token_ids: str = Field(default="", alias="clobTokenIds")
 
-    class Config:
-        """Pydantic config."""
-
-        populate_by_name = True
-        extra = "ignore"
-
 
 class MarketOut(BaseModel):
     """Output model for a market sent to the frontend."""
+
+    model_config = ConfigDict(from_attributes=True)
 
     id: str
     slug: str
@@ -86,11 +80,6 @@ class MarketOut(BaseModel):
     image_url: str | None = None
     clob_token_ids: str | None = None
     last_updated: datetime | None = None
-
-    class Config:
-        """Pydantic config."""
-
-        from_attributes = True
 
 
 class MarketListResponse(BaseModel):

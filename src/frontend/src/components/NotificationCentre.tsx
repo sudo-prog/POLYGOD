@@ -13,9 +13,10 @@ interface Notification {
 interface NotificationCentreProps {
   isOpen: boolean;
   onClose: () => void;
+  tickerHeight: number;
 }
 
-export function NotificationCentre({ isOpen, onClose }: NotificationCentreProps) {
+export function NotificationCentre({ isOpen, onClose, tickerHeight }: NotificationCentreProps) {
   const [notifications, setNotifications] = useState<Notification[]>([]);
 
   // Load notifications from sessionStorage
@@ -94,8 +95,17 @@ export function NotificationCentre({ isOpen, onClose }: NotificationCentreProps)
   if (!isOpen) return null;
 
   return (
-    <div className="fixed top-0 left-0 right-0 z-400 bg-surface-900/95 backdrop-blur-xl border-b border-white/10 shadow-lg">
-      <div className="max-w-[1920px] mx-auto p-4">
+    <div
+      className="fixed right-5 bg-surface-900/95 backdrop-blur-xl border border-white/10 shadow-lg rounded-xl"
+      style={{
+        top: tickerHeight + 80, // ticker + header height
+        width: 360,
+        maxHeight: 'calc(100vh - 120px)',
+        overflowY: 'auto',
+        zIndex: 500, // above header (50) but below ticker (1000)
+      }}
+    >
+      <div className="p-4">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-xl font-semibold text-white">Notifications</h2>
           <button onClick={onClose} className="ios-icon-btn">

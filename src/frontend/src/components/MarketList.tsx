@@ -56,46 +56,54 @@ export function MarketList() {
 
       {/* Market List */}
       <div className="space-y-2 max-h-96 overflow-y-auto">
-        {filteredMarkets.slice(0, 50).map((market: any) => (
-          <div
-            key={market.id}
-            onClick={() => setSelectedMarket(market)}
-            className={`ios-inner p-3 cursor-pointer transition-all hover:bg-surface-800/50 ${
-              selectedMarket?.id === market.id ? 'bg-primary-500/10 border-primary-500/30' : ''
-            }`}
-          >
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex-1 min-w-0">
-                <h3 className="font-medium text-white text-sm truncate mb-1">{market.title}</h3>
-                <div className="flex items-center gap-3 text-xs text-surface-300">
-                  <span className="text-emerald-400 font-mono">
-                    {market.yes_percentage.toFixed(1)}% Yes
-                  </span>
-                  <span>•</span>
-                  <span>{formatCurrency(market.volume_24h)}</span>
+        {filteredMarkets.slice(0, 50).map((market: any) => {
+          // Handle field mapping: yes_percentage may be 0-100 or yes_price 0-1, or outcomes array
+          const yesPercentage =
+            (market.yes_percentage ?? 0) ||
+            (market.yes_price ? market.yes_price * 100 : 0) ||
+            (market.outcomes?.[0]?.price ? market.outcomes[0].price * 100 : 0);
+
+          return (
+            <div
+              key={market.id}
+              onClick={() => setSelectedMarket(market)}
+              className={`ios-inner p-3 cursor-pointer transition-all hover:bg-surface-800/50 ${
+                selectedMarket?.id === market.id ? 'bg-primary-500/10 border-primary-500/30' : ''
+              }`}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex-1 min-w-0">
+                  <h3 className="font-medium text-white text-sm truncate mb-1">{market.title}</h3>
+                  <div className="flex items-center gap-3 text-xs text-surface-300">
+                    <span className="text-emerald-400 font-mono">
+                      {yesPercentage.toFixed(1)}% Yes
+                    </span>
+                    <span>•</span>
+                    <span>{formatCurrency(market.volume_24h)}</span>
+                  </div>
+                </div>
+
+                <div className="flex flex-col items-end gap-1">
+                  <div className="flex items-center gap-1">
+                    {getChangeIcon(market.change_24h)}
+                    <span className={`text-xs font-medium ${getChangeColor(market.change_24h)}`}>
+                      {formatPercent(Math.abs(market.change_24h))}
+                    </span>
+                  </div>
+                  <div className="text-xs text-surface-400">24h</div>
                 </div>
               </div>
 
-              <div className="flex flex-col items-end gap-1">
-                <div className="flex items-center gap-1">
-                  {getChangeIcon(market.change_24h)}
-                  <span className={`text-xs font-medium ${getChangeColor(market.change_24h)}`}>
-                    {formatPercent(Math.abs(market.change_24h))}
-                  </span>
-                </div>
-                <div className="text-xs text-surface-400">24h</div>
+              {/* Probability Bar */}
+              <div className="mt-2 w-full bg-surface-800 rounded-full h-1.5 overflow-hidden">
+                <div
+                  className="h-full bg-gradient-to-r from-emerald-500 to-cyan-500 transition-all duration-300"
+                  style={{ width: `${Math.min(100, Math.max(0, yesPercentage))}%` }}
+                />
               </div>
             </div>
-
-            {/* Probability Bar */}
-            <div className="mt-2 w-full bg-surface-800 rounded-full h-1.5 overflow-hidden">
-              <div
-                className="h-full bg-gradient-to-r from-emerald-500 to-cyan-500 transition-all duration-300"
-                style={{ width: `${market.yes_percentage}%` }}
-              />
-            </div>
-          </div>
-        ))}
+          );
+        })}
 
         {filteredMarkets.length === 0 && !isLoading && (
           <div className="ios-inner p-4 text-center">

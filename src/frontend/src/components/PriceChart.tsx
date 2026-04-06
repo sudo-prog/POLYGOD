@@ -33,21 +33,27 @@ function PriceChart() {
     );
   }
 
+  // Get yes percentage with fallbacks (similar to App.tsx logic)
+  const yesPercentage =
+    (selectedMarket.yes_percentage ?? 0) ||
+    (selectedMarket.yes_price ? selectedMarket.yes_price * 100 : 0) ||
+    (selectedMarket.outcomes?.[0]?.price ? selectedMarket.outcomes[0].price * 100 : 0);
+
   // Mock data for now since recharts isn't available
   const mockData = [
-    { time: '00:00', price: selectedMarket.yes_percentage - 5 },
-    { time: '04:00', price: selectedMarket.yes_percentage - 3 },
-    { time: '08:00', price: selectedMarket.yes_percentage - 1 },
-    { time: '12:00', price: selectedMarket.yes_percentage + 2 },
-    { time: '16:00', price: selectedMarket.yes_percentage + 4 },
-    { time: '20:00', price: selectedMarket.yes_percentage + 1 },
-    { time: 'Now', price: selectedMarket.yes_percentage },
+    { time: '00:00', price: yesPercentage - 5 },
+    { time: '04:00', price: yesPercentage - 3 },
+    { time: '08:00', price: yesPercentage - 1 },
+    { time: '12:00', price: yesPercentage + 2 },
+    { time: '16:00', price: yesPercentage + 4 },
+    { time: '20:00', price: yesPercentage + 1 },
+    { time: 'Now', price: yesPercentage },
   ];
 
-  const latestPrice = mockData[mockData.length - 1]?.price || selectedMarket.yes_percentage;
-  const previousPrice = mockData[mockData.length - 2]?.price || selectedMarket.yes_percentage;
+  const latestPrice = mockData[mockData.length - 1]?.price ?? yesPercentage;
+  const previousPrice = mockData[mockData.length - 2]?.price ?? yesPercentage;
   const priceChange = latestPrice - previousPrice;
-  const priceChangePercent = (priceChange / previousPrice) * 100;
+  const priceChangePercent = previousPrice !== 0 ? (priceChange / previousPrice) * 100 : 0;
 
   return (
     <div className="space-y-4">
@@ -133,15 +139,11 @@ function PriceChart() {
           <div className="text-xs text-surface-400">Status</div>
         </div>
         <div className="ios-inner p-3 text-center">
-          <div className="text-lg font-bold text-emerald-400">
-            {selectedMarket.yes_percentage.toFixed(1)}%
-          </div>
+          <div className="text-lg font-bold text-emerald-400">{yesPercentage.toFixed(1)}%</div>
           <div className="text-xs text-surface-400">Yes Probability</div>
         </div>
         <div className="ios-inner p-3 text-center">
-          <div className="text-lg font-bold text-red-400">
-            {(100 - selectedMarket.yes_percentage).toFixed(1)}%
-          </div>
+          <div className="text-lg font-bold text-red-400">{(100 - yesPercentage).toFixed(1)}%</div>
           <div className="text-xs text-surface-400">No Probability</div>
         </div>
       </div>

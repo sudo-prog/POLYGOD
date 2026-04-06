@@ -10,7 +10,7 @@ import time
 from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy import Date, cast, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -28,6 +28,8 @@ router = APIRouter(tags=["LLM Hub"])
 class ProviderOut(BaseModel):
     """Response model for a provider."""
 
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     name: str
     base_url: str | None
@@ -36,9 +38,6 @@ class ProviderOut(BaseModel):
     uptime_24h: str
     avg_speed: int | None
     tokens_today: int
-
-    class Config:
-        from_attributes = True
 
 
 class ProviderCreate(BaseModel):
@@ -62,14 +61,13 @@ class ProviderTestResult(BaseModel):
 class AgentConfigOut(BaseModel):
     """Response model for agent config."""
 
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     agent_name: str
     provider_id: int | None
     model_name: str | None
     overrides: dict
-
-    class Config:
-        from_attributes = True
 
 
 class AgentConfigCreate(BaseModel):
@@ -84,6 +82,8 @@ class AgentConfigCreate(BaseModel):
 class UsageLogOut(BaseModel):
     """Response model for a usage log entry."""
 
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     timestamp: str | None
     provider: str
@@ -91,9 +91,6 @@ class UsageLogOut(BaseModel):
     latency_ms: int | None
     agent_name: str | None
     market_id: str | None
-
-    class Config:
-        from_attributes = True
 
 
 class HeatmapEntry(BaseModel):

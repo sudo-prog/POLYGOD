@@ -173,11 +173,14 @@ class NewsAggregator:
     """Aggregator for fetching news articles from multiple sources."""
 
     def __init__(self, api_key: str | None = None, timeout: float = 15.0):
+        self._client: httpx.AsyncClient | None = None
+        self.timeout = timeout
+        self.api_key = api_key
         self._circuit_breaker = news_breaker
 
     async def _check_breaker(self) -> bool:
         """Check if circuit is closed (allow requests)."""
-        return self._circuit_breaker.is_closed
+        return bool(self._circuit_breaker.is_closed)
 
     async def _get_client(self) -> httpx.AsyncClient:
         """Get or create the HTTP client."""

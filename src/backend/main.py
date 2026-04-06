@@ -16,8 +16,24 @@ from typing import Final
 
 import uvicorn
 from fastapi import Depends, FastAPI, HTTPException, Query, WebSocket
+from fastapi.middleware import Middleware
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from sqlalchemy import text
+from prometheus_fastapi_instrumentator import Instrumentator
+from slowapi import Limiter
+from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
+
+from src.backend.auth import verify_api_key
+from src.backend.config import settings
+from src.backend.database import close_db, init_db
+from src.backend.middleware.security_headers import SecurityHeadersMiddleware
+from src.backend.news.aggregator import news_aggregator
+from src.backend.polygod_graph import POLYGOD_MODE, paper, polygod_graph, run_polygod
+from src.backend.polymarket.client import polymarket_client
+from src.backend.routes import debate, llm, markets, news, telegram, users
+from src.backend.self_improving_memory_loop import memory_loop
+from src.backend.tasks.update_markets import get_scheduler, update_top_markets
 
 SECRET_KEYS = [
     "POLYMARKET_API_KEY",
@@ -38,23 +54,8 @@ def mask_secrets(text: str) -> str:
     return text
 
 
-from fastapi.middleware.cors import CORSMiddleware
-from prometheus_fastapi_instrumentator import Instrumentator
-from slowapi.errors import RateLimitExceeded
+limiter = Limiter(key_func=get_remote_address)
 
-from src.backend.auth import verify_api_key
-from src.backend.config import settings
-from src.backend.database import close_db, init_db
-from src.backend.middleware.rate_limit import limiter
-from src.backend.news.aggregator import news_aggregator
-from src.backend.polygod_graph import POLYGOD_MODE, paper, polygod_graph, run_polygod
-from src.backend.polymarket.client import polymarket_client
-from src.backend.routes import debate, llm, markets, news, telegram, users
-from src.backend.self_improving_memory_loop import memory_loop
-from src.backend.tasks.update_markets import get_scheduler, update_top_markets
-
-# Force IPv4 to avoid IPv6 timeouts (helps in some Docker/network setups)
-# Only apply if FORCE_IPV4 is explicitly enabled to avoid unintended side effects
 if settings.FORCE_IPV4:
     logger = logging.getLogger(__name__)
     logger.warning(
@@ -69,14 +70,12 @@ if settings.FORCE_IPV4:
 
     socket.getaddrinfo = _ipv4_only_getaddrinfo
 
-# Configure logging (basic config; can be overridden if app embeds this)
 logging.basicConfig(
     level=logging.DEBUG if settings.DEBUG else logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 logger = logging.getLogger(__name__)
 
-# Whale alert messages
 WHALE_ALERTS: Final[list[str]] = [
     "POLYGOD WHALE ALERT: HorizonSplendidView loaded 150k YES — analyzing edge",
     "Major position detected — POLYGOD scanning for alpha opportunities",
@@ -85,7 +84,6 @@ WHALE_ALERTS: Final[list[str]] = [
 ]
 whale_cycle = itertools.cycle(WHALE_ALERTS)
 
-# Current POLYGOD mode (initialized from settings)
 MODE: int = settings.POLYGOD_MODE
 
 
@@ -105,7 +103,6 @@ async def refresh_llm_stats():
                 hour=0, minute=0, second=0, microsecond=0
             )
 
-            # Get today's token usage per provider
             result = await db.execute(
                 select(
                     UsageLog.provider,
@@ -118,7 +115,6 @@ async def refresh_llm_stats():
             )
             usage_by_provider = {row.provider: row.total_tokens for row in result.all()}
 
-            # Update each provider's tokens_today
             providers_result = await db.execute(select(Provider))
             for provider in providers_result.scalars().all():
                 provider.tokens_today = usage_by_provider.get(provider.name, 0)
@@ -135,14 +131,12 @@ async def daily_pnl_report():
     """GOD TIER daily PnL report — runs every 24h"""
     logger.info("=== POLYGOD DAILY PNL REPORT ===")
 
-    # Use your existing PaperMirror (already imported)
     total_pnl = sum(paper.pnls) if paper.pnls else 0.0
     trade_count = len(paper.pnls)
 
     logger.info(f"Paper PnL: ${total_pnl:.2f} | Trades today: {trade_count}")
     logger.info(f"Current POLYGOD_MODE: {POLYGOD_MODE}")
 
-    # Optional: pull latest market stats from DB
     try:
         from src.backend.polymarket.client import polymarket_client
 
@@ -153,8 +147,6 @@ async def daily_pnl_report():
     except Exception as e:
         logger.warning(f"Could not fetch market data for report: {e}")
 
-    # TODO (future): send via email (Resend) or Telegram
-    # For now it's logged + visible in Prometheus metrics
     logger.info("=== DAILY REPORT COMPLETE ===")
 
 
@@ -168,8 +160,6 @@ async def lifespan(app: FastAPI):
     external services or APIs are unavailable.
     """
     logger.info("Starting POLYGOD API...")
-
-    # Env vars validation logs with fallbacks (config has defaults)
     logger.info("=== POLYGOD Startup: Environment Validation (main.py) ===")
     logger.info(f"DATABASE_URL={settings.DATABASE_URL!r}")
     logger.info(f"CORS_ORIGINS={settings.CORS_ORIGINS!r}")
@@ -178,21 +168,26 @@ async def lifespan(app: FastAPI):
         f"POLYGOD_MODE={settings.POLYGOD_MODE}, MEM0_CONFIG present={bool(settings.MEM0_CONFIG)}"
     )
 
-    if not settings.NEWS_API_KEY:
+    if not settings.NEWS_API_KEY.get_secret_value():
         logger.warning("NEWS_API_KEY not set. News aggregation may be disabled.")
-    if not settings.GEMINI_API_KEY:
+    if not settings.GEMINI_API_KEY.get_secret_value():
         logger.warning("GEMINI_API_KEY not set. POLYGOD AI agents disabled.")
-    if not settings.TAVILY_API_KEY:
+    if not settings.TAVILY_API_KEY.get_secret_value():
         logger.warning("TAVILY_API_KEY not set. Web search enrichment disabled.")
-    if not settings.POLYMARKET_API_KEY:
+    if not settings.POLYMARKET_API_KEY.get_secret_value():
         logger.info("POLYMARKET_API_KEY not set. Using public Polymarket API only.")
-    if not settings.POLYMARKET_SECRET or not settings.POLYMARKET_PASSPHRASE:
+    if (
+        not settings.POLYMARKET_SECRET.get_secret_value()
+        or not settings.POLYMARKET_PASSPHRASE.get_secret_value()
+    ):
         logger.info(
             "POLYMARKET_SECRET / POLYMARKET_PASSPHRASE not fully set. "
             "Authenticated trading may be disabled."
         )
 
-    # Initialize database
+    if not settings.POLYGOD_ADMIN_TOKEN.get_secret_value():
+        raise RuntimeError("ADMIN_TOKEN required in production")
+
     try:
         await init_db()
         logger.info("Database initialized")
@@ -201,13 +196,11 @@ async def lifespan(app: FastAPI):
             logger.error(
                 f"Database initialization failed: {e} - Continuing with in-memory fallback"
             )
-            settings.DATABASE_URL = "sqlite+aiosqlite:///:memory:"
             logger.warning("DATABASE_URL overridden to sqlite+aiosqlite:///:memory:")
         else:
             logger.error(f"Database initialization failed: {e}")
             raise
 
-    # Run initial market update with graceful error
     try:
         await update_top_markets()
         logger.info("Initial market data loaded")
@@ -215,7 +208,6 @@ async def lifespan(app: FastAPI):
         logger.error(
             f"Failed to load initial market data: {e} - Continuing without market data"
         )
-        # Fallback: create empty market data structure, but never crash
         try:
             from src.backend.polymarket.client import create_empty_market_data
 
@@ -224,7 +216,6 @@ async def lifespan(app: FastAPI):
         except Exception as inner_e:
             logger.error(f"Failed to initialize empty market data fallback: {inner_e}")
 
-    # Start background scheduler with graceful error handling
     scheduler = get_scheduler()
     try:
         scheduler.start()
@@ -233,9 +224,8 @@ async def lifespan(app: FastAPI):
         logger.error(
             f"Failed to start background scheduler: {e} - Continuing without scheduler"
         )
-        scheduler = None  # Set to None to avoid shutdown errors
+        scheduler = None
 
-    # Schedule daily PnL report (runs once per day at midnight)
     if scheduler:
         try:
             scheduler.add_job(
@@ -250,7 +240,6 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.warning(f"Could not schedule daily PnL report: {e}")
 
-    # Schedule LLM stats refresh (every 5 minutes)
     if scheduler:
         try:
             from apscheduler.triggers.interval import IntervalTrigger
@@ -266,13 +255,11 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.warning(f"Could not schedule LLM stats refresh: {e}")
 
-    # GOD TIER: Swarm runs via polygod-swarm container (see docker-compose.yml)
     if settings.POLYGOD_MODE >= 1:
         logger.info(
             f"🚀 MODE {settings.POLYGOD_MODE} — swarm runs via polygod-swarm container"
         )
 
-    # Schedule Self-Improving Memory Loop (weekly on Sunday)
     if scheduler:
         try:
             scheduler.add_job(
@@ -299,9 +286,8 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.warning(f"Could not schedule memory loop jobs: {e}")
 
-    # Start Telegram bot in background (if token configured)
     telegram_task = None
-    if settings.TELEGRAM_BOT_TOKEN:
+    if settings.TELEGRAM_BOT_TOKEN.get_secret_value():
         try:
             from src.backend.routes.telegram import run_telegram_bot
 
@@ -314,12 +300,10 @@ async def lifespan(app: FastAPI):
 
     yield
 
-    # Cancel Telegram bot on shutdown
     if telegram_task:
         telegram_task.cancel()
         logger.info("Telegram bot task cancelled")
 
-    # Shutdown
     logger.info("Shutting down POLYGOD...")
     if scheduler:
         try:
@@ -341,7 +325,6 @@ async def lifespan(app: FastAPI):
     logger.info("Shutdown complete")
 
 
-# Create FastAPI app
 app = FastAPI(
     title="POLYGOD API",
     description="POLYGOD - Advanced Polymarket intelligence and trading agent",
@@ -350,32 +333,29 @@ app = FastAPI(
     debug=settings.debug,
     docs_url="/docs" if settings.debug else None,
     redoc_url="/redoc" if settings.debug else None,
+    middleware=[
+        Middleware(
+            CORSMiddleware,
+            allow_origins=settings.cors_origins_list,
+            allow_credentials=True,
+            allow_methods=["*"],
+            allow_headers=["*"],
+        ),
+        Middleware(SecurityHeadersMiddleware),
+    ],
 )
 
-# Rate limiting setup
 app.state.limiter = limiter
 
-# Prometheus metrics — exposes /metrics endpoint
 Instrumentator().instrument(app).expose(app)
 
-# Configure CORS
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=settings.cors_origins_list,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
 
-
-# Global exception handler to mask secrets
 @app.exception_handler(Exception)
 async def global_exception_handler(request, exc):
     detail = mask_secrets(str(exc))
     return JSONResponse(status_code=500, content={"detail": detail})
 
 
-# SecretFilter for logging
 class SecretFilter(logging.Filter):
     def filter(self, record):
         record.msg = mask_secrets(str(record.msg))
@@ -385,22 +365,17 @@ class SecretFilter(logging.Filter):
 logging.getLogger().addFilter(SecretFilter())
 
 
-# Rate limiting + auth middleware
 @app.exception_handler(RateLimitExceeded)
 async def rate_limit_handler(request, exc):
     return JSONResponse({"error": "Rate limit exceeded"}, status_code=429)
 
 
-# ─── Route includes ───────────────────────────────────────────────────────────
 app.include_router(markets.router, prefix="/api/markets")
 app.include_router(news.router, prefix="/api/news")
 app.include_router(debate.router, prefix="/api/debate")
 app.include_router(users.router, prefix="/api/users")
 app.include_router(llm.router, prefix="/api/llm")
 app.include_router(telegram.router, prefix="/api/telegram")
-
-
-# ─── WebSocket streams ────────────────────────────────────────────────────────
 
 
 @app.websocket("/ws/polygod")
@@ -439,9 +414,6 @@ async def debate_websocket(websocket: WebSocket, market_id: str):
     await websocket.close()
 
 
-# ─── Control endpoints ────────────────────────────────────────────────────────
-
-
 @app.post("/polygod/switch-mode")
 async def switch_mode(new_mode: int):
     global POLYGOD_MODE
@@ -455,11 +427,8 @@ async def monte_carlo_simulate(market_id: str, order_size: float = 1000):
     """GOD TIER simulation dashboard endpoint"""
     from src.backend.polygod_graph import get_enriched_market_data, run_monte_carlo
 
-    # Pull latest market data (reuse existing helper)
     market_data = await get_enriched_market_data(market_id)
-    sim = run_monte_carlo(
-        {"size": order_size}, market_data
-    )  # uses the function from polygod_graph
+    sim = run_monte_carlo({"size": order_size}, market_data)
 
     return {
         "simulation": sim,
@@ -473,9 +442,6 @@ async def monte_carlo_simulate(market_id: str, order_size: float = 1000):
 async def scan_niches(mode: int = 0, _: str = Depends(verify_api_key)):
     """
     Start money printer — scan for micro-niche opportunities in low-liquidity markets.
-
-    Scans weather, tweets, and mentions markets for mispriced opportunities,
-    then runs parallel paper tournaments to validate edges before promotion.
 
     Modes:
     - 0 = OBSERVE (scan only, no tournaments)
@@ -504,10 +470,6 @@ async def polygod_run(market_id: str, mode: int = 0, question: str = ""):
     """
     GOD TIER CYCLIC SWARM — Full pipeline execution.
 
-    Runs the complete POLYGOD pipeline:
-    memory_recall → research → x_sentiment → [cyclic debate swarm] → moderator →
-    [approve | risk_gate | evolution_lab] → execute → meta_reflection
-
     Modes:
     - 0 = OBSERVE (1 debate round, approval required)
     - 1 = PAPER (2 debate rounds, paper execution)
@@ -533,14 +495,12 @@ async def polygod_run(market_id: str, mode: int = 0, question: str = ""):
         raise HTTPException(status_code=500, detail=f"POLYGOD run failed: {e}") from e
 
 
-# ─── Health + Root ─────────────────────────────────────────────────────────────
-
-
 @app.get("/api/health")
 async def health():
     """GOD TIER health check."""
+    from sqlalchemy import text
+
     from src.backend.database import engine
-    from src.backend.tasks.update_markets import get_scheduler
 
     scheduler = get_scheduler()
     db_connected = False

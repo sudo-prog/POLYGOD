@@ -6,11 +6,13 @@ Defines data models for news API responses.
 
 from datetime import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class NewsArticleIn(BaseModel):
     """Input model for a news article from external APIs."""
+
+    model_config = ConfigDict(extra="ignore")
 
     title: str = ""
     description: str | None = None
@@ -21,14 +23,11 @@ class NewsArticleIn(BaseModel):
     publishedAt: str | None = None
     content: str | None = None
 
-    class Config:
-        """Pydantic config."""
-
-        extra = "ignore"
-
 
 class NewsArticleOut(BaseModel):
     """Output model for a news article sent to the frontend."""
+
+    model_config = ConfigDict(from_attributes=True)
 
     id: int
     market_id: str
@@ -40,11 +39,6 @@ class NewsArticleOut(BaseModel):
     image_url: str | None = None
     published_at: datetime | None = None
     sentiment_score: float | None = None
-
-    class Config:
-        """Pydantic config."""
-
-        from_attributes = True
 
 
 class NewsListResponse(BaseModel):

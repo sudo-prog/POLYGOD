@@ -58,7 +58,7 @@ function App() {
     'news'
   );
   const [activeView, setActiveView] = useState<'markets' | 'user' | 'llm'>('markets');
-  const tickerHeight = 33;
+  const [tickerHeight, setTickerHeight] = useState(33); // Dynamic ticker height
   const { data: marketsData } = useMarkets();
 
   // Safely parse polyGodData with proper type checking
@@ -160,27 +160,33 @@ function App() {
   ]);
 
   return (
-    <div className="min-h-screen bg-surface-950 pg-mesh-bg">
+    <div className="min-h-screen bg-surface-950 pg-mesh-bg" style={{ paddingTop: tickerHeight }}>
       <TickerBanner
         items={[
           ...(lastAlert
             ? [
                 {
                   id: 'whale-alert',
-                  label: '🐋 WHALE ALERT',
-                  value: lastAlert,
-                  type: 'whale' as const,
+                  label: 'WHALE ALERT',
+                  value: lastAlert.slice(0, 40),
                   positive: true,
                 },
               ]
             : []),
-          ...(marketsData?.markets?.slice(0, 5).map((market: any, idx: number) => ({
-            id: `market-${idx}`,
-            label: market.title.length > 20 ? market.title.slice(0, 17) + '...' : market.title,
-            value: `${market.yes_percentage.toFixed(1)}%`,
-            type: 'market' as const,
-          })) || []),
+          ...(marketsData?.markets?.slice(0, 10).map((market: any, idx: number) => {
+            const yesPercentage =
+              (market.yes_percentage ?? 0) ||
+              (market.yes_price ? market.yes_price * 100 : 0) ||
+              (market.outcomes?.[0]?.price ? market.outcomes[0].price * 100 : 0);
+            return {
+              id: `market-${idx}`,
+              label: market.title.slice(0, 22).toUpperCase(),
+              value: `${yesPercentage.toFixed(1)}%`,
+              positive: yesPercentage > 50,
+            };
+          }) || []),
         ]}
+        onHeightChange={setTickerHeight}
       />
 
       {/* Header */}
@@ -330,7 +336,14 @@ function App() {
                         <p>
                           Current:{' '}
                           <span className="text-white font-medium">
-                            {selectedMarket.yes_percentage.toFixed(2)}%
+                            {(
+                              (selectedMarket.yes_percentage ?? 0) ||
+                              (selectedMarket.yes_price ? selectedMarket.yes_price * 100 : 0) ||
+                              (selectedMarket.outcomes?.[0]?.price
+                                ? selectedMarket.outcomes[0].price * 100
+                                : 0)
+                            ).toFixed(2)}
+                            %
                           </span>{' '}
                           Yes
                         </p>
@@ -482,7 +495,11 @@ function App() {
       <SpotlightSearch isOpen={spotlightOpen} onClose={() => setSpotlightOpen(false)} />
 
       {/* Notification Centre */}
-      <NotificationCentre isOpen={notificationOpen} onClose={() => setNotificationOpen(false)} />
+      <NotificationCentre
+        isOpen={notificationOpen}
+        onClose={() => setNotificationOpen(false)}
+        tickerHeight={tickerHeight}
+      />
 
       {/* Settings Button */}
       <SettingsButton />

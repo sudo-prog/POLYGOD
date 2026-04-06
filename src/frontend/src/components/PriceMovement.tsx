@@ -25,6 +25,12 @@ export function PriceMovement() {
     );
   }
 
+  // Get yes percentage with fallbacks
+  const yesPercentage =
+    (selectedMarket.yes_percentage ?? 0) ||
+    (selectedMarket.yes_price ? selectedMarket.yes_price * 100 : 0) ||
+    (selectedMarket.outcomes?.[0]?.price ? selectedMarket.outcomes[0].price * 100 : 0);
+
   return (
     <div className="space-y-4">
       {/* Header */}
@@ -74,9 +80,7 @@ export function PriceMovement() {
           </div>
           <div className="flex items-center justify-between p-2 bg-surface-800/50 rounded-lg">
             <span className="text-sm text-white">Moving Average (50)</span>
-            <span className="text-sm font-mono text-white">
-              {selectedMarket.yes_percentage.toFixed(1)}%
-            </span>
+            <span className="text-sm font-mono text-white">{yesPercentage.toFixed(1)}%</span>
           </div>
         </div>
       </div>

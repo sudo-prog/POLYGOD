@@ -1,43 +1,43 @@
 import logging
 from functools import lru_cache
 
-from pydantic import Field
+from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
-    """Application settings loaded from environment variables."""
-
-    DATABASE_URL: str = Field(default="sqlite+aiosqlite:///./polymarket.db")
-    NEWS_API_KEY: str = Field(default="")
-    POLYMARKET_API_HOST: str = Field(default="https://clob.polymarket.com")
-    POLYMARKET_API_KEY: str = Field(default="")
-    POLYMARKET_SECRET: str = Field(default="")
-    POLYMARKET_PASSPHRASE: str = Field(default="")
-    CORS_ORIGINS: str = Field(
-        default="http://localhost:5173,http://127.0.0.1:5173,http://localhost:5174,http://127.0.0.1:5174"
+    DATABASE_URL: str = Field(
+        default="postgresql+asyncpg://user:pass@localhost/polymarket"
     )
+    NEWS_API_KEY: SecretStr = Field(default=SecretStr(""))
+    POLYMARKET_API_HOST: str = Field(default="https://clob.polymarket.com")
+    POLYMARKET_API_KEY: SecretStr = Field(default=SecretStr(""))
+    POLYMARKET_SECRET: SecretStr = Field(default=SecretStr(""))
+    POLYMARKET_PASSPHRASE: SecretStr = Field(default=SecretStr(""))
+    CORS_ORIGINS: str = Field(default="http://localhost:5173,https://yourdomain.com")
     HOST: str = Field(default="0.0.0.0")
     PORT: int = Field(default=8000)
-    DEBUG: bool = Field(default=False, alias="debug")
-    GEMINI_API_KEY: str = Field(default="", alias="gemini_api_key")
-    GROK_API_KEY: str = Field(default="")
-    TAVILY_API_KEY: str = Field(default="")
-    LIGHTNING_AI_TOKEN: str = Field(default="")
-    POLYGOD_MODE: int = Field(default=0)
+    DEBUG: bool = Field(default=False)
+    GEMINI_API_KEY: SecretStr = Field(default=SecretStr(""))
+    GROK_API_KEY: SecretStr = Field(default=SecretStr(""))
+    TAVILY_API_KEY: SecretStr = Field(default=SecretStr(""))
+    POLYGOD_ADMIN_TOKEN: SecretStr = Field(default=SecretStr(""))
+    ENCRYPTION_KEY: SecretStr = Field(
+        default=SecretStr("dev-encryption-key-32-chars-here!!")
+    )
+    REDIS_URL: str = Field(default="redis://redis:6379/0")
+    TELEGRAM_BOT_TOKEN: SecretStr = Field(default=SecretStr(""))
+    LIGHTNING_AI_TOKEN: SecretStr = Field(default=SecretStr(""))
+    X_BEARER_TOKEN: SecretStr = Field(default=SecretStr(""))
+    INTERNAL_API_KEY: SecretStr = Field(default=SecretStr("change-this-before-use"))
     MEM0_CONFIG: str = Field(
         default='{"provider": "qdrant", "vector_store": {"url": "http://qdrant:6333"}}'
     )
-    FORCE_IPV4: bool = Field(default=False)
+    POLYGOD_MODE: int = Field(default=0)
     ALLOW_IN_MEMORY_DB_FALLBACK: bool = Field(default=False)
-    POLYGOD_ADMIN_TOKEN: str = Field(default="super-secret-admin-token-change-me")
-    X_BEARER_TOKEN: str = Field(default="")
-    ENCRYPTION_KEY: str = Field(default="")
-    REDIS_URL: str = Field(default="redis://redis:6379/0")
-    TELEGRAM_BOT_TOKEN: str = Field(default="")
-    INTERNAL_API_KEY: str = Field(
-        default="change-this-before-use", alias="internal_api_key"
-    )
+    FORCE_IPV4: bool = Field(default=False)
+
+    model_config = {"env_file": ".env", "extra": "ignore", "env_file_encoding": "utf-8"}
 
     @property
     def cors_origins_list(self) -> list[str]:
@@ -45,15 +45,11 @@ class Settings(BaseSettings):
 
     @property
     def debug(self) -> bool:
-        """Alias for DEBUG for backward compatibility."""
         return self.DEBUG
 
     @property
     def internal_api_key(self) -> str:
-        """Alias for INTERNAL_API_KEY for backward compatibility."""
-        return self.INTERNAL_API_KEY
-
-    model_config = {"env_file": ".env", "extra": "ignore"}
+        return self.INTERNAL_API_KEY.get_secret_value()
 
 
 @lru_cache
@@ -66,37 +62,49 @@ def get_settings() -> Settings:
         settings.POLYGOD_MODE,
         settings.REDIS_URL,
     )
-    grok_status = "YES (masked)" if settings.GROK_API_KEY else "NO (using fallback)"
+    grok_status = (
+        "YES (masked)"
+        if settings.GROK_API_KEY.get_secret_value()
+        else "NO (using fallback)"
+    )
     logger.info(f"GROK_API_KEY present: {grok_status}")
     logger.info(f"Database: {settings.DATABASE_URL!r}")
     logger.info(f"CORS Origins: {settings.CORS_ORIGINS!r}")
     logger.info(f"Server: {settings.HOST}:{settings.PORT}")
     logger.info(f"Debug Mode: {'Enabled' if settings.DEBUG else 'Disabled'}")
-    if not settings.NEWS_API_KEY:
+    if not settings.NEWS_API_KEY.get_secret_value():
         logger.warning("NEWS_API_KEY not set - news features may be limited")
-    if not settings.GEMINI_API_KEY:
+    if not settings.GEMINI_API_KEY.get_secret_value():
         logger.warning("GEMINI_API_KEY not set - AI agents disabled")
-    if not settings.TAVILY_API_KEY:
+    if not settings.TAVILY_API_KEY.get_secret_value():
         logger.warning("TAVILY_API_KEY not set - search features limited")
-    if not settings.POLYMARKET_API_KEY:
+    if not settings.POLYMARKET_API_KEY.get_secret_value():
         logger.warning("POLYMARKET_API_KEY not set - using public API fallback")
-    if not settings.POLYMARKET_SECRET or not settings.POLYMARKET_PASSPHRASE:
+    if (
+        not settings.POLYMARKET_SECRET.get_secret_value()
+        or not settings.POLYMARKET_PASSPHRASE.get_secret_value()
+    ):
         logger.warning(
-            "POLYMARKET_SECRET/POLYMARKET_PASSPHRASE not fully set - "
-            "authenticated trading may be disabled"
+            "POLYMARKET_SECRET/PASSPHRASE not set - authenticated trading disabled"
         )
-    if not settings.X_BEARER_TOKEN:
+    if not settings.X_BEARER_TOKEN.get_secret_value():
         logger.warning(
             "X_BEARER_TOKEN not set - X API features (sentiment) may be limited"
         )
-    if not settings.LIGHTNING_AI_TOKEN:
+    if not settings.LIGHTNING_AI_TOKEN.get_secret_value():
         logger.warning("LIGHTNING_AI_TOKEN not set - GPU tournament offload disabled")
-    else:
-        logger.info("LIGHTNING_AI_TOKEN configured - GPU tournament offload available")
-    if not settings.ENCRYPTION_KEY:
+    if not settings.ENCRYPTION_KEY.get_secret_value():
         logger.warning("ENCRYPTION_KEY not set - LLM Hub API keys stored in plaintext")
     logger.info(f"POLYMARKET_API_HOST: {settings.POLYMARKET_API_HOST}")
     logger.info("=== Configuration Validation Complete ===")
+    if not settings.POLYGOD_ADMIN_TOKEN.get_secret_value():
+        # Allow dev token in DEBUG mode for testing
+        if settings.DEBUG:
+            logger.warning(
+                "POLYGOD_ADMIN_TOKEN not set - using dev token in DEBUG mode"
+            )
+        else:
+            raise RuntimeError("POLYGOD_ADMIN_TOKEN is required in production")
     return settings
 
 

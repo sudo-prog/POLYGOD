@@ -8,7 +8,9 @@ export interface Market {
   volume_24h: number;
   volume_7d: number;
   liquidity: number;
-  yes_percentage: number;
+  yes_percentage?: number;
+  yes_price?: number;
+  outcomes?: Array<{ price: number }>;
   is_active: boolean;
   end_date?: string | null;
   image_url?: string | null;
