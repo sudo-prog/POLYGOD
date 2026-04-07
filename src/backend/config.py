@@ -27,6 +27,8 @@ class Settings(BaseSettings):
     )
     REDIS_URL: str = Field(default="redis://redis:6379/0")
     TELEGRAM_BOT_TOKEN: SecretStr = Field(default=SecretStr(""))
+    TELEGRAM_CHAT_ID: str = Field(default="")
+    LANGSMITH_API_KEY: SecretStr = Field(default=SecretStr(""))
     LIGHTNING_AI_TOKEN: SecretStr = Field(default=SecretStr(""))
     X_BEARER_TOKEN: SecretStr = Field(default=SecretStr(""))
     INTERNAL_API_KEY: SecretStr = Field(default=SecretStr("change-this-before-use"))

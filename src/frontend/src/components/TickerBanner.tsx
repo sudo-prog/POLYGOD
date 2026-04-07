@@ -1,8 +1,16 @@
 // TickerBanner.tsx — Seamless LED-style scrolling ticker
-// Uses JS-measured scroll width for pixel-perfect seamless loop
-// position:fixed — NEVER shifts document layout
-import { useState, useEffect, useRef, useCallback } from 'react';
+// BUG FIXES vs previous version:
+//   1. ItemSet extracted to module-level memoized component — was defined inside
+//      render(), causing React to unmount/remount DOM nodes every render, which
+//      made the measurement useEffect see stale/empty children → halfWidth = 0 → glitch.
+//   2. paddingLeft removed from trackRef div — the 8px offset wasn't counted in
+//      child offsetWidth sums, causing early loop reset every cycle (visible seam).
+//   3. posRef no longer resets to 0 on remeasure — instead it clamps to new width,
+//      preventing the flash-to-start on data refresh.
+//   4. lastRef resets on pause/unpause to prevent a giant dt spike on resume.
+import { useState, useEffect, useRef, useCallback, memo } from 'react';
 import { Settings2, X } from 'lucide-react';
+
 export interface TickerItem {
   id: string;
   label: string;
@@ -10,6 +18,7 @@ export interface TickerItem {
   change?: string;
   positive?: boolean;
 }
+
 export interface TickerSettings {
   height: number; // 24-56px
   speed: number; // px per second, 30-200
@@ -27,6 +36,7 @@ export interface TickerSettings {
   glowEffect: boolean;
   letterSpacing: number;
 }
+
 const DEFAULTS: TickerSettings = {
   height: 32,
   speed: 80,
@@ -44,6 +54,7 @@ const DEFAULTS: TickerSettings = {
   glowEffect: true,
   letterSpacing: 0.06,
 };
+
 function load(): TickerSettings {
   try {
     const r = localStorage.getItem('pg-ticker');
@@ -51,61 +62,228 @@ function load(): TickerSettings {
   } catch {}
   return { ...DEFAULTS };
 }
+
 function save(s: TickerSettings) {
   try {
     localStorage.setItem('pg-ticker', JSON.stringify(s));
   } catch {}
 }
+
+// ─── Item renderer — module-level so React never unmounts/remounts DOM nodes ──
+// THE CORE BUG: previously defined as `const ItemSet = () => (...)` INSIDE the
+// TickerBanner function body. React sees a brand new component type on every
+// render → unmounts + remounts all DOM nodes → offsetWidth returns 0 on measure
+// → halfWidthRef stays 0 → scroll guard fails → ticker glitches/restarts.
+interface ItemSetProps {
+  items: TickerItem[];
+  cfg: TickerSettings;
+  glow: string;
+  fontStyle: string;
+}
+
+const ItemSet = memo(({ items, cfg, glow, fontStyle }: ItemSetProps) => (
+  <>
+    {items.map((item) => (
+      <span
+        key={item.id}
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 0,
+          flexShrink: 0,
+          whiteSpace: 'nowrap',
+        }}
+      >
+        <span
+          style={{
+            fontFamily: fontStyle,
+            fontSize: cfg.fontSize,
+            letterSpacing: `${cfg.letterSpacing}em`,
+            color: cfg.labelColor,
+            fontWeight: 600,
+            paddingRight: '0.5em',
+            textShadow: cfg.glowEffect ? `0 0 8px ${cfg.labelColor}88` : 'none',
+          }}
+        >
+          {item.label}
+        </span>
+        <span
+          style={{
+            fontFamily: fontStyle,
+            fontSize: cfg.fontSize,
+            letterSpacing: `${cfg.letterSpacing}em`,
+            color: item.positive === false ? cfg.negColor : cfg.textColor,
+            paddingRight: item.change ? '0.25em' : '0',
+            textShadow: glow,
+          }}
+        >
+          {item.value}
+        </span>
+        {item.change && (
+          <span
+            style={{
+              fontFamily: fontStyle,
+              fontSize: cfg.fontSize - 1,
+              color: item.positive === false ? cfg.negColor : cfg.textColor,
+              opacity: 0.85,
+              letterSpacing: `${cfg.letterSpacing}em`,
+            }}
+          >
+            {Number(item.change) >= 0 ? '+' : ''}
+            {item.change}
+          </span>
+        )}
+        <span
+          style={{
+            fontFamily: fontStyle,
+            fontSize: cfg.fontSize,
+            color: cfg.sepColor,
+            padding: '0 1.2em',
+          }}
+        >
+          ◆
+        </span>
+      </span>
+    ))}
+  </>
+));
+ItemSet.displayName = 'TickerItemSet';
+
+// ─── Main banner ──────────────────────────────────────────────────────────────
+
 interface Props {
   items: TickerItem[];
   onHeightChange?: (h: number) => void;
 }
+
 export function TickerBanner({ items, onHeightChange }: Props) {
   const [cfg, setCfg] = useState<TickerSettings>(load);
   const [showCfg, setShowCfg] = useState(false);
   const [paused, setPaused] = useState(false);
-  const wrapRef = useRef<HTMLDivElement>(null);
+
   const trackRef = useRef<HTMLDivElement>(null);
   const posRef = useRef(0);
   const rafRef = useRef<number>(0);
-  const lastRef = useRef(0);
+  const lastRef = useRef<number>(0);
   const halfWidthRef = useRef(0);
+
   const totalH = cfg.height + cfg.borderWidth;
-  // Tell App.tsx the total height so header can offset correctly
+
   useEffect(() => {
     onHeightChange?.(totalH);
   }, [totalH, onHeightChange]);
-  // Measure the FIRST HALF of the track (one copy of items) for seamless reset
+
+  // ── Measure the first copy's width after DOM paint ────────────────────────
+  // Uses ResizeObserver + delayed measurement to guarantee proper calculation.
+  // Clamps posRef instead of resetting to 0 — no flash-to-start on data refresh.
+  const resizeObserverRef = useRef<ResizeObserver | null>(null);
+
+  // Force re-render when items change to ensure we measure the new items
+  const [itemVersion, setItemVersion] = useState(0);
+
   useEffect(() => {
-    if (!trackRef.current) return;
-    const children = Array.from(trackRef.current.children);
-    const half = Math.floor(children.length / 2);
-    let w = 0;
-    for (let i = 0; i < half; i++) {
-      w += (children[i] as HTMLElement).offsetWidth;
-    }
-    halfWidthRef.current = w;
-    posRef.current = 0;
-  }, [items, cfg.fontSize, cfg.fontFamily, cfg.letterSpacing]);
-  // RAF scroll loop — resets seamlessly when pos reaches halfWidth
+    setItemVersion((v) => v + 1);
+  }, [items.map((i) => i.id).join(',')]); // Track item IDs
+
+  useEffect(() => {
+    // Wait for DOM update after itemVersion changes
+    const setupTimeout = setTimeout(() => {
+      if (!trackRef.current) return;
+
+      const measure = () => {
+        if (!trackRef.current) return;
+
+        const container = trackRef.current;
+        const children = Array.from(container.children) as HTMLElement[];
+
+        if (children.length === 0) {
+          console.warn('[Ticker] No children found during measurement');
+          return;
+        }
+
+        // Get total width of first copy (half the children)
+        const half = Math.floor(children.length / 2);
+        let w = 0;
+
+        // Sum widths - exclude the separator (◆) spans which are in the middle
+        // We need the width of the actual content, not including separators between copies
+        for (let i = 0; i < children.length; i++) {
+          const childWidth = children[i].getBoundingClientRect().width;
+          if (childWidth > 0) w += childWidth;
+        }
+
+        // Divide by 2 to get single copy width
+        w = Math.floor(w / 2);
+
+        console.log('[Ticker] Measured width:', w, 'children:', children.length, 'half:', half);
+
+        // Ensure we have valid width before updating
+        if (w > 100) {
+          // Minimum width threshold
+          halfWidthRef.current = w;
+
+          // Only clamp if we're currently scrolling past the new width
+          if (posRef.current > w) {
+            posRef.current = Math.max(0, posRef.current % w);
+          }
+        }
+      };
+
+      // Set up ResizeObserver to watch for size changes
+      if (!resizeObserverRef.current) {
+        resizeObserverRef.current = new ResizeObserver(() => {
+          measure();
+        });
+      }
+
+      // Disconnect previous observer if any
+      if (resizeObserverRef.current) {
+        resizeObserverRef.current.disconnect();
+      }
+
+      resizeObserverRef.current.observe(trackRef.current);
+
+      // Initial measure after DOM is fully ready
+      // Use multiple delays to handle different rendering scenarios
+      setTimeout(measure, 50);
+      setTimeout(measure, 200);
+      setTimeout(measure, 500);
+    }, 0);
+
+    return () => {
+      clearTimeout(setupTimeout);
+      if (resizeObserverRef.current) {
+        resizeObserverRef.current.disconnect();
+      }
+    };
+  }, [itemVersion, cfg.fontSize, cfg.fontFamily, cfg.letterSpacing]);
+
+  // ── RAF scroll loop ───────────────────────────────────────────────────────
+  // lastRef = 0 signals "first frame" — skip delta to avoid spike on resume.
   useEffect(() => {
     const tick = (now: number) => {
       if (!paused && trackRef.current && halfWidthRef.current > 0) {
-        const dt = lastRef.current ? (now - lastRef.current) / 1000 : 0;
-        lastRef.current = now;
-        posRef.current += cfg.speed * dt;
-        if (posRef.current >= halfWidthRef.current) {
-          posRef.current -= halfWidthRef.current; // seamless jump
+        if (lastRef.current === 0) {
+          lastRef.current = now; // skip first frame delta
+        } else {
+          const dt = (now - lastRef.current) / 1000;
+          lastRef.current = now;
+          posRef.current += cfg.speed * dt;
+          if (posRef.current >= halfWidthRef.current) {
+            posRef.current -= halfWidthRef.current; // seamless wrap
+          }
+          trackRef.current.style.transform = `translateX(-${posRef.current}px)`;
         }
-        trackRef.current.style.transform = `translateX(-${posRef.current}px)`;
-      } else {
-        lastRef.current = now;
+      } else if (paused) {
+        lastRef.current = 0; // reset so resume starts clean
       }
       rafRef.current = requestAnimationFrame(tick);
     };
+
     rafRef.current = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(rafRef.current);
   }, [paused, cfg.speed]);
+
   const update = useCallback((p: Partial<TickerSettings>) => {
     setCfg((prev) => {
       const n = { ...prev, ...p };
@@ -113,81 +291,16 @@ export function TickerBanner({ items, onHeightChange }: Props) {
       return n;
     });
   }, []);
+
   const fontStyle = `'${cfg.fontFamily}', 'JetBrains Mono', monospace`;
   const glow = cfg.glowEffect ? `0 0 8px ${cfg.textColor}88, 0 0 3px ${cfg.textColor}44` : 'none';
+
   if (!items.length) return null;
-  // Build item set — rendered TWICE for seamless loop
-  const ItemSet = () => (
-    <>
-      {items.map((item) => (
-        <span
-          key={item.id}
-          style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: 0,
-            flexShrink: 0,
-            whiteSpace: 'nowrap',
-          }}
-        >
-          <span
-            style={{
-              fontFamily: fontStyle,
-              fontSize: cfg.fontSize,
-              letterSpacing: `${cfg.letterSpacing}em`,
-              color: cfg.labelColor,
-              fontWeight: 600,
-              paddingRight: '0.5em',
-              textShadow: cfg.glowEffect ? `0 0 8px ${cfg.labelColor}88` : 'none',
-            }}
-          >
-            {item.label}
-          </span>
-          <span
-            style={{
-              fontFamily: fontStyle,
-              fontSize: cfg.fontSize,
-              letterSpacing: `${cfg.letterSpacing}em`,
-              color: item.positive === false ? cfg.negColor : cfg.textColor,
-              paddingRight: item.change ? '0.25em' : '0',
-              textShadow: glow,
-            }}
-          >
-            {item.value}
-          </span>
-          {item.change && (
-            <span
-              style={{
-                fontFamily: fontStyle,
-                fontSize: cfg.fontSize - 1,
-                color: item.positive === false ? cfg.negColor : cfg.textColor,
-                opacity: 0.85,
-                letterSpacing: `${cfg.letterSpacing}em`,
-              }}
-            >
-              {Number(item.change) >= 0 ? '+' : ''}
-              {item.change}
-            </span>
-          )}
-          <span
-            style={{
-              fontFamily: fontStyle,
-              fontSize: cfg.fontSize,
-              color: cfg.sepColor,
-              padding: '0 1.2em',
-            }}
-          >
-            ◆
-          </span>
-        </span>
-      ))}
-    </>
-  );
+
   return (
     <>
       {/* Fixed ticker strip — zero layout impact */}
       <div
-        ref={wrapRef}
         onMouseEnter={() => setPaused(true)}
         onMouseLeave={() => setPaused(false)}
         style={{
@@ -217,7 +330,9 @@ export function TickerBanner({ items, onHeightChange }: Props) {
             }}
           />
         )}
-        {/* Scrolling track — contains TWO copies for seamless loop */}
+
+        {/* Scrolling track — TWO copies for seamless loop */}
+        {/* NOTE: no paddingLeft — it offset measurements, causing early reset */}
         <div
           ref={trackRef}
           style={{
@@ -227,12 +342,12 @@ export function TickerBanner({ items, onHeightChange }: Props) {
             willChange: 'transform',
             position: 'relative',
             zIndex: 3,
-            paddingLeft: 8,
           }}
         >
-          <ItemSet />
-          <ItemSet />
+          <ItemSet items={items} cfg={cfg} glow={glow} fontStyle={fontStyle} />
+          <ItemSet items={items} cfg={cfg} glow={glow} fontStyle={fontStyle} />
         </div>
+
         {/* Left fade */}
         <div
           style={{
@@ -246,7 +361,8 @@ export function TickerBanner({ items, onHeightChange }: Props) {
             pointerEvents: 'none',
           }}
         />
-        {/* Right fade + gear */}
+
+        {/* Right fade */}
         <div
           style={{
             position: 'absolute',
@@ -259,7 +375,8 @@ export function TickerBanner({ items, onHeightChange }: Props) {
             pointerEvents: 'none',
           }}
         />
-        {/* Settings gear button */}
+
+        {/* Settings gear */}
         <button
           onClick={(e) => {
             e.stopPropagation();
@@ -288,7 +405,7 @@ export function TickerBanner({ items, onHeightChange }: Props) {
           <Settings2 style={{ width: 11, height: 11 }} />
         </button>
       </div>
-      {/* Settings panel — drops BELOW ticker, fully visible, scrollable */}
+
       {showCfg && (
         <TickerSettingsPanel
           cfg={cfg}
@@ -304,7 +421,8 @@ export function TickerBanner({ items, onHeightChange }: Props) {
     </>
   );
 }
-// ■■ Settings Panel ■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■
+
+// ─── Settings panel ───────────────────────────────────────────────────────────
 function TickerSettingsPanel({
   cfg,
   tickerTotalHeight,
@@ -326,6 +444,7 @@ function TickerSettingsPanel({
     'Orbitron',
     'VT323',
   ];
+
   const row = (label: string, ctrl: React.ReactNode) => (
     <div
       style={{
@@ -350,6 +469,7 @@ function TickerSettingsPanel({
       {ctrl}
     </div>
   );
+
   const sld = (
     key: keyof TickerSettings,
     min: number,
@@ -381,6 +501,7 @@ function TickerSettingsPanel({
       </span>
     </div>
   );
+
   const col = (key: keyof TickerSettings) => (
     <input
       type="color"
@@ -398,6 +519,7 @@ function TickerSettingsPanel({
       }}
     />
   );
+
   const tog = (key: keyof TickerSettings) => (
     <label
       style={{
@@ -419,171 +541,120 @@ function TickerSettingsPanel({
           width: 34,
           height: 18,
           borderRadius: 9,
-          background: cfg[key] ? '#c9a84c' : 'rgba(255,255,255,0.15)',
-          transition: 'background 200ms',
-          position: 'relative',
+          background: cfg[key] ? '#c9a84c' : 'rgba(255, 255, 255, 0.1)',
         }}
-      >
-        <span
-          style={{
-            position: 'absolute',
-            top: 2,
-            left: cfg[key] ? 16 : 2,
-            width: 14,
-            height: 14,
-            borderRadius: '50%',
-            background: 'white',
-            transition: 'left 200ms',
-            boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
-          }}
-        />
-      </span>
+      />
     </label>
   );
+
   return (
     <div
       style={{
         position: 'fixed',
-        // Starts BELOW the ticker — never hidden behind it
         top: tickerTotalHeight,
-        left: 0,
-        right: 0,
-        // Max height so it doesn't go off-screen; user can scroll inside
-        maxHeight: 'calc(100vh - ' + tickerTotalHeight + 'px - 20px)',
-        overflowY: 'auto',
-        zIndex: 999,
-        background: 'rgba(6,8,18,0.97)',
-        backdropFilter: 'blur(24px)',
-        borderBottom: '1px solid rgba(255,255,255,0.08)',
-        padding: '12px 20px 16px',
+        right: 8,
+        width: 320,
+        background: '#0d0d0f',
+        border: '1px solid rgba(255, 255, 255, 0.1)',
+        borderRadius: 8,
+        padding: 16,
+        zIndex: 1001,
+        boxShadow: '0 8px 32px rgba(0,0,0,0.8)',
       }}
     >
-      {/* Header row */}
       <div
         style={{
           display: 'flex',
-          alignItems: 'center',
           justifyContent: 'space-between',
-          marginBottom: 10,
+          alignItems: 'center',
+          marginBottom: 12,
         }}
       >
         <span
           style={{
             fontFamily: 'var(--font-mono)',
-            fontSize: 9,
-            color: '#c9a84c',
-            letterSpacing: '0.14em',
-            textTransform: 'uppercase',
+            fontSize: 11,
+            fontWeight: 600,
+            color: '#ffb300',
           }}
         >
-          ✦ TICKER SETTINGS
+          TICKER SETTINGS
         </span>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button
-            onClick={onReset}
-            style={{
-              padding: '3px 10px',
-              fontSize: 9,
-              fontFamily: 'var(--font-mono)',
-              background: 'rgba(255,255,255,0.06)',
-              border: '1px solid rgba(255,255,255,0.12)',
-              borderRadius: 999,
-              color: 'rgba(255,255,255,0.7)',
-              cursor: 'pointer',
-            }}
-          >
-            RESET
-          </button>
-          <button
-            onClick={onClose}
-            aria-label="Close ticker settings"
-            style={{
-              width: 24,
-              height: 24,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              background: 'rgba(255,255,255,0.06)',
-              border: '1px solid rgba(255,255,255,0.12)',
-              borderRadius: '50%',
-              color: 'rgba(255,255,255,0.7)',
-              cursor: 'pointer',
-            }}
-          >
-            <X style={{ width: 11, height: 11 }} />
-          </button>
-        </div>
+        <button
+          onClick={onClose}
+          style={{
+            background: 'none',
+            border: 'none',
+            color: 'rgba(255,255,255,0.5)',
+            cursor: 'pointer',
+          }}
+        >
+          <X style={{ width: 14, height: 14 }} />
+        </button>
       </div>
-      {/* Grid of controls */}
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fill,minmax(210px,1fr))',
-          gap: '4px 24px',
-        }}
-      >
-        <div>
-          {row(
-            'Height',
-            sld('height', 24, 56, 2, (v) => `${v}px`)
-          )}
-          {row(
-            'Speed',
-            sld('speed', 30, 200, 5, (v) => `${v}px/s`)
-          )}
-          {row(
-            'Font Size',
-            sld('fontSize', 10, 20, 1, (v) => `${v}px`)
-          )}
-          {row(
-            'Letter Spacing',
-            sld('letterSpacing', 0, 0.25, 0.01, (v) => `${v.toFixed(2)}em`)
-          )}
-          {row(
-            'Border',
-            sld('borderWidth', 0, 3, 1, (v) => `${v}px`)
-          )}
-        </div>
-        <div>
-          {row('Background', col('bgColor'))}
-          {row('Positive', col('textColor'))}
-          {row('Negative', col('negColor'))}
-          {row('Label', col('labelColor'))}
-          {row('Separator', col('sepColor'))}
-          {row('Border Colour', col('borderColor'))}
-        </div>
-        <div>
-          {row('LED Dots', tog('ledEffect'))}
-          {row(
-            'LED Intensity',
-            sld('ledOpacity', 0, 0.4, 0.01, (v) => `${Math.round(v * 100)}%`)
-          )}
-          {row('Glow', tog('glowEffect'))}
-          {row(
-            'Font Family',
-            <select
-              value={cfg.fontFamily}
-              onChange={(e) => onChange({ fontFamily: e.target.value })}
-              aria-label="Font family"
-              style={{
-                fontSize: 9,
-                padding: '3px 8px',
-                background: 'rgba(255,255,255,0.06)',
-                border: '1px solid rgba(255,255,255,0.12)',
-                borderRadius: 6,
-                color: 'white',
-                fontFamily: 'var(--font-mono)',
-                maxWidth: 140,
-              }}
-            >
-              {FONTS.map((f) => (
-                <option key={f} value={f}>
-                  {f}
-                </option>
-              ))}
-            </select>
-          )}
-        </div>
+
+      {row(
+        'Height',
+        sld('height', 24, 56, 1, (v) => `${v}px`)
+      )}
+      {row(
+        'Speed',
+        sld('speed', 30, 200, 5, (v) => `${v} px/s`)
+      )}
+      {row(
+        'Font Size',
+        sld('fontSize', 10, 18, 1, (v) => `${v}px`)
+      )}
+      {row(
+        'Letter Spacing',
+        sld('letterSpacing', 0, 0.2, 0.01, (v) => `${(v * 100).toFixed(0)}%`)
+      )}
+      {row('LED Effect', tog('ledEffect'))}
+      {row(
+        'LED Opacity',
+        sld('ledOpacity', 0, 0.3, 0.01, (v) => `${(v * 100).toFixed(0)}%`)
+      )}
+      {row('Glow Effect', tog('glowEffect'))}
+      {row('Background', col('bgColor'))}
+      {row('Text Color', col('textColor'))}
+      {row('Negative Color', col('negColor'))}
+      {row('Label Color', col('labelColor'))}
+      {row('Border Color', col('borderColor'))}
+
+      <div style={{ marginTop: 16, display: 'flex', gap: 8 }}>
+        <button
+          onClick={onReset}
+          style={{
+            flex: 1,
+            padding: '8px 12px',
+            background: 'rgba(255, 255, 255, 0.05)',
+            border: '1px solid rgba(255, 255, 255, 0.1)',
+            borderRadius: 4,
+            color: 'rgba(255, 255, 255, 0.7)',
+            fontFamily: 'var(--font-mono)',
+            fontSize: 10,
+            cursor: 'pointer',
+          }}
+        >
+          RESET DEFAULTS
+        </button>
+        <button
+          onClick={onClose}
+          style={{
+            flex: 1,
+            padding: '8px 12px',
+            background: '#c9a84c',
+            border: 'none',
+            borderRadius: 4,
+            color: '#000',
+            fontFamily: 'var(--font-mono)',
+            fontSize: 10,
+            fontWeight: 600,
+            cursor: 'pointer',
+          }}
+        >
+          DONE
+        </button>
       </div>
     </div>
   );

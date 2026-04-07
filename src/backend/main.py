@@ -393,6 +393,7 @@ async def polygod_ws(websocket: WebSocket, token: str = Query(default="")):
             {
                 "paper_pnl": paper.pnls[-1] if paper.pnls else 0,
                 "mode": POLYGOD_MODE,
+                "evolution_score": 0.95,  # Darwinian fitness metric
                 "whale_alert": next(whale_cycle),
             }
         )

@@ -18,10 +18,33 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_xai import ChatXAI
 from langgraph.graph import END, StateGraph
 
+logger = logging.getLogger(__name__)
+
 try:
     from langgraph.checkpoint.memory import MemorySaver
 except ImportError:
     MemorySaver = None
+
+# SqliteSaver with graceful fallback to MemorySaver
+checkpointer = None
+try:
+    # from_conn_string is a context manager, we need to use it properly
+    import sqlite3
+
+    from langgraph.checkpoint.sqlite import SqliteSaver
+
+    conn = sqlite3.connect("checkpoints.db", check_same_thread=False)
+    conn.close()
+    # Use direct instantiation instead
+    checkpointer = SqliteSaver(conn)
+    logger.info("Checkpointer: SqliteSaver (checkpoints.db)")
+except Exception as e:
+    logger.warning(f"SqliteSaver not available: {e}, falling back to MemorySaver")
+    if MemorySaver:
+        checkpointer = MemorySaver()
+        logger.info("Checkpointer: MemorySaver (in-memory)")
+    else:
+        logger.error("No checkpointer available - graph state will not persist")
 
 try:
     from mem0 import Memory
@@ -308,13 +331,13 @@ async def statistics_agent(state: AgentState) -> AgentState:
     prompt = f"""Analyze raw stats for this Polymarket market. Be ruthless with numbers.
 
 Market: "{question}"
-Current Price: {market_data.get('yes_percentage', prob * 100):.1f}% YES
+Current Price: {market_data.get("yes_percentage", prob * 100):.1f}% YES
 7d Volume: ${volume:,.0f}
 
 Monte Carlo Results (5000 sims):
-- Win Probability: {sim['win_prob']:.1%}
-- Expected PnL: ${sim['expected_pnl']:.2f}
-- 95% VaR: ${sim['confidence_95']:.2f}
+- Win Probability: {sim["win_prob"]:.1%}
+- Expected PnL: ${sim["expected_pnl"]:.2f}
+- 95% VaR: ${sim["confidence_95"]:.2f}
 - Kelly Fraction: {kelly:.1%}
 
 Is there statistical edge? What do the numbers actually say?"""
@@ -409,7 +432,7 @@ async def generalist_agent(state: AgentState) -> AgentState:
 
     prompt = f"""You are the Generalist Analyst on the POLYGOD Debate Floor.
 Market: "{question}"
-Current Price: {market_data.get('yes_percentage', 50):.1f}% YES
+Current Price: {market_data.get("yes_percentage", 50):.1f}% YES
 
 Prior debate arguments:
 {prior_args if prior_args else "No prior arguments — you go first."}
@@ -630,12 +653,12 @@ async def moderator_agent(state: AgentState) -> AgentState:
         )
     elif state.get("market_data", {}).get("whale_activity") is False:
         onchain_ctx = (
-            "\n🐋 ON-CHAIN VERIFICATION: " "No significant fills in last 10 trades."
+            "\n🐋 ON-CHAIN VERIFICATION: No significant fills in last 10 trades."
         )
 
     prompt = f"""You are the Moderator of the POLYGOD Debate Floor.
 Market: "{question}"
-Current Price: {market_data.get('yes_percentage', 50):.1f}% YES
+Current Price: {market_data.get("yes_percentage", 50):.1f}% YES
 
 All debate arguments:
 {all_args if all_args else "No arguments presented."}
@@ -690,8 +713,7 @@ async def evolution_supervisor_node(state: AgentState) -> AgentState:
     debate = state.get("debate_history", [])
 
     logger.info(
-        f"Evolution Supervisor: round {new_round}, "
-        f"{len(debate)} total agent outputs"
+        f"Evolution Supervisor: round {new_round}, {len(debate)} total agent outputs"
     )
 
     entry = {
@@ -731,8 +753,7 @@ async def risk_gate_node(state: AgentState) -> AgentState:
         state["decision"] = {**decision, "risk_status": "low", "next": "execute"}
         state["risk_status"] = "low"
         logger.info(
-            f"RISK GATE PASSED: Kelly={kelly:.2f}, "
-            f"win_prob={p_win:.1%}, volume=${volume:,.0f}"
+            f"RISK GATE PASSED: Kelly={kelly:.2f}, win_prob={p_win:.1%}, volume=${volume:,.0f}"
         )
     else:
         state["decision"] = {**decision, "risk_status": "high", "next": "approve"}
@@ -969,17 +990,7 @@ def build_polygod_graph() -> StateGraph:
 
 
 # ==================== COMPILE ====================
-memory_saver = MemorySaver() if MemorySaver else None
-polygod_graph = build_polygod_graph().compile(
-    checkpointer=memory_saver if memory_saver else None
-)
-
-logger.info(
-    "POLYGOD GOD-TIER SWARM compiled: "
-    "statistics → time_decay → generalist → macro → devil → [cyclic] → "
-    "moderator → onchain_verify → [auto_enter tournament] → "
-    "[approve | risk_gate] → execute → meta_reflection → END"
-)
+polygod_graph = build_polygod_graph().compile(checkpointer=checkpointer)
 
 
 # ==================== ENTRY POINT ====================
