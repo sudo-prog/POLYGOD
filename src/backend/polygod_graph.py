@@ -18,6 +18,15 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_xai import ChatXAI
 from langgraph.graph import END, StateGraph
 
+# LLM Concierge for secure multi-provider routing
+try:
+    from src.backend.services.llm_concierge import concierge
+
+    HAS_CONCIERGE = True
+except ImportError:
+    HAS_CONCIERGE = False
+    concierge = None
+
 logger = logging.getLogger(__name__)
 
 try:
@@ -90,6 +99,25 @@ def get_llm(model: str = "gemini"):
         temperature=0.3,
         max_output_tokens=8192,
     )
+
+
+async def get_concierge_completion(prompt: str, **kwargs):
+    """
+    Use LLM Concierge for secure multi-provider LLM calls.
+    Falls back to get_llm if concierge is not available.
+    """
+    if HAS_CONCIERGE and concierge:
+        try:
+            messages = [{"role": "user", "content": prompt}]
+            response = await concierge.get_secure_completion(
+                messages=messages, **kwargs
+            )
+            return response
+        except Exception as e:
+            logger.warning(f"Concierge failed, falling back to get_llm: {e}")
+    # Fallback
+    llm = get_llm("gemini")
+    return await llm.ainvoke([HumanMessage(content=prompt)])
 
 
 # ==================== MEMORY (Mem0) ====================

@@ -366,3 +366,19 @@ async def get_usage_heatmap(
         )
         for row in rows
     ]
+
+
+# ─── LLM Concierge endpoints ─────────────────────────────────────────────────────
+
+
+@router.get("/concierge/status")
+async def concierge_status():
+    """
+    Get LLM Concierge security status - health of all monitored API keys.
+
+    Returns:
+        Status of all LLM provider keys including healthy/failed counts and warnings.
+    """
+    from src.backend.services.llm_concierge import concierge
+
+    return concierge.get_security_status()

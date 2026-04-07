@@ -1,5 +1,7 @@
 """Admin authentication middleware for POLYGOD."""
 
+import secrets
+
 from fastapi import HTTPException, Security
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
@@ -22,6 +24,9 @@ async def admin_required(
     Raises:
         HTTPException: 401 if token is invalid or missing.
     """
-    if credentials.credentials != settings.POLYGOD_ADMIN_TOKEN:
+    # FIX C3: Use constant-time comparison to prevent timing attacks
+    if not secrets.compare_digest(
+        credentials.credentials, settings.POLYGOD_ADMIN_TOKEN.get_secret_value()
+    ):
         raise HTTPException(status_code=401, detail="Invalid admin token")
     return True

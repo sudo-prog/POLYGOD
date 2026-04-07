@@ -382,6 +382,66 @@ All critical production requirements have been implemented. The system is now ha
 
 ---
 
+## 2026-04-08 - LLM Concierge Agent Full Integration
+
+### Overview
+Integrated LiteLLM Concierge Agent for smart multi-provider LLM routing across the AI Debate Floor.
+
+### Components Integrated
+
+#### 1. LLM Concierge Service (`src/backend/services/llm_concierge.py`)
+- **Role:** Central brain for all LLM calls, smart router, security guardian
+- **Features:**
+  - Latency-based routing with automatic provider switching
+  - Fallback chain: Gemini → Groq → OpenRouter → (Cerebras ready)
+  - Key rotation support with backup keys
+  - Health monitoring with 30-min periodic sweeps
+  - TPM/RPM limits per provider
+
+- **Configuration:**
+  ```python
+  model_list=[
+      {"model": "gemini/gemini-2.5-pro", "api_key": os.getenv("GEMINI_API_KEY"), "rpm": 10, "tpm": 1_000_000},
+      {"model": "groq/llama-3.3-70b-versatile", "api_key": os.getenv("GROQ_API_KEY")},
+      {"model": "openrouter/deepseek/deepseek-r1", "api_key": os.getenv("OPENROUTER_API_KEY")},
+  ]
+  routing_strategy="latency-based-routing"
+  fallback_dict={"gemini/*": ["groq/*", "openrouter/*"]}
+  retry_policy={"max_retries": 3, "allowed_fails": 2}
+  ```
+
+#### 2. Background Health Check (main.py)
+- Added APScheduler job running every 30 minutes
+- `scheduler.add_job(concierge.health_check_all_keys, "interval", minutes=30)`
+
+#### 3. Status Endpoint (`/api/llm/concierge/status`)
+- Returns: keys_monitored, healthy_keys, last_sweep, warnings[]
+- Added to `src/backend/routes/llm.py`
+
+#### 4. POLYGOD Graph Integration (polygod_graph.py)
+- Added `get_concierge_completion()` helper function
+- Automatically falls back to `get_llm()` if concierge unavailable
+- Usage: `response = await get_concierge_completion(prompt)`
+
+### Files Created
+- `src/backend/services/__init__.py`
+- `src/backend/services/llm_concierge.py`
+
+### Files Modified
+- `src/backend/main.py` - Added concierge import + scheduler job
+- `src/backend/routes/llm.py` - Added /concierge/status endpoint
+- `src/backend/polygod_graph.py` - Added concierge import + get_concierge_completion()
+
+### Dependency
+- litellm already in pyproject.toml (line 31: `litellm>=1.60.0`)
+
+### Production Launch
+```bash
+docker compose -f docker-compose.prod.yml up --build -d
+```
+
+---
+
 ## Session Instructions
 
 - **Always check AGENT_NOTES.md, PROGRESS.md and any other files with updates and recent changes of project at the start of every session.**
