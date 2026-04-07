@@ -1,7 +1,7 @@
 import logging
 from functools import lru_cache
 
-from pydantic import Field, SecretStr
+from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings
 
 
@@ -38,6 +38,14 @@ class Settings(BaseSettings):
     FORCE_IPV4: bool = Field(default=False)
 
     model_config = {"env_file": ".env", "extra": "ignore", "env_file_encoding": "utf-8"}
+
+    @field_validator("POLYGOD_ADMIN_TOKEN", "INTERNAL_API_KEY")
+    @classmethod
+    def validate_prod_secrets(cls, v: SecretStr, info) -> SecretStr:
+        """Validate required secrets in production (when DEBUG=False)."""
+        if not info.data.get("DEBUG", False) and not v.get_secret_value():
+            raise ValueError(f"{info.field_name} is required in production")
+        return v
 
     @property
     def cors_origins_list(self) -> list[str]:
@@ -97,14 +105,8 @@ def get_settings() -> Settings:
         logger.warning("ENCRYPTION_KEY not set - LLM Hub API keys stored in plaintext")
     logger.info(f"POLYMARKET_API_HOST: {settings.POLYMARKET_API_HOST}")
     logger.info("=== Configuration Validation Complete ===")
-    if not settings.POLYGOD_ADMIN_TOKEN.get_secret_value():
-        # Allow dev token in DEBUG mode for testing
-        if settings.DEBUG:
-            logger.warning(
-                "POLYGOD_ADMIN_TOKEN not set - using dev token in DEBUG mode"
-            )
-        else:
-            raise RuntimeError("POLYGOD_ADMIN_TOKEN is required in production")
+    # Note: POLYGOD_ADMIN_TOKEN and INTERNAL_API_KEY validation
+    # is now handled by field_validator at model initialization
     return settings
 
 

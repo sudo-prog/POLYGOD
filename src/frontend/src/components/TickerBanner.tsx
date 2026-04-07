@@ -60,7 +60,7 @@ interface Props {
   items: TickerItem[];
   onHeightChange?: (h: number) => void;
 }
-export function TickerBanner({ items, onHeightChange: _onHeightChange }: Props) {
+export function TickerBanner({ items, onHeightChange }: Props) {
   const [cfg, setCfg] = useState<TickerSettings>(load);
   const [showCfg, setShowCfg] = useState(false);
   const [paused, setPaused] = useState(false);
@@ -73,8 +73,8 @@ export function TickerBanner({ items, onHeightChange: _onHeightChange }: Props) 
   const totalH = cfg.height + cfg.borderWidth;
   // Tell App.tsx the total height so header can offset correctly
   useEffect(() => {
-    _onHeightChange?.(totalH);
-  }, [totalH, _onHeightChange]);
+    onHeightChange?.(totalH);
+  }, [totalH, onHeightChange]);
   // Measure the FIRST HALF of the track (one copy of items) for seamless reset
   useEffect(() => {
     if (!trackRef.current) return;

@@ -17,6 +17,7 @@ engine = create_async_engine(
     pool_pre_ping=True,
     pool_size=20,
     max_overflow=10,
+    pool_recycle=300,  # Prevent stale connections
 )
 
 async_session_factory = async_sessionmaker(
@@ -39,6 +40,7 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
 
 
 async def init_db() -> None:
+    # TODO: Run Alembic migrations instead of create_all in production
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 

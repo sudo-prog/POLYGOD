@@ -359,6 +359,29 @@ All critical production requirements have been implemented. The system is now ha
 
 ---
 
+## 2026-04-07 - Config & Database Improvements
+
+### src/backend/config.py - Improved Validation
+- Added `field_validator` decorator for `POLYGOD_ADMIN_TOKEN` and `INTERNAL_API_KEY`:
+  ```python
+  @field_validator("POLYGOD_ADMIN_TOKEN", "INTERNAL_API_KEY")
+  @classmethod
+  def validate_prod_secrets(cls, v: SecretStr, info) -> SecretStr:
+      """Validate required secrets in production (when DEBUG=False)."""
+      if not info.data.get("DEBUG", False) and not v.get_secret_value():
+          raise ValueError(f"{info.field_name} is required in production")
+      return v
+  ```
+- Removed duplicate validation from `get_settings()` (now handled at model init)
+- Cleaner code with production validation at Pydantic model level
+
+### src/backend/database.py - Better Pool Management
+- Added `pool_recycle=300` to prevent stale connections
+- Added TODO comment for future Alembic migration support in `init_db()`
+- Existing pool settings retained: `pool_pre_ping=True`, `pool_size=20`, `max_overflow=10`
+
+---
+
 ## Session Instructions
 
 - **Always check AGENT_NOTES.md, PROGRESS.md and any other files with updates and recent changes of project at the start of every session.**
