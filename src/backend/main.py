@@ -33,7 +33,7 @@ from src.backend.news.aggregator import news_aggregator
 from src.backend.polygod_graph import POLYGOD_MODE, paper, polygod_graph, run_polygod
 from src.backend.polymarket.client import polymarket_client
 from src.backend.routes import debate, llm, markets, news, telegram, users
-from src.backend.self_improving_memory_loop import memory_loop
+from src.backend.self_improving_memory_loop import forgetting_engine, memory_loop
 from src.backend.services.llm_concierge import concierge
 from src.backend.tasks.update_markets import get_scheduler, update_top_markets
 
@@ -352,6 +352,22 @@ async def lifespan(app: FastAPI):
             )
         except Exception as e:
             logger.warning(f"Could not schedule memory loop jobs: {e}")
+
+    # Forgetting Engine - prune low-signal memories every 6 hours
+    if scheduler:
+        try:
+            from apscheduler.triggers.interval import IntervalTrigger
+
+            scheduler.add_job(
+                forgetting_engine.prune,
+                trigger=IntervalTrigger(hours=6),
+                id="forgetting_engine_prune",
+                name="Prune low-signal memories",
+                replace_existing=True,
+            )
+            logger.info("Forgetting Engine prune scheduled (every 6 hours)")
+        except Exception as e:
+            logger.warning(f"Could not schedule forgetting engine: {e}")
 
     telegram_task = None
     if settings.TELEGRAM_BOT_TOKEN.get_secret_value():

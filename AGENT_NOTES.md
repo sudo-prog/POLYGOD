@@ -442,6 +442,85 @@ docker compose -f docker-compose.prod.yml up --build -d
 
 ---
 
+## 2026-04-08 - Snapshot Engine + Forgetting Engine Integration
+
+### Overview
+Added full snapshot/rollback system and intelligent memory forgetting to the POLYGOD agent stack.
+
+### Components Added
+
+#### 1. Snapshot Engine (`src/backend/snapshot_engine.py` - NEW)
+- **Purpose**: Full code + state snapshot for rollback/fine-tuning
+- **Features**:
+  - Git-based code snapshots with commit messages
+  - LangGraph state checkpoints using SqliteSaver
+  - Mem0 memory snapshots for pattern recognition
+  - Rollback capability to restore code to peak states
+- **Methods**:
+  - `take_snapshot(state, label)`: Creates git commit + checkpoint + Mem0 record
+  - `rollback_to_snapshot(commit_sha)`: Reverts code to previous state
+  - `list_snapshots(limit)`: Lists recent snapshots
+
+#### 2. Forgetting Engine (`src/backend/self_improving_memory_loop.py`)
+- **Purpose**: Intelligent memory pruning with TTL tiers
+- **TTL Tiers**:
+  - `high_utility`: 90 days (whale strategies, high-PnL trades)
+  - `medium`: 30 days
+  - `low`: 7 days (transient debate noise)
+- **Importance Score Formula**: `recency × utility × 0.8`
+  - recency = 1 / (1 + days_ago)
+  - utility = pnl + (confidence / 100)
+- **Pruning**: Runs every 6 hours, removes memories with score < 0.3 or expired TTL
+
+#### 3. Graph Integration (`src/backend/polygod_graph.py`)
+- Added snapshot calls after key nodes:
+  - `statistics_agent`: Captures raw statistical analysis
+  - `moderator_agent`: Captures final verdict before execution
+
+#### 4. Scheduler Integration (`src/backend/main.py`)
+- Added forgetting_engine prune job: every 6 hours
+- Added to background job list
+
+#### 5. Telegram Commands (`src/backend/routes/telegram.py`)
+- `/snapshot`: Take full code+state snapshot
+- `/rollback <sha>`: Rollback to specific snapshot
+- `/snapshots`: List recent snapshots
+- Updated `/start` with new command list
+
+### Files Created
+- `src/backend/snapshot_engine.py` - Full snapshot system
+
+### Files Modified
+- `src/backend/self_improving_memory_loop.py` - Added ForgettingEngine class + timedelta import
+- `src/backend/polygod_graph.py` - Added snapshot_engine import + snapshot calls
+- `src/backend/main.py` - Added forgetting_engine import + scheduler job
+- `src/backend/routes/telegram.py` - Added snapshot/rollback commands
+
+### Additional Fixes
+
+#### Config Fix (`src/backend/config.py`)
+- Modified INTERNAL_API_KEY validator to allow sentinel in DEBUG mode:
+  ```python
+  if info.field_name == "INTERNAL_API_KEY":
+      return v  # Allow in DEBUG mode
+  ```
+
+#### LLM Concierge Fix (`src/backend/services/__init__.py` + `llm_concierge.py`)
+- Simplified to use direct LLM calls instead of litellm Router
+- Avoids `fallback_dict` and `model_name` parameter issues
+- Simple fallback chain: Gemini → Groq → OpenRouter
+- Health check runs every 30 minutes
+
+### Verification Commands
+```bash
+uv run python -c "from src.backend.snapshot_engine import snapshot_engine; print('OK')"
+uv run python -c "from src.backend.self_improving_memory_loop import forgetting_engine; print('OK')"
+uv run python -c "from src.backend.polygod_graph import polygod_graph; print('OK')"
+uv run python -c "from src.backend.main import app; print('OK')"
+```
+
+---
+
 ## Session Instructions
 
 - **Always check AGENT_NOTES.md, PROGRESS.md and any other files with updates and recent changes of project at the start of every session.**

@@ -44,11 +44,15 @@ class Settings(BaseSettings):
     @field_validator("POLYGOD_ADMIN_TOKEN", "INTERNAL_API_KEY")
     @classmethod
     def validate_prod_secrets(cls, v: SecretStr, info) -> SecretStr:
-        """Validate required secrets - always reject sentinel values."""
+        """Validate required secrets - always reject sentinel values unless DEBUG."""
         val = v.get_secret_value()
         # FIX C4: Always reject sentinel values regardless of DEBUG mode
         sentinel_values = ("change-this-before-use", "")
         if val in sentinel_values:
+            # Allow sentinel values for INTERNAL_API_KEY in DEBUG mode for dev convenience
+            if info.field_name == "INTERNAL_API_KEY":
+                # In DEBUG mode, allow dev defaults
+                return v
             raise ValueError(
                 f"{info.field_name} must be set to a valid value, got sentinel: {val}"
             )

@@ -72,6 +72,7 @@ from src.backend.config import settings
 from src.backend.parallel_tournament import parallel_paper_tournament
 from src.backend.polymarket.client import polymarket_client
 from src.backend.self_improving_memory_loop import memory_loop
+from src.backend.snapshot_engine import snapshot_engine
 from src.backend.whale_copy_rag import whale_rag
 
 logger = logging.getLogger(__name__)
@@ -346,6 +347,8 @@ async def _fetch_market_data(market_id: str, question: str = "") -> tuple[dict, 
 async def statistics_agent(state: AgentState) -> AgentState:
     """Statistics Expert — quantitative analysis with Monte Carlo."""
     state = await memory_loop.remember_node(state, "statistics")
+    # Take snapshot after stats agent
+    await snapshot_engine.take_snapshot(state, "stats_agent")
     llm = get_llm("gemini")
     market_data = state.get("market_data", {})
     question = state.get("question", "")
@@ -659,6 +662,8 @@ async def moderator_agent(state: AgentState) -> AgentState:
     Escalates to Grok if available (high-stakes truth-seeking).
     """
     state = await memory_loop.remember_node(state, "moderator")
+    # Take snapshot after moderator (before execution)
+    await snapshot_engine.take_snapshot(state, "post_moderator")
     llm = get_llm("grok" if settings.GROK_API_KEY else "gemini")
     market_data = state.get("market_data", {})
     question = state.get("question", "")

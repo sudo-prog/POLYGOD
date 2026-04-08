@@ -9,7 +9,8 @@ Connects Mem0 long-term memory with AutoResearchLab for weekly self-improvement:
 
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
+from typing import Any
 
 try:
     from mem0 import Mem0
@@ -181,8 +182,7 @@ class SelfImprovingMemoryLoop:
                     logger.warning("NotebookLM: JSON parse failed, raw output saved")
                     raw_preview = reflection[:500]
                     mem0.add(
-                        f"NotebookLM Reflection failed to parse — "
-                        f"raw output saved: {raw_preview}",
+                        f"NotebookLM Reflection failed to parse — raw output saved: {raw_preview}",
                         user_id=self.user_id,
                     )
                     return []
@@ -220,3 +220,115 @@ class SelfImprovingMemoryLoop:
 
 
 memory_loop = SelfImprovingMemoryLoop()
+
+
+# ==================== FORGETTING ENGINE ====================
+class ForgettingEngine:
+    """
+    Intelligent memory forgetting system with TTL tiers.
+
+    Tiers:
+    - high_utility: 90 days (whale strategies, high-PnL trades)
+    - medium: 30 days
+    - low: 7 days (transient debate noise)
+    """
+
+    def __init__(self):
+        self.ttl_tiers = {
+            "high_utility": timedelta(days=90),
+            "medium": timedelta(days=30),
+            "low": timedelta(days=7),
+        }
+
+    async def prune(self) -> dict[str, Any]:
+        """
+        Score and forget irrelevant data based on utility and TTL.
+
+        Returns:
+            Dictionary with pruned count and status
+        """
+        if mem0 is None:
+            logger.warning("ForgettingEngine: Mem0 not available, skipping prune")
+            return {"status": "skipped", "message": "Mem0 not available"}
+
+        try:
+            logger.info("=== FORGETTING ENGINE: Pruning low-signal memories ===")
+
+            # Fetch recent memories
+            memories = mem0.search("all", user_id="polygod_swarm", limit=500)
+            pruned_count = 0
+
+            for mem in memories:
+                try:
+                    # Calculate importance score
+                    score = self._importance_score(mem)
+
+                    # Get memory timestamp
+                    mem_timestamp_str = mem.get("metadata", {}).get("timestamp", "")
+                    if not mem_timestamp_str:
+                        continue
+
+                    mem_timestamp = datetime.fromisoformat(mem_timestamp_str)
+                    tier = mem.get("metadata", {}).get("tier", "low")
+                    ttl = self.ttl_tiers.get(tier, timedelta(days=7))
+
+                    # Check if should prune (low score OR TTL expired)
+                    should_prune = (
+                        score < 0.3 or (mem_timestamp + ttl) < datetime.utcnow()
+                    )
+
+                    if should_prune:
+                        mem0.delete(mem["id"], user_id="polygod_swarm")
+                        pruned_count += 1
+                        logger.debug(
+                            f"ForgettingEngine: Pruned memory {mem['id'][:20]}..."
+                        )
+
+                except Exception as e:
+                    logger.debug(f"ForgettingEngine: Error processing memory: {e}")
+                    continue
+
+            logger.info(f"ForgettingEngine: Pruned {pruned_count} memories")
+            return {"status": "success", "pruned_count": pruned_count}
+
+        except Exception as e:
+            logger.error(f"ForgettingEngine: Prune failed: {e}")
+            return {"status": "error", "message": str(e)}
+
+    def _importance_score(self, mem: dict) -> float:
+        """
+        Calculate importance score for a memory.
+
+        Formula: Relevance × Recency × Utility (PnL, confidence, whale usage)
+
+        Args:
+            mem: Memory dictionary with metadata
+
+        Returns:
+            Score between 0 and 1
+        """
+        try:
+            # Recency factor: newer = higher score
+            mem_timestamp_str = mem.get("metadata", {}).get("timestamp", "")
+            if not mem_timestamp_str:
+                return 0.0
+
+            mem_timestamp = datetime.fromisoformat(mem_timestamp_str)
+            days_ago = (datetime.utcnow() - mem_timestamp).days
+            recency = 1.0 / (1.0 + days_ago)
+
+            # Utility factor: PnL + confidence
+            pnl = mem.get("metadata", {}).get("pnl", 0)
+            confidence = mem.get("metadata", {}).get("confidence", 0)
+            utility = pnl + (confidence / 100.0)
+
+            # Combined score (tunable factor of 0.8)
+            score = recency * utility * 0.8
+
+            return min(1.0, max(0.0, score))
+
+        except Exception:
+            return 0.0
+
+
+forgetting_engine = ForgettingEngine()
