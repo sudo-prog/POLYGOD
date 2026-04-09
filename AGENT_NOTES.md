@@ -1,5 +1,79 @@
 # Agent Implementation Notes - POLYGOD Critical Fixes & Test Suite
 
+## 2026-04-09 - CLOB Trading & WebSocket Auth Deployment
+
+**Date:** 2026-04-09
+**Agent:** Kilo (GOD TIER ENGINEER)
+**Project:** POLYGOD - Real-time Polymarket AI Trading Dashboard
+
+### Overview
+Deployed 10 files from "New Polygod Files" folder enabling full CLOB execution and first-message WebSocket authentication.
+
+### Files Deployed
+
+| # | File | Destination | Notes |
+|---|------|-------------|-------|
+| 1 | `polymarket_client.py` | `src/backend/polymarket/polymarket_client.py` | Full CLOB execution with place_order, token resolution, order polling |
+| 2 | `config.py` | `src/backend/config.py` | Added POLYMARKET_PRIVATE_KEY field for EVM signing |
+| 3 | `alembic/env.py` | `alembic/env.py` | Async migration runner |
+| 4 | `alembic/versions/0001_initial.py` | `alembic/versions/0001_initial.py` | Baseline schema |
+| 5 | `alembic.ini` | `alembic.ini` (project root) | Migration config |
+| 6 | `tests/backend/conftest.py` | `tests/backend/conftest.py` | In-memory DB fixtures |
+| 7 | `tests/backend/test_api.py` | `tests/backend/test_api.py` | 30 integration tests |
+| 8 | `usePolyGodWS.ts` | `src/frontend/hooks/usePolyGodWS.ts` | First-message auth for WS |
+| 9 | `ws_auth_first_message.py` | Replaced WS handlers in `src/backend/main.py` | Backend WS first-message auth |
+| 10 | `pyproject.toml` | `pyproject.toml` | Adds anyio, pytest, pytest-cov, coverage config |
+
+### Key Features Added
+
+#### CLOB Live Order Execution
+- **Private Key Support:** POLYMARKET_PRIVATE_KEY env var for EIP-712 signing
+- **Token ID Resolution:** Database-first, then Gamma API fallback
+- **Order Types:** MARKET (FOK) and LIMIT (GTC) orders
+- **Fill Polling:** 60s timeout with 2s interval status checks
+- **Balance Check:** Pre-trade USDC balance verification
+- **Cancel Support:** Open order cancellation
+
+#### WebSocket First-Message Authentication
+- **Security Fix:** Token moved from URL query param to first JSON message
+- **Protocol:**
+  1. Server accepts upgrade (no token in URL)
+  2. Client sends: `{"type": "auth", "token": "<INTERNAL_API_KEY>"}`
+  3. Server confirms: `{"type": "auth_ok"}`
+  4. Server pushes state every 2s
+- **Timeout:** 10 seconds to receive auth frame
+- **Codes:** 4001 (auth failed), 4008 (timeout)
+
+### Verification Results
+
+| File | Status |
+|------|--------|
+| polymarket_client.py | ✅ Loads, has place_order, get_token_id_for_market |
+| config.py | ✅ Loads, POLYMARKET_PRIVATE_KEY field present |
+| alembic/env.py | ✅ Exists in alembic/ |
+| alembic/versions/0001_initial.py | ✅ Exists |
+| alembic.ini | ✅ `uv run alembic --help` works |
+| tests/backend/conftest.py | ✅ Exists |
+| tests/backend/test_api.py | ✅ Exists (30 tests) |
+| usePolyGodWS.ts | ✅ Exists with auth logic |
+| main.py WS handlers | ✅ _ws_authenticate integrated (3 places) |
+| pyproject.toml | ✅ Has anyio, pytest, pytest-cov |
+
+### Migration Commands
+
+```bash
+# Generate initial migration
+uv run alembic revision --autogenerate -m "Initial schema"
+
+# Run migrations
+uv run alembic upgrade head
+
+# Run tests with coverage
+pytest tests/ --cov=src --cov-report=term-missing
+```
+
+---
+
 ## 2026-04-09 - POLYGOD CPU/Memory Runaway Fix
 
 **Date:** 2026-04-09
