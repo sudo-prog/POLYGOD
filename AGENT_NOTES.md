@@ -1,5 +1,57 @@
 # Agent Implementation Notes - POLYGOD Critical Fixes & Test Suite
 
+## 2026-04-09 - POLYGOD CPU/Memory Runaway Fix
+
+**Date:** 2026-04-09
+**Agent:** Kilo (GOD TIER ENGINEER)
+**Project:** POLYGOD - Real-time Polymarket AI Trading Dashboard
+
+### Overview
+Fixed system freeze/crash caused by runaway POLYGOD Python process consuming 100% CPU and all available memory. Applied surgical fixes to prevent future occurrences.
+
+### Root Cause
+The `polygod-swarm` Docker container was configured with `restart: unless-stopped`, which automatically restarted the process after any crash or exit. Combined with unbounded execution (no timeout), this caused:
+- System freeze on each POLYGOD run
+- CPU maxing out at 100%
+- Memory exhaustion (8GB RAM + 4GB swap consumed)
+
+### Fixes Applied
+
+#### Fix 1 - Execution Timeout (`src/backend/polygod_graph.py`)
+- **File:** `src/backend/polygod_graph.py`
+- **Change:** Added 5-minute timeout to `run_polygod()` function
+- **Implementation:**
+  - Added `POLYGOD_EXECUTION_TIMEOUT_SECONDS = 300` constant
+  - Wrapped `polygod_graph.ainvoke()` with `asyncio.wait_for()`
+  - Returns timeout error if execution exceeds 5 minutes
+- **Impact:** Prevents infinite loops from consuming all system resources
+
+#### Fix 2 - On-Demand Container Restart (`docker-compose.yml`)
+- **File:** `docker-compose.yml`
+- **Change:** Changed `polygod-swarm` from `restart: unless-stopped` to `restart: no`
+- **Impact:** Container now runs on-demand only, not auto-started on boot or crash
+- **Usage:** Start manually when needed:
+  ```bash
+  docker compose up -d polygod-swarm
+  ```
+  Or the API endpoint `/polygod/run` will auto-start it on first request.
+
+### Additional Cleanup
+- Stopped and disabled Code-Tunnel service (was in auth loop, minimal resource usage but noisy logs)
+- Killed runaway Kilo extension language servers (pyright, yaml-language-server) consuming 1.2GB each
+
+### Files Modified
+- `src/backend/polygod_graph.py` - Added asyncio import, timeout constant, timeout wrapper
+- `docker-compose.yml` - Changed polygod-swarm restart policy to on-demand
+
+### System Status
+- ✅ POLYGOD execution capped at 5 minutes
+- ✅ Container no longer auto-restarts after crashes
+- ✅ Manual start required for POLYGOD runs
+- ✅ System stable with ~2.7GB RAM available
+
+---
+
 ## 2026-04-09 - Surgical Code Audit: Critical Security & Operational Fixes Applied
 
 **Date:** 2026-04-09
@@ -138,6 +190,84 @@ Completed comprehensive surgical code audit addressing all 🔴 CRITICAL, 🔴 H
 - ✅ Secret masking comprehensive
 
 **Status:** All critical security and operational vulnerabilities resolved. System hardened for production trading operations.
+
+---
+
+## 2026-04-09 - Drop-in Replacement Fixes (12 Files)
+
+**Date:** 2026-04-09
+**Agent:** Kilo (GOD TIER ENGINEER)
+**Project:** POLYGOD - Real-time Polymarket AI Trading Dashboard
+
+### Overview
+Replaced 12 files with drop-in versions from "Polygod Drop-in Replacement" folder. Each replacement includes specific bug fixes and improvements.
+
+### Files Replaced
+
+#### 1. `src/backend/config.py`
+- **Fix:** Dev-friendly validation, SQL default
+- Added SQLite default for development-friendly startup
+
+#### 2. `src/backend/database.py`
+- **Fix:** SQLite-aware pool, utcnow() helper
+- SQLite detection with appropriate pool settings
+- Added `utcnow()` helper for consistent timestamps
+
+#### 3. `src/backend/tasks/update_markets.py`
+- **Fix:** Singleton scheduler + N+1 bulk query
+- Singleton scheduler pattern to prevent orphaned schedulers
+- Bulk database operations to fix N+1 query issues
+
+#### 4. `src/backend/models/llm.py`
+- **Fix:** Encryption key from settings
+- Now reads encryption key from application settings
+
+#### 5. `src/backend/snapshot_engine.py`
+- **Fix:** Docker-safe git init, open SQLite
+- Git initialization works in Docker containers
+- SQLite connections properly opened
+
+#### 6. `src/backend/polygod_graph.py`
+- **Fix:** Open SQLite, honest ID order, DB-first lookup, seeded Monte Carlo
+- Proper SQLite connection handling
+- Honest ID ordering for deterministic results
+- Database-first lookup for reliability
+- Seeded Monte Carlo for reproducible simulations
+
+#### 7. `src/backend/main.py`
+- **Fix:** Singleton health check, WS disconnect handling
+- Health checks now use singleton scheduler
+- WebSocket properly handles disconnects
+
+#### 8. `src/backend/routes/debate.py`
+- **Fix:** Removed duplicate /api/debate prefix
+- API endpoints no longer have double prefix (fixing 404 errors)
+
+#### 9. `src/backend/routes/users.py`
+- **Fix:** Removed duplicate /api/users prefix
+- API endpoints no longer have double prefix (fixing 404 errors)
+
+#### 10. `src/frontend/src/stores/editModeStore.ts`
+- **Fix:** setGridLayout persists to localStorage
+- Grid layout changes now persist across page reloads
+
+#### 11. `src/frontend/src/__tests__/editModeStore.test.ts`
+- **Fix:** Fixed failing test + added regression tests
+- Test now properly mocks localStorage
+- Added regression tests for persistence
+
+#### 12. `docker-compose.yml`
+- **Fix:** Postgres added, ports bound to localhost
+- PostgreSQL service added
+- All ports bound to 127.0.0.1 for security
+
+### Build Verification
+- All 12 files replaced successfully
+- Backend imports verified clean
+- Frontend builds without errors
+
+### Status
+All 12 replacements complete. System operational with fixes applied.
 
 ---
 
