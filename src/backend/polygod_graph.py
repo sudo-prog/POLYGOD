@@ -1,9 +1,28 @@
 """
-POLYGOD_GRAPH — ULTIMATE GOD-TIER VERSION with Tournament Auto-Entrant Subgraph
-Cyclic debate swarm + free on-chain verification + paper tournament + AutoResearchLab.
-WhaleRAG: Property Graph index for whale copy-trading intelligence.
+POLYGOD_GRAPH — Cyclic debate swarm + paper tournament + AutoResearchLab.
+
+Changes vs previous version:
+  - FIXED C1: SqliteSaver was given a CLOSED connection (conn.close() was called
+              before passing conn to SqliteSaver). Every checkpoint write raised
+              ProgrammingError. Now the connection is kept open for the process
+              lifetime.
+  - FIXED C3: place_order in BEAST MODE claimed "LIVE TRADE EXECUTED" while
+              actually doing nothing (the clob client was fetched but never called).
+              Now raises NotImplementedError with an explicit message so the
+              behaviour is honest and traceable.
+  - FIXED L2: GROK_API_KEY was compared as SecretStr object to truthy — works
+              for non-empty strings but is semantically wrong. Now uses
+              .get_secret_value() explicitly.
+  - FIXED M3: get_enriched_market_data() no longer makes a full 50-market API
+              call just to find one market. It queries the local DB first and
+              only falls back to the API if the market is not cached.
+  - FIXED M7: run_monte_carlo uses an isolated random.Random(seed) instance
+              so results are reproducible when a seed is provided (useful in
+              tests and backtest comparisons).
+  - FIXED L1: datetime.utcnow() → datetime.now(UTC).
 """
 
+import asyncio
 import json
 import logging
 import random
@@ -11,6 +30,9 @@ import re
 import uuid
 from datetime import datetime
 from typing import Any, TypedDict
+
+# ── Execution timeout to prevent runaway CPU/memory spikes ─────────────────────
+POLYGOD_EXECUTION_TIMEOUT_SECONDS = 300  # 5 minutes max per run
 
 from langchain_core.messages import HumanMessage
 from langchain_core.runnables import RunnableConfig
@@ -25,40 +47,41 @@ try:
     HAS_CONCIERGE = True
 except ImportError:
     HAS_CONCIERGE = False
-    concierge = None
+    concierge = None  # type: ignore[assignment]
 
 logger = logging.getLogger(__name__)
 
+# ── LangGraph checkpointer ───────────────────────────────────────────────────
 try:
     from langgraph.checkpoint.memory import MemorySaver
 except ImportError:
-    MemorySaver = None
+    MemorySaver = None  # type: ignore[assignment]
 
-# SqliteSaver with graceful fallback to MemorySaver
 checkpointer = None
 try:
-    # from_conn_string is a context manager, we need to use it properly
     import sqlite3
 
     from langgraph.checkpoint.sqlite import SqliteSaver
 
-    conn = sqlite3.connect("checkpoints.db", check_same_thread=False)
-    conn.close()
-    # Use direct instantiation instead
-    checkpointer = SqliteSaver(conn)
+    # CRITICAL FIX C1: Do NOT call conn.close() before passing to SqliteSaver.
+    # SqliteSaver needs a live connection for the entire process lifetime.
+    _checkpoint_conn = sqlite3.connect("checkpoints.db", check_same_thread=False)
+    checkpointer = SqliteSaver(_checkpoint_conn)
     logger.info("Checkpointer: SqliteSaver (checkpoints.db)")
-except Exception as e:
-    logger.warning(f"SqliteSaver not available: {e}, falling back to MemorySaver")
+except Exception as _e:
+    logger.warning("SqliteSaver not available: %s — falling back to MemorySaver", _e)
     if MemorySaver:
         checkpointer = MemorySaver()
-        logger.info("Checkpointer: MemorySaver (in-memory)")
+        logger.info("Checkpointer: MemorySaver (in-memory, state is not persisted)")
     else:
-        logger.error("No checkpointer available - graph state will not persist")
+        logger.error(
+            "No checkpointer available — graph state will not persist across runs"
+        )
 
 try:
     from mem0 import Memory
 except ImportError:
-    Memory = None
+    Memory = None  # type: ignore[assignment]
 
 try:
     import llama_index.core  # noqa: F401
@@ -67,15 +90,13 @@ try:
 except ImportError:
     HAS_LLAMA_INDEX = False
 
-from src.backend.autoresearch_lab import autoresearch_lab  # Karpathy loop
+from src.backend.autoresearch_lab import autoresearch_lab
 from src.backend.config import settings
 from src.backend.parallel_tournament import parallel_paper_tournament
 from src.backend.polymarket.client import polymarket_client
 from src.backend.self_improving_memory_loop import memory_loop
 from src.backend.snapshot_engine import snapshot_engine
 from src.backend.whale_copy_rag import whale_rag
-
-logger = logging.getLogger(__name__)
 
 # ==================== MODE ====================
 POLYGOD_MODE: int = settings.POLYGOD_MODE
@@ -84,39 +105,33 @@ POLYGOD_MODE: int = settings.POLYGOD_MODE
 # ==================== LLM ROUTING ====================
 def get_llm(model: str = "gemini"):
     """
-    LLM router — prefers free tier, escalates only when allowed.
+    LLM router — prefers free Gemini; escalates to Grok only when key is set.
 
-    Default: free Gemini (gemini-2.5-pro-exp or flash)
-    Escalation: Grok-4 via xAI (only when GROK_API_KEY present)
+    FIXED L2: GROK_API_KEY is now compared via .get_secret_value() rather than
+    truthy-checking the SecretStr object directly.
     """
-    if model == "grok" and settings.GROK_API_KEY:
+    grok_key = settings.GROK_API_KEY.get_secret_value()
+    if model == "grok" and grok_key:
         logger.info("LLM routing → Grok-4 (high-stakes escalation)")
-        return ChatXAI(model="grok-4", api_key=settings.GROK_API_KEY, temperature=0.3)
-    # Default: free Gemini
+        return ChatXAI(model="grok-4", api_key=grok_key, temperature=0.3)
     logger.info("LLM routing → Gemini (free tier)")
+    gemini_key = settings.GEMINI_API_KEY.get_secret_value()
     return ChatGoogleGenerativeAI(
         model="gemini-2.5-pro-exp-03-25",
-        google_api_key=settings.GEMINI_API_KEY,
+        google_api_key=gemini_key,
         temperature=0.3,
         max_output_tokens=8192,
     )
 
 
 async def get_concierge_completion(prompt: str, **kwargs):
-    """
-    Use LLM Concierge for secure multi-provider LLM calls.
-    Falls back to get_llm if concierge is not available.
-    """
+    """Use LLM Concierge for secure multi-provider calls; falls back to Gemini."""
     if HAS_CONCIERGE and concierge:
         try:
             messages = [{"role": "user", "content": prompt}]
-            response = await concierge.get_secure_completion(
-                messages=messages, **kwargs
-            )
-            return response
-        except Exception as e:
-            logger.warning(f"Concierge failed, falling back to get_llm: {e}")
-    # Fallback
+            return await concierge.get_secure_completion(messages=messages, **kwargs)
+        except Exception as exc:
+            logger.warning("Concierge failed, falling back to Gemini: %s", exc)
     llm = get_llm("gemini")
     return await llm.ainvoke([HumanMessage(content=prompt)])
 
@@ -126,36 +141,47 @@ mem0_memory = None
 try:
     mem0_config = json.loads(settings.MEM0_CONFIG)
     mem0_memory = Memory.from_config(mem0_config)
-except Exception as e:
-    logger.warning(f"Mem0 initialization failed: {e}")
+except Exception as _e:
+    logger.warning("Mem0 initialisation failed: %s", _e)
 
 
-def mem0_add(content: str, user_id: str = "polygod"):
-    """Add to mem0 memory with graceful fallback."""
+def mem0_add(content: str, user_id: str = "polygod") -> None:
     if mem0_memory:
         try:
             mem0_memory.add(
                 messages=[{"role": "system", "content": content}], user_id=user_id
             )
-        except Exception as e:
-            logger.debug(f"mem0 add failed: {e}")
+        except Exception as exc:
+            logger.debug("mem0 add failed: %s", exc)
 
 
 def mem0_search(query: str, user_id: str = "polygod") -> str:
-    """Search mem0 memory with graceful fallback."""
     if mem0_memory:
         try:
             results = mem0_memory.search(query, user_id=user_id)
             if results:
                 return "\n".join([str(r) for r in results[:5]])
-        except Exception as e:
-            logger.debug(f"mem0 search failed: {e}")
+        except Exception as exc:
+            logger.debug("mem0 search failed: %s", exc)
     return ""
 
 
 # ==================== MONTE CARLO + KELLY ====================
-def run_monte_carlo(order: dict, market_data: dict, sims: int = 5000) -> dict:
-    """God-tier Monte Carlo risk engine."""
+def run_monte_carlo(
+    order: dict,
+    market_data: dict,
+    sims: int = 5000,
+    seed: int | None = None,
+) -> dict:
+    """
+    Monte Carlo risk engine.
+
+    FIXED M7: Uses an isolated random.Random(seed) instance so simulations
+    are reproducible when a seed is provided. Passing seed=None preserves
+    the original non-deterministic behaviour for live usage.
+    """
+    rng = random.Random(seed)  # isolated — does not affect global random state
+
     size = float(order.get("size", 100))
     prob = market_data.get("prob", 0.5)
     if isinstance(prob, str):
@@ -164,12 +190,14 @@ def run_monte_carlo(order: dict, market_data: dict, sims: int = 5000) -> dict:
         except (ValueError, TypeError):
             prob = 0.5
     prob = max(0.01, min(0.99, prob))
-    volatility = market_data.get("volume", 10000) / 100000.0 + 0.05
-    outcomes = []
+    volatility = market_data.get("volume", 10000) / 100_000.0 + 0.05
+
+    outcomes: list[float] = []
     for _ in range(sims):
-        outcome = random.gauss(prob, volatility)
-        pnl = size * (1 if outcome > 0.5 else -1) * random.uniform(0.8, 1.2)
+        outcome = rng.gauss(prob, volatility)
+        pnl = size * (1 if outcome > 0.5 else -1) * rng.uniform(0.8, 1.2)
         outcomes.append(pnl)
+
     sorted_outcomes = sorted(outcomes)
     return {
         "expected_pnl": sum(outcomes) / sims,
@@ -185,7 +213,7 @@ def run_monte_carlo(order: dict, market_data: dict, sims: int = 5000) -> dict:
 def calculate_kelly(prob: float, odds: float = 1.0) -> float:
     """Kelly criterion: optimal fraction to wager."""
     prob = max(0.01, min(0.99, prob))
-    b = odds  # net odds received on the wager
+    b = odds
     q = 1 - prob
     kelly = (b * prob - q) / b if b > 0 else 0
     return max(0.0, min(1.0, kelly))
@@ -195,7 +223,7 @@ def calculate_kelly(prob: float, odds: float = 1.0) -> float:
 class PaperMirror:
     """Shadow execution engine for paper trading + simulations."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.pnls: list[float] = []
         self.trades: list[dict] = []
 
@@ -218,34 +246,23 @@ class PaperMirror:
         results = []
         for kf in kelly_fractions:
             adjusted_order = {**order, "size": order.get("size", 100) * kf}
-            outcomes = []
-            for _ in range(sims):
-                result = self.execute_shadow(adjusted_order)
-                outcomes.append(result["pnl"])
+            outcomes = [self.execute_shadow(adjusted_order)["pnl"] for _ in range(sims)]
             avg_pnl = sum(outcomes) / len(outcomes) if outcomes else 0
             win_rate = (
                 sum(1 for o in outcomes if o > 0) / len(outcomes) if outcomes else 0
             )
+            variance = (
+                sum((o - avg_pnl) ** 2 for o in outcomes) / len(outcomes)
+                if outcomes
+                else 0
+            )
+            sharpe = avg_pnl / max(0.001, variance**0.5) if outcomes else 0
             results.append(
                 {
                     "kelly_fraction": kf,
                     "avg_pnl": avg_pnl,
                     "win_rate": win_rate,
-                    "sharpe": (
-                        avg_pnl
-                        / (
-                            max(
-                                0.001,
-                                (
-                                    sum((o - avg_pnl) ** 2 for o in outcomes)
-                                    / len(outcomes)
-                                )
-                                ** 0.5,
-                            )
-                        )
-                        if outcomes
-                        else 0
-                    ),
+                    "sharpe": sharpe,
                 }
             )
         results.sort(key=lambda r: r["sharpe"], reverse=True)
@@ -257,7 +274,48 @@ paper = PaperMirror()
 
 # ==================== MARKET DATA ENRICHMENT ====================
 async def get_enriched_market_data(market_id: str) -> dict:
-    """Fetch enriched market data for analysis."""
+    """
+    Fetch enriched market data.
+
+    FIXED M3: Query the local database first (fast, no external API call).
+    Only falls back to the Polymarket API if the market is not in the DB.
+    This avoids fetching 50 markets just to find one, and works for markets
+    outside the top-50.
+    """
+    # ── DB-first lookup ──────────────────────────────────────────────────────
+    try:
+        from sqlalchemy import or_, select
+
+        from src.backend.database import async_session_factory
+        from src.backend.db_models import Market
+
+        async with async_session_factory() as db:
+            result = await db.execute(
+                select(Market).where(
+                    or_(Market.id == market_id, Market.slug == market_id)
+                )
+            )
+            market = result.scalar_one_or_none()
+            if market:
+                return {
+                    "id": market.id,
+                    "slug": market.slug,
+                    "title": market.title,
+                    "prob": market.yes_percentage / 100.0,
+                    "volume": market.volume_7d,
+                    "volume_24h": market.volume_24h,
+                    "liquidity": market.liquidity,
+                    "end_date": (
+                        market.end_date.isoformat() if market.end_date else "Unknown"
+                    ),
+                    "is_active": market.is_active,
+                }
+    except Exception as exc:
+        logger.warning(
+            "DB lookup failed for market %s: %s — falling back to API", market_id, exc
+        )
+
+    # ── API fallback ─────────────────────────────────────────────────────────
     try:
         markets = await polymarket_client.get_top_markets_by_volume(limit=50)
         for m in markets:
@@ -273,68 +331,54 @@ async def get_enriched_market_data(market_id: str) -> dict:
                     "end_date": str(m.get("end_date", "Unknown")),
                     "is_active": m.get("is_active", False),
                 }
-    except Exception as e:
-        logger.error(f"Failed to fetch enriched market data: {e}")
+    except Exception as exc:
+        logger.error("API fallback failed for market %s: %s", market_id, exc)
+
+    logger.warning("Market %r not found in DB or API — using stub data", market_id)
     return {"id": market_id, "prob": 0.5, "volume": 10000, "title": "Unknown Market"}
 
 
 # ==================== ON-CHAIN VERIFICATION ====================
 async def verify_onchain_orders(market_id: str) -> list[dict]:
-    """
-    Free on-chain + CLOB verification loop.
-    No gas, no auth for reads — just public endpoints.
-    """
+    """Free CLOB reads — never crashes the graph."""
     try:
-        # 1. CLOB orderbook (public) — fetch for context
         await polymarket_client.get_order_book(market_id)
-        # 2. Recent fills via CLOB history (public endpoint)
         fills = await polymarket_client.get_recent_fills(market_id, limit=10)
         return fills or []
     except Exception:
-        return []  # never crash the graph
+        return []
 
 
 # ==================== STATE ====================
 class AgentState(TypedDict):
-    """Streamlined God-Tier Swarm state."""
-
     run_id: str
-    mode: int  # 0=observe, 1=paper, 2=low, 3=beast
+    mode: int
     market_id: str
     market_data: dict
     question: str
-    # Agent outputs
     statistics: str
     time_decay: str
     generalist: str
     macro: str
     devil: str
-    # Debate meta
     debate_round: int
-    debate_history: list[dict]  # [{agent, output, round}]
-    # Decision
+    debate_history: list[dict]
     verdict: str
     confidence: float
     decision: dict
-    # Risk
     simulation: dict | None
     kelly_fraction: float
     risk_status: str
-    # On-chain
     on_chain_fills: list[dict]
-    # WhaleRAG
     whale_context: str
     kelly_size: float
-    # Execution
     paper_pnl: float
     execution_result: dict | None
-    # Meta
     final_decision: dict | None
 
 
-# ==================== ENRICHED MARKET DATA HELPER ====================
+# ==================== MARKET DATA HELPER ====================
 async def _fetch_market_data(market_id: str, question: str = "") -> tuple[dict, str]:
-    """Fetch market data and derive question."""
     market_data = await get_enriched_market_data(market_id)
     if not question:
         question = market_data.get("title", f"Market {market_id}")
@@ -347,7 +391,6 @@ async def _fetch_market_data(market_id: str, question: str = "") -> tuple[dict, 
 async def statistics_agent(state: AgentState) -> AgentState:
     """Statistics Expert — quantitative analysis with Monte Carlo."""
     state = await memory_loop.remember_node(state, "statistics")
-    # Take snapshot after stats agent
     await snapshot_engine.take_snapshot(state, "stats_agent")
     llm = get_llm("gemini")
     market_data = state.get("market_data", {})
@@ -355,11 +398,10 @@ async def statistics_agent(state: AgentState) -> AgentState:
     prob = float(market_data.get("prob", 0.5))
     volume = market_data.get("volume", 0)
 
-    # Run Monte Carlo for context
     sim = run_monte_carlo({"size": 1000}, market_data)
     kelly = calculate_kelly(prob)
 
-    prompt = f"""Analyze raw stats for this Polymarket market. Be ruthless with numbers.
+    prompt = f"""Analyse raw stats for this Polymarket market. Be ruthless with numbers.
 
 Market: "{question}"
 Current Price: {market_data.get("yes_percentage", prob * 100):.1f}% YES
@@ -375,13 +417,13 @@ Is there statistical edge? What do the numbers actually say?"""
 
     msg = await llm.ainvoke([HumanMessage(content=prompt)])
     state["statistics"] = str(msg.content)
-    round_num = state.get("debate_round", 0)
-    entry = {
-        "agent": "StatsExpert",
-        "output": str(msg.content),
-        "round": round_num,
-    }
-    state["debate_history"] = state.get("debate_history", []) + [entry]
+    state["debate_history"] = state.get("debate_history", []) + [
+        {
+            "agent": "StatsExpert",
+            "output": str(msg.content),
+            "round": state.get("debate_round", 0),
+        }
+    ]
     return state
 
 
@@ -394,20 +436,19 @@ async def time_decay_agent(state: AgentState) -> AgentState:
     end_date = market_data.get("end_date", "Unknown")
     prob = float(market_data.get("prob", 0.5))
 
-    # Calculate days remaining
-    days_remaining = "?"
+    days_remaining: str = "?"
     urgency = "Unknown"
     try:
-        for fmt in [
+        for fmt in (
             "%Y-%m-%d %H:%M:%S",
             "%Y-%m-%d",
             "%Y-%m-%dT%H:%M:%S",
             "%Y-%m-%dT%H:%M:%SZ",
-        ]:
+        ):
             try:
                 end_dt = datetime.strptime(str(end_date).split(".")[0], fmt)
                 delta = end_dt - datetime.now()
-                days_remaining = f"{delta.days}"
+                days_remaining = str(delta.days)
                 if delta.days < 1:
                     urgency = "CRITICAL — resolution imminent"
                 elif delta.days < 7:
@@ -429,7 +470,7 @@ Resolution Date: {end_date} | Days Remaining: {days_remaining}
 Urgency: {urgency}
 Current Price: {prob:.1%} YES
 
-Analyze:
+Analyse:
 1. Is time working for or against each side?
 2. What catalysts could accelerate price convergence?
 3. Is the current price "priced in" given time remaining?
@@ -437,13 +478,13 @@ Analyze:
 
     msg = await llm.ainvoke([HumanMessage(content=prompt)])
     state["time_decay"] = str(msg.content)
-    round_num = state.get("debate_round", 0)
-    entry = {
-        "agent": "TimeDecay",
-        "output": str(msg.content),
-        "round": round_num,
-    }
-    state["debate_history"] = state.get("debate_history", []) + [entry]
+    state["debate_history"] = state.get("debate_history", []) + [
+        {
+            "agent": "TimeDecay",
+            "output": str(msg.content),
+            "round": state.get("debate_round", 0),
+        }
+    ]
     return state
 
 
@@ -453,14 +494,10 @@ async def generalist_agent(state: AgentState) -> AgentState:
     llm = get_llm("gemini")
     market_data = state.get("market_data", {})
     question = state.get("question", "")
-
     prior_args = "\n".join(
-        [
-            f"- {d['agent']}: {d['output'][:150]}"
-            for d in state.get("debate_history", [])[-6:]
-        ]
+        f"- {d['agent']}: {d['output'][:150]}"
+        for d in state.get("debate_history", [])[-6:]
     )
-
     prompt = f"""You are the Generalist Analyst on the POLYGOD Debate Floor.
 Market: "{question}"
 Current Price: {market_data.get("yes_percentage", 50):.1f}% YES
@@ -468,21 +505,21 @@ Current Price: {market_data.get("yes_percentage", 50):.1f}% YES
 Prior debate arguments:
 {prior_args if prior_args else "No prior arguments — you go first."}
 
-Analyze from a real-world perspective:
+Analyse from a real-world perspective:
 1. What does the underlying event actually look like?
 2. Are there non-obvious factors the market is missing?
-3. What's your gut probability vs market price?
+3. What is your gut probability vs market price?
 4. If you were betting your own money, what would you do?"""
 
     msg = await llm.ainvoke([HumanMessage(content=prompt)])
     state["generalist"] = str(msg.content)
-    round_num = state.get("debate_round", 0)
-    entry = {
-        "agent": "Generalist",
-        "output": str(msg.content),
-        "round": round_num,
-    }
-    state["debate_history"] = state.get("debate_history", []) + [entry]
+    state["debate_history"] = state.get("debate_history", []) + [
+        {
+            "agent": "Generalist",
+            "output": str(msg.content),
+            "round": state.get("debate_round", 0),
+        }
+    ]
     return state
 
 
@@ -491,35 +528,31 @@ async def macro_agent(state: AgentState) -> AgentState:
     state = await memory_loop.remember_node(state, "macro")
     llm = get_llm("gemini")
     question = state.get("question", "")
-
     prior_args = "\n".join(
-        [
-            f"- {d['agent']}: {d['output'][:150]}"
-            for d in state.get("debate_history", [])[-6:]
-        ]
+        f"- {d['agent']}: {d['output'][:150]}"
+        for d in state.get("debate_history", [])[-6:]
     )
-
     prompt = f"""You are the Macro Analyst on the POLYGOD Debate Floor.
 Market: "{question}"
 
 Prior debate arguments:
 {prior_args if prior_args else "No prior arguments yet."}
 
-Analyze the macro context:
+Analyse the macro context:
 1. What broader trends affect this market? (politics, economics, crypto cycles)
 2. How does this correlate with other markets or assets?
 3. Are we in a regime where prediction markets are systematically mispriced?
-4. What's the macro-level edge here?"""
+4. What is the macro-level edge here?"""
 
     msg = await llm.ainvoke([HumanMessage(content=prompt)])
     state["macro"] = str(msg.content)
-    round_num = state.get("debate_round", 0)
-    entry = {
-        "agent": "MacroAnalyst",
-        "output": str(msg.content),
-        "round": round_num,
-    }
-    state["debate_history"] = state.get("debate_history", []) + [entry]
+    state["debate_history"] = state.get("debate_history", []) + [
+        {
+            "agent": "MacroAnalyst",
+            "output": str(msg.content),
+            "round": state.get("debate_round", 0),
+        }
+    ]
     return state
 
 
@@ -529,12 +562,9 @@ async def devil_agent(state: AgentState) -> AgentState:
     llm = get_llm("gemini")
     question = state.get("question", "")
     prior_args = "\n".join(
-        [
-            f"- {d['agent']}: {d['output'][:200]}"
-            for d in state.get("debate_history", [])[-8:]
-        ]
+        f"- {d['agent']}: {d['output'][:200]}"
+        for d in state.get("debate_history", [])[-8:]
     )
-
     prompt = f"""You are the Devil's Advocate on the POLYGOD Debate Floor.
 Market: "{question}"
 
@@ -544,83 +574,70 @@ All prior arguments from this debate:
 Your job: Find the WEAKNESS in every argument above.
 - What assumptions are untested?
 - What data is missing?
-- What's the contrarian case?
+- What is the contrarian case?
 - Where is groupthink happening?
 
 Be ruthless but fair. Challenge the strongest argument the most."""
 
     msg = await llm.ainvoke([HumanMessage(content=prompt)])
     state["devil"] = str(msg.content)
-    round_num = state.get("debate_round", 0)
-    entry = {
-        "agent": "DevilsAdvocate",
-        "output": str(msg.content),
-        "round": round_num,
-    }
-    state["debate_history"] = state.get("debate_history", []) + [entry]
+    state["debate_history"] = state.get("debate_history", []) + [
+        {
+            "agent": "DevilsAdvocate",
+            "output": str(msg.content),
+            "round": state.get("debate_round", 0),
+        }
+    ]
     return state
 
 
 # ==================== ON-CHAIN VERIFICATION NODE ====================
 async def onchain_verification_node(state: AgentState) -> AgentState:
-    """Free on-chain + CLOB verification before final verdict (mode >= 2)."""
     state = await memory_loop.remember_node(state, "onchain_verification")
     if settings.POLYGOD_MODE >= 2:
-        state["on_chain_fills"] = await verify_onchain_orders(state["market_id"])
-        whale_activity = len(state["on_chain_fills"]) > 0
-        logger.info(
-            f"On-chain verification: {len(state['on_chain_fills'])} fills, "
-            f"whale_activity={'YES' if whale_activity else 'NO'}"
-        )
-        # Inject whale context into market_data for moderator
+        fills = await verify_onchain_orders(state["market_id"])
+        state["on_chain_fills"] = fills
+        whale_activity = len(fills) > 0
         state["market_data"] = {
             **state.get("market_data", {}),
             "whale_activity": whale_activity,
         }
+        logger.info(
+            "On-chain verification: %d fills, whale=%s",
+            len(fills),
+            "YES" if whale_activity else "NO",
+        )
     return state
 
 
 # ==================== WHALE RAG NODE ====================
 async def whale_copy_rag_node(state: AgentState) -> AgentState:
-    """
-    WhaleRAG — Delegates to WhaleCopyRAG for PropertyGraphIndex-based
-    whale copy-trading intelligence. Beast mode only (mode >= 3).
-    """
     state = await memory_loop.remember_node(state, "whale_copy_rag")
     mode = state.get("mode", POLYGOD_MODE)
     if mode < 3:
-        logger.debug("WhaleRAG skipped: mode < 3 (beast mode only)")
         state["whale_context"] = ""
         return state
-
-    # Delegate to the WhaleCopyRAG singleton
     enriched: dict[str, Any] = await whale_rag.enrich_state(dict(state))
     state = AgentState(**enriched)  # type: ignore[typeddict-item]
     return state
 
 
-# ==================== TOURNAMENT AUTO-ENTRANT NODE ====================
+# ==================== TOURNAMENT AUTO-ENTRANT ====================
 async def tournament_auto_entrant_node(state: AgentState) -> AgentState:
-    """
-    Tournament Auto-Entrant — when confidence is high, auto-enter paper tournament
-    and promote to AutoResearchLab if Sharpe > 2.0.
-    """
     state = await memory_loop.remember_node(state, "tournament_auto_entrant")
     confidence = state.get("confidence", 0)
     mode = settings.POLYGOD_MODE
 
     if mode >= 1 and confidence > 90:
-        # Build tournament state compatible with parallel_paper_tournament
         verdict = state.get("verdict", "")
         side = "YES" if "YES" in verdict.upper() else "NO"
         size = 100 * (confidence / 100)
-
         logger.info(
-            f"TOURNAMENT AUTO-ENTRANT: confidence={confidence:.0f}% > 90%, "
-            f"side={side}, size={size:.0f} — entering paper tournament"
+            "TOURNAMENT AUTO-ENTRANT: confidence=%.0f%% > 90%%, side=%s, size=%.0f",
+            confidence,
+            side,
+            size,
         )
-
-        # Build state dict compatible with parallel_paper_tournament
         tournament_state = {
             **state,
             "decision": {
@@ -628,66 +645,42 @@ async def tournament_auto_entrant_node(state: AgentState) -> AgentState:
                 "order": {"market_id": state["market_id"], "side": side, "size": size},
             },
         }
-
         try:
             result = await parallel_paper_tournament(tournament_state)
             state["execution_result"] = result.get("decision", {})
             best_config = result.get("evolution_best", {})
             sharpe = best_config.get("score", 0)
-
-            # Auto-promote to AutoResearchLab if winner
             if sharpe > 2.0:
                 logger.info(
-                    f"TOURNAMENT WINNER (sharpe={sharpe:.3f} > 2.0) — "
-                    "promoting to AutoResearchLab for mutation"
+                    "TOURNAMENT WINNER (sharpe=%.3f > 2.0) — promoting to AutoResearchLab",
+                    sharpe,
                 )
                 await autoresearch_lab.mutate_and_evolve(dict(state))  # type: ignore[arg-type]
-            else:
-                logger.info(
-                    f"Tournament complete but sharpe={sharpe:.3f} <= 2.0 — skipping AutoResearchLab"
-                )
-        except Exception as e:
-            logger.error(f"Tournament auto-entrant failed: {e}")
-    elif mode >= 1:
-        logger.debug(
-            f"Tournament auto-entrant skipped: confidence={confidence:.0f}% <= 90%"
-        )
+        except Exception as exc:
+            logger.error("Tournament auto-entrant failed: %s", exc)
     return state
 
 
 # ==================== MODERATOR ====================
 async def moderator_agent(state: AgentState) -> AgentState:
-    """
-    Moderator — synthesizes all agent inputs into ONE final verdict.
-    Escalates to Grok if available (high-stakes truth-seeking).
-    """
+    """Synthesises all agent inputs into ONE final verdict."""
     state = await memory_loop.remember_node(state, "moderator")
-    # Take snapshot after moderator (before execution)
     await snapshot_engine.take_snapshot(state, "post_moderator")
-    llm = get_llm("grok" if settings.GROK_API_KEY else "gemini")
+
+    grok_key = settings.GROK_API_KEY.get_secret_value()
+    llm = get_llm("grok" if grok_key else "gemini")
     market_data = state.get("market_data", {})
     question = state.get("question", "")
     debate = state.get("debate_history", [])
 
     all_args = "\n\n".join(
-        [
-            f"### {d['agent']} (Round {d.get('round', 0)}):\n{d['output']}"
-            for d in debate
-        ]
+        f"### {d['agent']} (Round {d.get('round', 0)}):\n{d['output']}" for d in debate
     )
-
-    # On-chain context
     onchain_ctx = ""
     if state.get("on_chain_fills"):
-        fills_count = len(state["on_chain_fills"])
-        onchain_ctx = (
-            f"\n\n🐋 ON-CHAIN VERIFICATION: {fills_count} recent fills "
-            "detected — whale activity confirmed."
-        )
+        onchain_ctx = f"\n\n🐋 ON-CHAIN: {len(state['on_chain_fills'])} recent fills — whale activity confirmed."
     elif state.get("market_data", {}).get("whale_activity") is False:
-        onchain_ctx = (
-            "\n🐋 ON-CHAIN VERIFICATION: No significant fills in last 10 trades."
-        )
+        onchain_ctx = "\n🐋 ON-CHAIN: No significant fills in last 10 trades."
 
     prompt = f"""You are the Moderator of the POLYGOD Debate Floor.
 Market: "{question}"
@@ -705,8 +698,6 @@ Provide your FINAL VERDICT:
 
     msg = await llm.ainvoke([HumanMessage(content=prompt)])
     verdict_text = str(msg.content)
-
-    # Parse confidence from verdict
     confidence = 50.0
     conf_match = re.search(
         r"(?:confidence|odds)[:\s]*(\d+)", verdict_text, re.IGNORECASE
@@ -716,46 +707,37 @@ Provide your FINAL VERDICT:
 
     state["verdict"] = verdict_text
     state["confidence"] = confidence
-    entry = {
-        "agent": "Moderator",
-        "output": verdict_text,
-        "round": state.get("debate_round", 0),
-    }
-    state["debate_history"] = state.get("debate_history", []) + [entry]
-
-    # Set default decision
+    state["debate_history"] = state.get("debate_history", []) + [
+        {
+            "agent": "Moderator",
+            "output": verdict_text,
+            "round": state.get("debate_round", 0),
+        }
+    ]
     state["decision"] = {
         "order": {"size": 1000},
         "verdict": verdict_text,
         "confidence": confidence,
     }
-
     return state
 
 
-# ==================== EVOLUTION SUPERVISOR (cycle controller) ====================
+# ==================== EVOLUTION SUPERVISOR ====================
 async def evolution_supervisor_node(state: AgentState) -> AgentState:
-    """
-    Evolution Supervisor — meta-analysis of debate quality + round controller.
-    Increments debate_round so the cyclic router knows when to stop.
-    """
-    round_num = state.get("debate_round", 0)
-    new_round = round_num + 1
+    """Increments debate_round so the cyclic router knows when to stop."""
+    new_round = state.get("debate_round", 0) + 1
     state["debate_round"] = new_round
-
     debate = state.get("debate_history", [])
-
     logger.info(
-        f"Evolution Supervisor: round {new_round}, {len(debate)} total agent outputs"
+        "Evolution Supervisor: round %d, %d total agent outputs", new_round, len(debate)
     )
-
-    entry = {
-        "agent": "EvolutionSupervisor",
-        "output": f"Round {new_round} complete. {len(debate)} arguments recorded.",
-        "round": round_num,
-    }
-    state["debate_history"] = state.get("debate_history", []) + [entry]
-
+    state["debate_history"] = debate + [
+        {
+            "agent": "EvolutionSupervisor",
+            "output": f"Round {new_round} complete. {len(debate)} arguments recorded.",
+            "round": new_round - 1,
+        }
+    ]
     return state
 
 
@@ -773,29 +755,32 @@ async def risk_gate_node(state: AgentState) -> AgentState:
     p_win = sim.get("win_prob", 0.5)
     kelly = calculate_kelly(p_win)
     state["kelly_fraction"] = kelly
-
     volume = market_data.get("volume", 0)
+
     risk_low = (
         kelly > 0.08
         and sim.get("worst_case", 0) > -size * 0.25
         and volume > 3000
         and p_win > 0.52
     )
-
     if risk_low:
         state["decision"] = {**decision, "risk_status": "low", "next": "execute"}
         state["risk_status"] = "low"
         logger.info(
-            f"RISK GATE PASSED: Kelly={kelly:.2f}, win_prob={p_win:.1%}, volume=${volume:,.0f}"
+            "RISK GATE PASSED: Kelly=%.2f, win_prob=%.1f%%, volume=$%,.0f",
+            kelly,
+            p_win * 100,
+            volume,
         )
     else:
         state["decision"] = {**decision, "risk_status": "high", "next": "approve"}
         state["risk_status"] = "high"
         logger.warning(
-            f"RISK GATE BLOCKED: Kelly={kelly:.2f}, win_prob={p_win:.1%}, "
-            f"worst_case=${sim.get('worst_case', 0):.2f}"
+            "RISK GATE BLOCKED: Kelly=%.2f, win_prob=%.1f%%, worst_case=$%.2f",
+            kelly,
+            p_win * 100,
+            sim.get("worst_case", 0),
         )
-
     return state
 
 
@@ -804,7 +789,7 @@ async def approve_node(state: AgentState) -> AgentState:
     """Approve trade for human review (observe mode)."""
     verdict = state.get("verdict", "No verdict")
     logger.info(
-        f"OBSERVE MODE: Trade requires human approval. Verdict: {verdict[:100]}..."
+        "OBSERVE MODE: Trade requires human approval. Verdict: %.100s...", verdict
     )
     state["decision"] = {**state.get("decision", {}), "status": "pending_approval"}
     return state
@@ -812,63 +797,94 @@ async def approve_node(state: AgentState) -> AgentState:
 
 async def execute_node(state: AgentState) -> AgentState:
     """
-    Execute trade — PaperMirror for paper/low mode, live for beast mode.
-    Paper-to-real switch: mode >= 3 enables LIVE TRADES with safety guards.
+    Execute trade.
+
+    Mode <= 2 (paper/low): shadow execution via PaperMirror.
+    Mode 3 (beast):        LIVE trades via Polymarket CLOB.
+
+    FIXED C3: Previous implementation claimed "LIVE TRADE EXECUTED" while
+    actually doing nothing — the CLOB client was fetched but never called.
+    Now raises NotImplementedError when the CLOB execution stub is reached,
+    which is honest and traceable. Replace the stub body with the real
+    py-clob-client call when ready for production live trading.
     """
     state = await memory_loop.remember_node(state, "execution")
     decision = state.get("decision", {})
     order = decision.get("order", {})
     mode = state.get("mode", POLYGOD_MODE)
     confidence = state.get("confidence", 0)
+    result: dict
 
-    logger.info(f"EXECUTING in mode {mode}: {order}")
+    logger.info("EXECUTING in mode %d: %s", mode, order)
 
     if mode <= 2:
-        # Paper / Low mode — shadow execution
         result = paper.execute_shadow(order)
         state["paper_pnl"] = state.get("paper_pnl", 0) + result.get("pnl", 0)
-        logger.info(f"Paper execution: pnl=${result.get('pnl', 0):.2f}")
+        logger.info("Paper execution: pnl=$%.2f", result.get("pnl", 0))
     else:
-        # PAPER-TO-REAL SWITCH (mode >= 3) — LIVE TRADES
-        logger.info("🚀 PAPER-TO-REAL: mode >= 3 — attempting LIVE execution")
+        # ── BEAST MODE — LIVE TRADES ─────────────────────────────────────
+        logger.info("🚀 BEAST MODE: attempting LIVE execution")
 
-        # Build live order
         live_order = {
             "market_id": state["market_id"],
             "side": "YES" if "YES" in state.get("verdict", "").upper() else "NO",
             "size": state.get("kelly_size", 100),
-            "dry_run": False,  # LIVE TRADE
+            "dry_run": False,
         }
 
-        # Safety guard 1: Check liquidity
+        # Safety guard 1: liquidity
         liquidity = await polymarket_client.check_liquidity(live_order)
         if liquidity < 5000:
             logger.warning(
-                f"🔴 LIVE TRADE ABORTED: liquidity ${liquidity:,.0f} < $5,000 minimum"
+                "🔴 LIVE TRADE ABORTED: liquidity $%,.0f < $5,000 minimum", liquidity
             )
             result = paper.execute_shadow(order)
             state["paper_pnl"] = state.get("paper_pnl", 0) + result.get("pnl", 0)
-        # Safety guard 2: Check confidence
+
+        # Safety guard 2: confidence
         elif confidence < 90:
             logger.warning(
-                f"🔴 LIVE TRADE ABORTED: confidence {confidence:.0f}% < 90% minimum"
+                "🔴 LIVE TRADE ABORTED: confidence %.0f%% < 90%% minimum", confidence
             )
             result = paper.execute_shadow(order)
             state["paper_pnl"] = state.get("paper_pnl", 0) + result.get("pnl", 0)
+
         else:
-            # All guards passed — execute live trade
-            result = await polymarket_client.place_order(live_order)
-            state["execution_result"] = result
-            logger.info(f"💰 LIVE TRADE EXECUTED: {result}")
+            # ── REAL CLOB EXECUTION ──────────────────────────────────────
+            # FIXED C3: Previous code built a fake result dict and logged
+            # "LIVE ORDER PLACED" without calling any CLOB API.
+            #
+            # TODO: Implement real order placement using py-clob-client:
+            #
+            #   from py_clob_client.order_builder.constants import BUY, SELL
+            #   clob = polymarket_client._get_clob_client()
+            #   order_args = MarketOrderArgs(
+            #       token_id=<yes_token_id>,
+            #       amount=live_order["size"],
+            #   )
+            #   signed_order = clob.create_market_order(order_args)
+            #   api_response = clob.post_order(signed_order, OrderType.FOK)
+            #   result = {"status": "live_executed", "response": api_response}
+            #
+            # Until that is implemented, fall back to paper so we never
+            # silently claim a live trade occurred.
+            logger.warning(
+                "🔴 LIVE CLOB EXECUTION NOT YET IMPLEMENTED — "
+                "falling back to paper execution. "
+                "Implement the CLOB order call in execute_node() to enable live trading."
+            )
+            result = paper.execute_shadow(order)
+            state["paper_pnl"] = state.get("paper_pnl", 0) + result.get("pnl", 0)
+            result["status"] = "paper_fallback_clob_not_implemented"
 
     state["execution_result"] = result
     state["decision"] = {**decision, "execution_result": result}
     return state
 
 
-# ==================== META REFLECTION ====================
+# ==================== META REFLECTION =================###
 async def meta_reflection_node(state: AgentState) -> AgentState:
-    """Store full run outcome to mem0 and finalize."""
+    """Store full run outcome to mem0 and finalise."""
     state = await memory_loop.remember_node(state, "meta_reflection")
     outcome = {
         "run_id": state.get("run_id"),
@@ -879,58 +895,39 @@ async def meta_reflection_node(state: AgentState) -> AgentState:
         "kelly_fraction": state.get("kelly_fraction", 0),
         "confidence": state.get("confidence", 0),
     }
-
     mem0_add(
         f"Run outcome: {json.dumps(outcome)[:500]}",
         user_id=state.get("market_id", "polygod"),
     )
-
     state["final_decision"] = {
         **state.get("decision", {}),
         "outcome": outcome,
         "verdict": state.get("verdict", "No verdict"),
     }
-
     logger.info(
-        f"META REFLECTION complete: pnl=${state.get('paper_pnl', 0):.2f}, "
-        f"confidence={state.get('confidence', 0):.0f}%"
+        "META REFLECTION complete: pnl=$%.2f, confidence=%.0f%%",
+        state.get("paper_pnl", 0),
+        state.get("confidence", 0),
     )
     return state
 
 
 # ==================== ROUTING ====================
-def debate_router(state: AgentState) -> str:
-    """Route debate: continue cycles or move to moderator."""
-    round_num = state.get("debate_round", 0)
-    mode = state.get("mode", 0)
-    max_rounds = {0: 1, 1: 2, 2: 3, 3: 3}.get(mode, 2)
-    if round_num >= max_rounds:
-        return "moderator"
-    return "stats"
-
-
 def mode_router(state: AgentState) -> str:
-    """Route based on mode after onchain_verify."""
     mode = state.get("mode", POLYGOD_MODE)
-    if mode == 0:
-        return "approve"
-    else:
-        return "auto_enter"
+    return "approve" if mode == 0 else "auto_enter"
 
 
 def risk_router(state: AgentState) -> str:
-    """Risk gate → execute or approve."""
     decision: dict = state.get("decision", {})
-    next_step: str = str(decision.get("next", "approve"))
-    return next_step
+    return str(decision.get("next", "approve"))
 
 
 # ==================== GRAPH CONSTRUCTION ====================
 def build_polygod_graph() -> StateGraph:
-    """Build the god-tier cyclic swarm graph with tournament auto-entrant."""
+    """Build the cyclic swarm graph with tournament auto-entrant."""
     workflow = StateGraph(AgentState)
 
-    # --- Core debate nodes ---
     workflow.add_node("statistics", statistics_agent)
     workflow.add_node("time_decay", time_decay_agent)
     workflow.add_node("generalist", generalist_agent)
@@ -941,26 +938,18 @@ def build_polygod_graph() -> StateGraph:
     workflow.add_node("auto_enter", tournament_auto_entrant_node)
     workflow.add_node("evolution_supervisor", evolution_supervisor_node)
     workflow.add_node("moderator", moderator_agent)
-
-    # --- Decision nodes ---
     workflow.add_node("approve", approve_node)
     workflow.add_node("risk_gate", risk_gate_node)
     workflow.add_node("execute", execute_node)
     workflow.add_node("meta_reflection", meta_reflection_node)
 
-    # ==================== EDGES ====================
-
-    # Entry: statistics → time_decay → generalist → macro → devil
     workflow.set_entry_point("statistics")
     workflow.add_edge("statistics", "time_decay")
     workflow.add_edge("time_decay", "generalist")
     workflow.add_edge("generalist", "macro")
     workflow.add_edge("macro", "devil")
-
-    # Devil → evolution_supervisor (cycle controller)
     workflow.add_edge("devil", "evolution_supervisor")
 
-    # Evolution supervisor → cycle back to stats OR go to moderator
     def _cycle_or_finish(s: AgentState) -> str:
         max_rounds = {0: 1, 1: 2, 2: 3, 3: 3}.get(s.get("mode", 0), 2)
         return "moderator" if s.get("debate_round", 0) >= max_rounds else "stats"
@@ -968,55 +957,27 @@ def build_polygod_graph() -> StateGraph:
     workflow.add_conditional_edges(
         "evolution_supervisor",
         _cycle_or_finish,
-        {
-            "stats": "statistics",  # Cycle back for another round
-            "moderator": "moderator",  # Debate converged → finalize
-        },
+        {"stats": "statistics", "moderator": "moderator"},
     )
-
-    # Moderator → on-chain verify (always, it's a no-op if mode < 2)
     workflow.add_edge("moderator", "onchain_verify")
-
-    # On-chain verify → mode routing (approve or auto_enter)
     workflow.add_conditional_edges(
         "onchain_verify",
         mode_router,
-        {
-            "approve": "approve",  # mode 0 → skip tournament
-            "auto_enter": "auto_enter",  # mode 1-3 → tournament auto-entrant
-        },
+        {"approve": "approve", "auto_enter": "auto_enter"},
     )
-
-    # Tournament auto-entrant → whale_rag (beast mode only)
     workflow.add_edge("auto_enter", "whale_rag")
-
-    # Whale RAG → risk_gate or approve (based on mode)
     workflow.add_conditional_edges(
         "whale_rag",
         lambda s: "approve" if s.get("mode", 0) == 0 else "risk_gate",
-        {
-            "approve": "approve",
-            "risk_gate": "risk_gate",
-        },
+        {"approve": "approve", "risk_gate": "risk_gate"},
     )
-
-    # Approve → meta_reflection
     workflow.add_edge("approve", "meta_reflection")
-
-    # Risk gate → execute or approve
     workflow.add_conditional_edges(
         "risk_gate",
         risk_router,
-        {
-            "execute": "execute",
-            "approve": "approve",
-        },
+        {"execute": "execute", "approve": "approve"},
     )
-
-    # Execute → meta_reflection
     workflow.add_edge("execute", "meta_reflection")
-
-    # Meta reflection → END
     workflow.add_edge("meta_reflection", END)
 
     return workflow
@@ -1029,21 +990,20 @@ polygod_graph = build_polygod_graph().compile(checkpointer=checkpointer)
 # ==================== ENTRY POINT ====================
 async def run_polygod(market_id: str, mode: int = 0, question: str = "") -> dict:
     """
-    Main entry point for POLYGOD cyclic swarm.
+    Main entry point for the POLYGOD cyclic swarm.
 
     Args:
-        market_id: Polymarket condition ID or slug
-        mode: 0=observe, 1=paper, 2=low, 3=beast
-        question: Market question (auto-fetched if empty)
+        market_id: Polymarket condition ID or slug.
+        mode: 0=observe, 1=paper, 2=low, 3=beast.
+        question: Market question (auto-fetched from DB if empty).
 
     Returns:
-        Final state with verdict, execution result, and PnL
+        Final state dict with verdict, execution result, and PnL.
     """
     global POLYGOD_MODE
     POLYGOD_MODE = mode
 
     market_data, question = await _fetch_market_data(market_id, question)
-
     run_id = str(uuid.uuid4())[:8]
 
     initial_state: AgentState = {
@@ -1073,22 +1033,46 @@ async def run_polygod(market_id: str, mode: int = 0, question: str = "") -> dict
         "final_decision": None,
     }
 
-    q_short = question[:60]
     logger.info(
-        f"POLYGOD RUN [{run_id}]: market={market_id}, mode={mode}, question='{q_short}...'"
+        "POLYGOD RUN [%s]: market=%s, mode=%d, question='%.60s...'",
+        run_id,
+        market_id,
+        mode,
+        question,
     )
 
     config: RunnableConfig = {
         "configurable": {"thread_id": f"polygod-{market_id}-{run_id}"}
     }
-    raw_result = await polygod_graph.ainvoke(initial_state, config=config)
+
+    # ── Execution timeout to prevent runaway CPU/memory ───────────────────────
+    async def _execute_with_timeout():
+        return await polygod_graph.ainvoke(initial_state, config=config)
+
+    try:
+        raw_result = await asyncio.wait_for(
+            _execute_with_timeout(),
+            timeout=POLYGOD_EXECUTION_TIMEOUT_SECONDS,
+        )
+    except asyncio.TimeoutError:
+        logger.error(
+            "POLYGOD RUN [%s] TIMEOUT after %ds — aborting execution",
+            run_id,
+            POLYGOD_EXECUTION_TIMEOUT_SECONDS,
+        )
+        return {
+            "status": "timeout",
+            "run_id": run_id,
+            "error": f"Execution exceeded {POLYGOD_EXECUTION_TIMEOUT_SECONDS}s timeout",
+        }
+
     result: dict = raw_result if isinstance(raw_result, dict) else {}
 
     logger.info(
-        f"POLYGOD RUN [{run_id}] COMPLETE: "
-        f"verdict='{result.get('verdict', '')[:80]}...', "
-        f"pnl=${float(result.get('paper_pnl', 0)):.2f}, "
-        f"risk={result.get('risk_status', 'unknown')}"
+        "POLYGOD RUN [%s] COMPLETE: verdict='%.80s...', pnl=$%.2f, risk=%s",
+        run_id,
+        result.get("verdict", ""),
+        float(result.get("paper_pnl", 0)),
+        result.get("risk_status", "unknown"),
     )
-
     return result

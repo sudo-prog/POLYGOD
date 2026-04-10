@@ -213,6 +213,7 @@ flowchart TD
 | `POLYMARKET_API_KEY` | Polymarket API Key | Required for trading/auth |
 | `POLYMARKET_SECRET` | Polymarket API Secret | Required for trading/auth |
 | `POLYMARKET_PASSPHRASE`| Polymarket API Passphrase | Required for trading/auth |
+| `POLYMARKET_PRIVATE_KEY` | Polymarket Private Key (hex) | Required for CLOB execution |
 | `GEMINI_API_KEY` | Google Gemini API Key | Required for AI Debate |
 | `TAVILY_API_KEY` | Tavily Search API Key | Required for AI Debate |
 
@@ -316,6 +317,47 @@ POLYGOD/
 4. Push to the branch (`git push origin feature/amazing-feature`)
 5. Open a Pull Request
 
+
+## Deployment Guide
+
+### File Destinations
+
+| Delivered File | Destination | Notes |
+|----------------|-------------|-------|
+| `polymarket_client.py` | `src/backend/polymarket/polymarket_client.py` | Full CLOB execution |
+| `config.py` | `src/backend/config.py` | Adds POLYMARKET_PRIVATE_KEY field |
+| `alembic/env.py` | `alembic/env.py` | Async migration runner |
+| `alembic/versions/0001_initial.py` | `alembic/versions/0001_initial.py` | Baseline schema |
+| `alembic.ini` | `alembic.ini` (project root) | Migration config |
+| `tests/backend/conftest.py` | `tests/backend/conftest.py` | In-memory DB fixtures |
+| `tests/backend/test_api.py` | `tests/backend/test_api.py` | 30 integration tests |
+| `usePolyGodWS.ts` | `src/frontend/hooks/usePolyGodWS.ts` | First-message auth |
+| `ws_auth_first_message.py` | Replace WS handlers in `src/backend/main.py` | Backend WS changes |
+| `pyproject.toml` | `pyproject.toml` | Adds anyio, coverage config |
+
+### Migration Commands
+
+After copying the alembic files, run migrations:
+
+```bash
+# Generate initial migration
+alembic revision --autogenerate -m "Initial schema"
+
+# Run migrations
+alembic upgrade head
+```
+
+### Running Tests
+
+```bash
+# Run all tests with coverage
+pytest tests/ --cov=src --cov-report=term-missing
+
+# Run specific test file
+pytest tests/backend/test_api.py -v
+```
+
+---
 
 ## Author
 [Luis Fernando Torres](https://github.com/luuisotorres)

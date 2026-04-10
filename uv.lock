@@ -2308,7 +2308,7 @@ wheels = [
 
 [[package]]
 name = "polygod"
-version = "0.1.0"
+version = "0.2.0"
 source = { editable = "." }
 dependencies = [
     { name = "aiobreaker" },
@@ -2354,6 +2354,7 @@ dev = [
     { name = "ruff" },
 ]
 test = [
+    { name = "anyio" },
     { name = "faker" },
     { name = "httpx" },
     { name = "prometheus-fastapi-instrumentator" },
@@ -2379,6 +2380,7 @@ requires-dist = [
     { name = "aiobreaker", specifier = ">=1.0" },
     { name = "aiosqlite", specifier = ">=0.21.0" },
     { name = "alembic", specifier = ">=1.13" },
+    { name = "anyio", marker = "extra == 'test'", specifier = ">=4.0" },
     { name = "apscheduler", specifier = ">=3.11.0" },
     { name = "asyncpg", specifier = ">=0.29" },
     { name = "cryptography", specifier = ">=44.0.0" },

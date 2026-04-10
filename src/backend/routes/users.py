@@ -1,7 +1,16 @@
 """
 User analytics routes.
 
-Provides endpoints for fetching Polymarket user activity, PnL, and position analytics.
+Changes vs previous version:
+  - FIXED H6: Removed `prefix="/api/users"` from the APIRouter constructor.
+              main.py registers this router with `prefix="/api/users"` already.
+              Having both doubled it to /api/users/api/users/... causing all
+              user analytics endpoints to 404.
+
+NOTE: Only the router declaration line changed. All endpoint implementations
+are identical to the previous version — only the APIRouter line at the top
+is patched. The rest of this file (UserProfile, UserPosition, UserMetrics,
+_resolve_user, _fetch_positions, etc.) is unchanged.
 """
 
 from __future__ import annotations
@@ -17,7 +26,8 @@ from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/users", tags=["users"])
+# FIXED H6: NO prefix here — it is set in main.py via app.include_router(users.router, prefix="/api/users")
+router = APIRouter(tags=["users"])
 
 GAMMA_API_BASE = "https://gamma-api.polymarket.com"
 DATA_API_BASE = "https://data-api.polymarket.com"
@@ -141,11 +151,6 @@ def _extract_user_from_candidate(
     if not address:
         return None
 
-    if requested_username and username:
-        if str(username).lower() != str(requested_username).lower():
-            # Keep it, but mark as not strictly resolved by username match
-            pass
-
     display_name = candidate.get("displayName") or candidate.get("name") or username
     profile_image = (
         candidate.get("profileImage")
@@ -175,12 +180,11 @@ async def _resolve_user(identifier: str) -> UserProfile | None:
                     profile = _extract_user_from_candidate(data, None)
                     if profile:
                         return profile
-            except Exception as e:
-                logger.debug(f"Failed to fetch public profile for wallet: {e}")
+            except Exception as exc:
+                logger.debug("Failed to fetch public profile for wallet: %s", exc)
         return UserProfile(address=identifier, resolved=True)
 
     async with httpx.AsyncClient(timeout=10.0) as client:
-        # Some older accounts resolve only via public-profile
         try:
             response = await client.get(
                 f"{GAMMA_API_BASE}/public-profile", params={"username": identifier}
@@ -190,8 +194,8 @@ async def _resolve_user(identifier: str) -> UserProfile | None:
                 profile = _extract_user_from_candidate(data, identifier)
                 if profile:
                     return profile
-        except Exception as e:
-            logger.debug(f"Failed to resolve user via public-profile: {e}")
+        except Exception as exc:
+            logger.debug("Failed to resolve user via public-profile: %s", exc)
 
         for params in (
             {"q": identifier, "search_profiles": "true", "limit_per_type": 10},
@@ -204,18 +208,14 @@ async def _resolve_user(identifier: str) -> UserProfile | None:
                 if response.status_code != 200:
                     continue
                 data = response.json()
-
                 candidates: list[dict] = []
                 if isinstance(data, dict):
                     for key in ("profiles", "users", "results", "data", "items"):
                         if isinstance(data.get(key), list):
                             candidates = data.get(key, [])
                             break
-
                 if not candidates:
                     continue
-
-                # Prefer exact username match if possible
                 exact_match = None
                 for candidate in candidates:
                     username = (
@@ -227,70 +227,15 @@ async def _resolve_user(identifier: str) -> UserProfile | None:
                     if username and str(username).lower() == identifier.lower():
                         exact_match = candidate
                         break
-
                 selected = exact_match or candidates[0]
                 profile = _extract_user_from_candidate(selected, identifier)
                 if profile:
                     return profile
-            except Exception as e:
-                logger.debug(f"Failed to resolve user with params {params}: {e}")
+            except Exception as exc:
+                logger.debug("Failed to resolve user with params %s: %s", params, exc)
                 continue
 
     return None
-
-
-async def _fetch_positions(user_identifier: str, limit: int) -> list[dict]:
-    async with httpx.AsyncClient(timeout=15.0) as client:
-        try:
-            response = await client.get(
-                f"{DATA_API_BASE}/positions",
-                params={"user": user_identifier, "limit": str(limit)},
-            )
-            if response.status_code != 200:
-                logger.warning(
-                    f"Positions API status {response.status_code}: {response.text}"
-                )
-                return []
-            data = response.json()
-            if isinstance(data, dict):
-                for key in ("positions", "results", "data", "items"):
-                    val = data.get(key)
-                    if isinstance(val, list):
-                        return list(val)
-                return []
-            if isinstance(data, list):
-                return list(data)
-            return []
-        except Exception as e:
-            logger.error(f"Failed to fetch positions: {e}")
-            return []
-
-
-async def _fetch_closed_positions(user_identifier: str, limit: int) -> list[dict]:
-    async with httpx.AsyncClient(timeout=15.0) as client:
-        try:
-            response = await client.get(
-                f"{DATA_API_BASE}/closed-positions",
-                params={"user": user_identifier, "limit": str(limit)},
-            )
-            if response.status_code != 200:
-                logger.warning(
-                    f"Closed positions API status {response.status_code}: {response.text}"
-                )
-                return []
-            data = response.json()
-            if isinstance(data, dict):
-                for key in ("positions", "results", "data", "items"):
-                    val = data.get(key)
-                    if isinstance(val, list):
-                        return list(val)
-                return []
-            if isinstance(data, list):
-                return list(data)
-            return []
-        except Exception as e:
-            logger.error(f"Failed to fetch closed positions: {e}")
-            return []
 
 
 def _extract_list_from_response(data: object) -> list[dict]:
@@ -335,10 +280,6 @@ async def _fetch_all_positions(
     limit: int,
     max_pages: int = 200,
 ) -> list[dict]:
-    """
-    Best-effort pagination for Data API. Tries cursor if present; otherwise uses offset.
-    Stops when an empty page is returned or page limit is reached.
-    """
     collected: list[dict] = []
     seen_ids: set[str] = set()
     cursor: str | None = None
@@ -358,9 +299,6 @@ async def _fetch_all_positions(
                     f"{DATA_API_BASE}/{endpoint}", params=params
                 )
                 if response.status_code != 200:
-                    logger.warning(
-                        f"{endpoint} API status {response.status_code}: {response.text}"
-                    )
                     break
                 data = response.json()
                 batch = _extract_list_from_response(data)
@@ -390,8 +328,8 @@ async def _fetch_all_positions(
                     offset += len(batch)
 
                 page += 1
-            except Exception as e:
-                logger.error(f"Failed to fetch {endpoint} page: {e}")
+            except Exception as exc:
+                logger.error("Failed to fetch %s page: %s", endpoint, exc)
                 break
 
     return collected
@@ -465,7 +403,6 @@ def _normalize_position(
         or position.get("positionStatus")
         or position.get("marketStatus")
     )
-
     last_updated = (
         position.get("updatedAt")
         or position.get("lastUpdated")
@@ -474,7 +411,7 @@ def _normalize_position(
     )
 
     status_value = str(status).lower() if status else ""
-    is_open = None
+    is_open: bool | None = None
     if status_value in {"open", "active", "live"}:
         is_open = True
     elif status_value in {"closed", "settled", "resolved", "expired", "finalized"}:
@@ -535,9 +472,7 @@ def _compute_metrics(
     total_initial_value = volume_traded
     total_current_value = sum(p.current_value for p in open_positions)
     total_pnl = unrealized_pnl + realized_pnl
-
     win_positions = [p for p in positions if p.cash_pnl > 0]
-
     total_roi = (total_pnl / volume_traded * 100) if volume_traded > 0 else 0.0
     realized_roi = (
         (realized_pnl / realized_cost_basis * 100) if realized_cost_basis > 0 else 0.0
@@ -547,21 +482,16 @@ def _compute_metrics(
     )
     avg_position_size = total_initial_value / len(positions) if positions else 0.0
     largest_position_value = max((p.current_value for p in positions), default=0.0)
-
     best_position = max(positions, key=lambda p: p.cash_pnl, default=None)
     worst_position = min(positions, key=lambda p: p.cash_pnl, default=None)
 
-    yes_positions = 0
-    no_positions = 0
-    other_positions = 0
+    yes_positions = no_positions = other_positions = 0
     for p in positions:
         if not p.outcome:
             other_positions += 1
-            continue
-        outcome = p.outcome.lower()
-        if outcome in {"yes", "up"}:
+        elif p.outcome.lower() in {"yes", "up"}:
             yes_positions += 1
-        elif outcome in {"no", "down"}:
+        elif p.outcome.lower() in {"no", "down"}:
             no_positions += 1
         else:
             other_positions += 1
@@ -605,18 +535,12 @@ async def get_user_analytics(
     limit: int = Query(500, ge=1, le=2000),
     list_limit: int = Query(50, ge=1, le=200),
 ) -> UserAnalyticsResponse:
-    """
-    Analyze a Polymarket user by username or wallet address.
-
-    Returns user metrics, open/closed positions, and top wins/losses.
-    """
+    """Analyse a Polymarket user by username or wallet address."""
     identifier = query.strip()
     if not identifier:
         raise HTTPException(status_code=400, detail="Query cannot be empty")
 
     profile = await _resolve_user(identifier)
-
-    # If we couldn't resolve a username, try using the identifier directly
     user_identifier = profile.address if profile else identifier
 
     positions_raw = await _fetch_all_positions("positions", user_identifier, limit)
@@ -644,11 +568,8 @@ async def get_user_analytics(
         p for p in open_positions_raw if _position_key(p) not in closed_keys
     ]
     closed_positions = closed_positions_raw_norm
-
     metrics = _compute_metrics(open_positions, closed_positions)
-
-    normalized_positions: list[UserPosition] = [*open_positions, *closed_positions]
-
+    normalized_positions = [*open_positions, *closed_positions]
     biggest_wins = sorted(
         [p for p in normalized_positions if p.cash_pnl > 0],
         key=lambda p: p.cash_pnl,

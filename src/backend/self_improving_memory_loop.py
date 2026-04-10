@@ -13,9 +13,11 @@ from datetime import datetime, timedelta
 from typing import Any
 
 try:
-    from mem0 import Mem0
+    from mem0 import Memory as _Mem0Memory  # mem0ai package exports Memory, not Mem0
+
+    _HAS_MEM0 = True
 except ImportError:
-    Mem0 = None
+    _HAS_MEM0 = False
 
 from src.backend.config import settings
 from src.backend.llm_router import router
@@ -37,12 +39,14 @@ logger = logging.getLogger(__name__)
 
 # Initialize Mem0 client (graceful fallback if mem0 not installed)
 mem0 = None
-if Mem0 is not None:
+if _HAS_MEM0:
     try:
-        mem0_config = json.loads(settings.MEM0_CONFIG)
-        mem0 = Mem0.from_config(mem0_config)
-    except Exception as e:
-        logger.warning(f"Mem0 initialization failed in memory loop: {e}")
+        import json as _json
+
+        _mem0_config = _json.loads(settings.MEM0_CONFIG)
+        mem0 = _Mem0Memory.from_config(_mem0_config)
+    except Exception as _e:
+        logger.warning(f"Mem0 initialization failed in memory loop: {_e}")
 
 
 class SelfImprovingMemoryLoop:

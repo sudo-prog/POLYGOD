@@ -591,7 +591,7 @@ async def get_market_stats(
                         name="Range Position",
                         signal="bullish",
                         strength=4,
-                        description=f"Near 7d high ({position*100:.0f}% of range)",
+                        description=f"Near 7d high ({position * 100:.0f}% of range)",
                         value=position * 100,
                     )
                 )
@@ -602,7 +602,7 @@ async def get_market_stats(
                         name="Range Position",
                         signal="bearish",
                         strength=4,
-                        description=f"Near 7d low ({position*100:.0f}% of range)",
+                        description=f"Near 7d low ({position * 100:.0f}% of range)",
                         value=position * 100,
                     )
                 )
@@ -613,7 +613,7 @@ async def get_market_stats(
                         name="Range Position",
                         signal="neutral",
                         strength=2,
-                        description=f"Mid-range ({position*100:.0f}% of range)",
+                        description=f"Mid-range ({position * 100:.0f}% of range)",
                         value=position * 100,
                     )
                 )
@@ -627,7 +627,7 @@ async def get_market_stats(
                     name="Volume Surge",
                     signal="bullish" if change_24h > 0 else "bearish",
                     strength=3,
-                    description=f"Volume {volume_24h/daily_avg:.1f}x above average",
+                    description=f"Volume {volume_24h / daily_avg:.1f}x above average",
                     value=volume_24h / daily_avg,
                 )
             )
@@ -1076,11 +1076,13 @@ async def get_market_trades(
                 continue
 
         if include_user_stats and whale_trades:
-            addresses: set[str] = {
+            # FIX H5: Cap enriched addresses at 50 to prevent fan-out bomb
+            all_addresses: set[str] = {
                 str(trade.get("address"))
                 for trade in whale_trades
                 if trade.get("address") and trade.get("address") != "Unknown"
             }
+            addresses = set(list(all_addresses)[:50])  # Hard cap at 50
 
             if addresses:
                 # Check cache first — only fetch stats for uncached addresses
@@ -1232,10 +1234,10 @@ async def get_market_holders(market_id: str, db: AsyncSession = Depends(get_db))
             all_holders = []
             for token_data in data:
                 token_holders = token_data.get("holders", [])
+                # FIX M8: Use correct API field for outcomeIndex
+                outcome_idx = token_data.get("outcomeIndex", token_data.get("index", 0))
                 for h in token_holders:
-                    h["outcomeIndex"] = token_data.get(
-                        "dummy", h.get("outcomeIndex")
-                    )  # preserve outcome index
+                    h["outcomeIndex"] = outcome_idx  # correctly propagate from parent
                     all_holders.append(h)
 
             # Deduplicate by address for fetching stats, but keep references

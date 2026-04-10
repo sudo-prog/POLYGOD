@@ -160,7 +160,10 @@ function App() {
   ]);
 
   return (
-    <div className="min-h-screen bg-surface-950 pg-mesh-bg" style={{ paddingTop: tickerHeight }}>
+    <div
+      className="min-h-screen bg-surface-950 pg-mesh-bg flex flex-col"
+      style={{ paddingTop: tickerHeight }}
+    >
       <TickerBanner
         items={[
           ...(lastAlert
@@ -308,7 +311,7 @@ function App() {
       </header>
 
       {/* Main Content */}
-      <main className="max-w-[1920px] mx-auto p-4">
+      <main className="flex-1 max-w-[1920px] mx-auto p-4">
         {activeView === 'markets' ? (
           <div className="grid grid-cols-12 gap-4 lg:gap-6">
             {/* Sidebar - Market List */}
@@ -505,7 +508,7 @@ function App() {
       <SettingsButton />
 
       {/* Footer */}
-      <footer className="glass border-t border-white/10 mt-8">
+      <footer className="glass border-t border-white/10 mt-auto">
         <div className="max-w-[1920px] mx-auto px-4 py-4 text-center text-sm text-surface-200">
           <p>
             Data from{' '}

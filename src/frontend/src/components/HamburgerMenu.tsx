@@ -196,7 +196,7 @@ export function HamburgerMenu({ setActiveView }: HamburgerMenuProps) {
   ];
 
   return (
-    <div className="fixed left-6 top-16 z-50">
+    <div className="relative">
       <button onClick={() => setIsOpen(!isOpen)} className="ios-icon-btn">
         {isOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
       </button>
@@ -204,7 +204,7 @@ export function HamburgerMenu({ setActiveView }: HamburgerMenuProps) {
       {isOpen && (
         <div
           id="hamburger-menu"
-          className="mt-3 space-y-2"
+          className="mt-3 space-y-2 absolute left-0 top-12"
           style={{
             background: 'rgba(8, 12, 24, 0.92)',
             backdropFilter: 'blur(28px) saturate(200%)',
@@ -213,9 +213,6 @@ export function HamburgerMenu({ setActiveView }: HamburgerMenuProps) {
             minWidth: '260px',
             boxShadow: '0 20px 60px rgba(0, 0, 0, 0.5)',
             animation: 'float-up 200ms cubic-bezier(0.34, 1.2, 0.64, 1)',
-            position: 'absolute',
-            top: '50px',
-            left: '0',
             zIndex: 200,
           }}
         >

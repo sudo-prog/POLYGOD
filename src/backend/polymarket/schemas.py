@@ -31,7 +31,6 @@ class MarketResponse(BaseModel):
     question: str = Field(default="")
     description: str = Field(default="")
     slug: str = Field(default="")
-    market_slug: str = Field(default="", alias="slug")  # Backup alias
     end_date_iso: str | None = Field(default=None, alias="endDateIso")
     game_start_time: str | None = Field(default=None, alias="gameStartTime")
     active: bool = Field(default=True)
@@ -60,6 +59,11 @@ class MarketResponse(BaseModel):
     image: str = Field(default="")
     icon: str = Field(default="")
     clob_token_ids: str = Field(default="", alias="clobTokenIds")
+
+    @property
+    def market_slug(self) -> str:
+        """Backwards-compat alias for slug."""
+        return self.slug
 
 
 class MarketOut(BaseModel):

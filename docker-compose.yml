@@ -1,6 +1,38 @@
-# POLYGOD Docker Compose - Hardened for zero-error startup with Qdrant for mem0
+# POLYGOD Docker Compose — dev/staging stack
+#
+# Changes vs previous version:
+#   - FIXED M5: Added postgres service so DATABASE_URL default (postgresql+asyncpg://...)
+#               actually connects. Without this, the backend crashed immediately with
+#               "could not connect to server" on every `docker compose up`.
+#   - FIXED M6: polygod-swarm healthcheck no longer imports the full Python module
+#               on every 15s tick (which triggered side effects and was slow).
+#               Replaced with a simple pgrep process-existence check.
+#   - HARDENED: redis port no longer exposed on 0.0.0.0 (only on 127.0.0.1).
+#               Qdrant ports also restricted to localhost.
+#   - ADDED:    backend depends_on postgres with condition: service_healthy so
+#               the app doesn't race against a starting database.
 
 services:
+  postgres:
+    image: postgres:15-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: polygod
+      POSTGRES_USER: polygod
+      POSTGRES_PASSWORD: polygod_dev_password  # override in .env for staging/prod
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:5432:5432"   # localhost only — not exposed to host network
+    networks:
+      - pnet
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U polygod -d polygod"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
   backend:
     build:
       context: .
@@ -10,19 +42,24 @@ services:
     env_file:
       - .env
     volumes:
-      - polygod_db:/app/data
+      - polygod_data:/app/data
     ports:
       - "127.0.0.1:8000:8000"
     networks:
       - pnet
     depends_on:
-      - qdrant
-      - redis
+      postgres:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
       interval: 10s
       timeout: 5s
-      retries: 3
+      retries: 5
+      start_period: 20s
 
   frontend:
     build:
@@ -35,14 +72,14 @@ services:
     networks:
       - pnet
 
-  qdrant:  # For mem0 vector store
+  qdrant:
     image: qdrant/qdrant:latest
     restart: unless-stopped
     volumes:
       - qdrant_data:/qdrant/storage
     ports:
-      - "6333:6333"
-      - "6334:6334"
+      - "127.0.0.1:6333:6333"   # localhost only
+      - "127.0.0.1:6334:6334"
     environment:
       - QDRANT__SERVICE__GRPC_PORT=6334
     networks:
@@ -51,38 +88,46 @@ services:
       test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/6333'"]
       interval: 5s
       timeout: 3s
-      retries: 3
+      retries: 5
+      start_period: 5s
 
-  polygod-swarm:  # Parallel tournament + Lightning AI offload
+  # FIXED M6: polygod-swarm healthcheck was running a Python import on every
+  # POLYGOD Swarm — runs on-demand (not auto-started). Start manually via:
+  #   docker compose up -d polygod-swarm
+  # Or via the API endpoint /polygod/run which will auto-start the container.
+  # FIXED: Changed from restart:unless-stopped to restart:no to prevent
+  # runaway processes from consuming all CPU/memory. Now runs on-demand only.
+  polygod-swarm:
     build:
       context: .
       dockerfile: Dockerfile.backend
     image: polygod-swarm:latest
-    restart: unless-stopped
+    restart: no  # ← Changed: on-demand only, not auto-started
     command: uv run python -m src.backend.polygod_graph
     env_file:
       - .env
     environment:
-      - LIGHTNING_AI_TOKEN=${LIGHTNING_AI_TOKEN:-your_free_token}
+      - LIGHTNING_AI_TOKEN=${LIGHTNING_AI_TOKEN:-}
       - COLAB_WEBHOOK_URL=${COLAB_WEBHOOK_URL:-}
     networks:
       - pnet
     depends_on:
-      - backend
-      - qdrant
-    # NEW: proper healthcheck for a non-HTTP service
+      backend:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
     healthcheck:
-      test: ["CMD", "python", "-c", "import src.backend.polygod_graph; print('swarm ready')"]
-      interval: 15s
+      test: ["CMD", "pgrep", "-f", "polygod_graph"]
+      interval: 30s
       timeout: 5s
-      retries: 5
-      start_period: 10s
+      retries: 3
+      start_period: 30s
 
   redis:
     image: redis:7-alpine
     restart: unless-stopped
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"   # localhost only — was 0.0.0.0 previously
     networks:
       - pnet
     healthcheck:
@@ -92,8 +137,9 @@ services:
       retries: 3
 
 volumes:
-  polygod_db:      # ← changed to directory volume (fixes SQLite)
+  polygod_data:
   qdrant_data:
+  postgres_data:
 
 networks:
   pnet:

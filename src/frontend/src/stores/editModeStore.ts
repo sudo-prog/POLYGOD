@@ -1,3 +1,11 @@
+// src/stores/editModeStore.ts
+//
+// Changes vs previous version:
+//   - FIXED M2: setGridLayout() now persists the layout to localStorage under
+//               'pg-layout'. The test "updateLayout persists to localStorage"
+//               was permanently failing because this write was missing.
+//   - Added 'pg-layout' to the reset() cleanup so it's cleared consistently.
+
 import { create } from 'zustand';
 
 interface WidgetStyleOverride {
@@ -43,6 +51,7 @@ interface EditModeState {
   setEditMode: (enabled: boolean) => void;
   toggleEditMode: () => void;
   setSelectedComponent: (component: string | null) => void;
+  /** FIXED M2: now also persists to localStorage under 'pg-layout' */
   setGridLayout: (layout: any[]) => void;
   setJiggleMode: (enabled: boolean) => void;
   setWidgetStyle: (id: string, partial: Partial<WidgetStyleOverride>) => void;
@@ -62,20 +71,21 @@ const getPersistedState = () => {
     const savedNames = localStorage.getItem('pg-widget-names');
     const savedStyles = localStorage.getItem('pg-widget-styles');
     const savedHidden = localStorage.getItem('pg-widget-hidden');
+    const savedLayout = localStorage.getItem('pg-layout');
     return {
       renamedWidgets: savedNames ? JSON.parse(savedNames) : {},
       widgetStyles: savedStyles ? JSON.parse(savedStyles) : {},
       widgetHidden: savedHidden ? JSON.parse(savedHidden) : {},
+      gridLayout: savedLayout ? JSON.parse(savedLayout) : [],
     };
   } catch {
-    return { renamedWidgets: {}, widgetStyles: {}, widgetHidden: {} };
+    return { renamedWidgets: {}, widgetStyles: {}, widgetHidden: {}, gridLayout: [] };
   }
 };
 
 export const useEditModeStore = create<EditModeState>((set) => ({
   isEditMode: false,
   selectedComponent: null,
-  gridLayout: [] as any[],
   jiggleMode: false,
   ...getPersistedState(),
   focusMode: false,
@@ -84,7 +94,9 @@ export const useEditModeStore = create<EditModeState>((set) => ({
   hamburgerOpen: false,
   spotlightOpen: false,
   notificationOpen: false,
+
   setEditMode: (enabled) => set({ isEditMode: enabled, jiggleMode: enabled }),
+
   toggleEditMode: () =>
     set((state) => {
       const newMode = !state.isEditMode;
@@ -95,43 +107,74 @@ export const useEditModeStore = create<EditModeState>((set) => ({
       }
       return { isEditMode: newMode, jiggleMode: newMode };
     }),
+
   setSelectedComponent: (component) => set({ selectedComponent: component }),
-  setGridLayout: (layout) => set({ gridLayout: layout }),
+
+  // FIXED M2: persist to localStorage so the test (and page reloads) work correctly
+  setGridLayout: (layout) => {
+    try {
+      localStorage.setItem('pg-layout', JSON.stringify(layout));
+    } catch {
+      // localStorage may be full or unavailable — non-fatal
+    }
+    set({ gridLayout: layout });
+  },
+
   setJiggleMode: (enabled) => set({ jiggleMode: enabled }),
+
   setWidgetStyle: (id, partial) => {
     set((state) => {
       const newStyles = { ...state.widgetStyles };
-      newStyles[id] = { ...newStyles[id], ...partial };
-      localStorage.setItem('pg-widget-styles', JSON.stringify(newStyles));
+      newStyles[id] = { ...newStyles[id], ...partial } as WidgetStyleOverride;
+      try {
+        localStorage.setItem('pg-widget-styles', JSON.stringify(newStyles));
+      } catch {
+        /* non-fatal */
+      }
       return { widgetStyles: newStyles };
     });
   },
+
   resetWidgetStyle: (id) => {
     set((state) => {
       const newStyles = { ...state.widgetStyles };
       delete newStyles[id];
-      localStorage.setItem('pg-widget-styles', JSON.stringify(newStyles));
+      try {
+        localStorage.setItem('pg-widget-styles', JSON.stringify(newStyles));
+      } catch {
+        /* non-fatal */
+      }
       return { widgetStyles: newStyles };
     });
   },
+
   renameWidget: (id, name) => {
     set((state) => {
       const newNames = { ...state.renamedWidgets, [id]: name };
-      localStorage.setItem('pg-widget-names', JSON.stringify(newNames));
+      try {
+        localStorage.setItem('pg-widget-names', JSON.stringify(newNames));
+      } catch {
+        /* non-fatal */
+      }
       return { renamedWidgets: newNames };
     });
   },
+
   setWidgetHidden: (id, hidden) => {
     set((state) => {
       const newHidden = { ...state.widgetHidden, [id]: hidden };
-      localStorage.setItem('pg-widget-hidden', JSON.stringify(newHidden));
+      try {
+        localStorage.setItem('pg-widget-hidden', JSON.stringify(newHidden));
+      } catch {
+        /* non-fatal */
+      }
       return { widgetHidden: newHidden };
     });
   },
+
   setFocusMode: (enabled) => {
     set((state) => {
       if (enabled) {
-        // Enter focus mode - hide all widgets except selected
         const newHidden = { ...state.widgetHidden };
         Object.keys(state.widgetStyles).forEach((id) => {
           if (id !== state.selectedComponent) {
@@ -144,7 +187,6 @@ export const useEditModeStore = create<EditModeState>((set) => ({
           widgetHidden: newHidden,
         };
       } else {
-        // Exit focus mode - restore previous state
         return {
           focusMode: false,
           widgetHidden: { ...state.preFocusHiddenState },
@@ -153,15 +195,25 @@ export const useEditModeStore = create<EditModeState>((set) => ({
       }
     });
   },
+
   toggleSettings: () => set((state) => ({ settingsOpen: !state.settingsOpen })),
   setHamburgerOpen: (open) => set({ hamburgerOpen: open }),
   setSpotlightOpen: (open) => set({ spotlightOpen: open }),
   setNotificationOpen: (open) => set({ notificationOpen: open }),
+
   reset: () => {
+    // Clear all localStorage keys owned by this store
+    ['pg-layout', 'pg-widget-names', 'pg-widget-styles', 'pg-widget-hidden'].forEach((key) => {
+      try {
+        localStorage.removeItem(key);
+      } catch {
+        /* non-fatal */
+      }
+    });
     set({
       isEditMode: false,
       selectedComponent: null,
-      gridLayout: [] as any[],
+      gridLayout: [],
       jiggleMode: false,
       renamedWidgets: {},
       widgetStyles: {},
@@ -173,8 +225,5 @@ export const useEditModeStore = create<EditModeState>((set) => ({
       spotlightOpen: false,
       notificationOpen: false,
     });
-    localStorage.removeItem('pg-widget-names');
-    localStorage.removeItem('pg-widget-styles');
-    localStorage.removeItem('pg-widget-hidden');
   },
 }));

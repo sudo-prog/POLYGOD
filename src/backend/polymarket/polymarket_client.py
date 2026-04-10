@@ -455,8 +455,7 @@ class PolymarketClient:
         token_id: str | None = order.get(
             "token_id"
         ) or await self.get_token_id_for_market(
-            market_id,
-            side,  # type: ignore[arg-type]
+            market_id, side  # type: ignore[arg-type]
         )
         if not token_id:
             logger.error(

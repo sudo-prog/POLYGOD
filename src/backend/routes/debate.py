@@ -1,4 +1,13 @@
-"""Debate Floor API routes for AI-powered market analysis."""
+"""
+Debate Floor API routes.
+
+Changes vs previous version:
+  - FIXED H5: Removed `prefix="/api/debate"` from the APIRouter constructor.
+              main.py registers this router with `prefix="/api/debate"` already.
+              Having both set the prefix doubled it to /api/debate/api/debate/...
+              causing every debate endpoint to 404. The router-level prefix is
+              now empty; the prefix is set exclusively in main.py.
+"""
 
 import asyncio
 import json
@@ -27,46 +36,24 @@ from src.backend.routes.markets import fetch_price_history_from_clob
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/debate", tags=["debate"])
+# FIXED H5: NO prefix here — it is set in main.py via app.include_router(debate.router, prefix="/api/debate")
+router = APIRouter(tags=["debate"])
 
 
 class AgentConfigRequest(BaseModel):
-    """Request model for agent configuration."""
-
-    statistics_expert: bool = Field(
-        default=True, description="Enable Statistics Expert agent"
-    )
-    generalist_expert: bool = Field(
-        default=True, description="Enable Generalist Expert (News Analyst) agent"
-    )
-    devils_advocate: bool = Field(
-        default=True, description="Enable Devil's Advocate agent"
-    )
-    crypto_macro_analyst: bool = Field(
-        default=True, description="Enable Crypto/Macro Analyst agent"
-    )
-    time_decay_analyst: bool = Field(
-        default=True, description="Enable Time Decay & Resolution Analyst agent"
-    )
-    top_traders_analyst: bool = Field(
-        default=True, description="Enable Top Traders Analyst agent"
-    )
+    statistics_expert: bool = Field(default=True)
+    generalist_expert: bool = Field(default=True)
+    devils_advocate: bool = Field(default=True)
+    crypto_macro_analyst: bool = Field(default=True)
+    time_decay_analyst: bool = Field(default=True)
+    top_traders_analyst: bool = Field(default=True)
 
 
 class DebateRequest(BaseModel):
-    """Request model for initiating a debate."""
-
-    agents: Optional[AgentConfigRequest] = Field(
-        default=None,
-        description=(
-            "Configuration for which agents to include. If not provided, all agents are enabled."
-        ),
-    )
+    agents: Optional[AgentConfigRequest] = Field(default=None)
 
 
 class DebateResponse(BaseModel):
-    """Response model for debate results."""
-
     market_id: str
     messages: List[Dict[str, str]]
     verdict: str
@@ -114,7 +101,6 @@ def _extract_position_pnl(position: dict) -> float:
         if raw is None:
             continue
         return _parse_float(raw)
-
     realized = _parse_float(
         position.get("realizedPnl") or position.get("realized_pnl") or 0
     )
@@ -123,7 +109,6 @@ def _extract_position_pnl(position: dict) -> float:
     )
     if realized or unrealized:
         return realized + unrealized
-
     return 0.0
 
 
@@ -136,10 +121,6 @@ def _extract_position_value(position: dict) -> float:
         "position_value",
         "markValue",
         "mark_value",
-        "notionalValue",
-        "notional_value",
-        "totalValue",
-        "total_value",
     ):
         raw = position.get(key)
         if raw is None:
@@ -159,31 +140,24 @@ def _compute_global_stats(
     global_pnl = 0.0
     total_cost_basis = 0.0
     total_balance = 0.0
-
     for position in positions:
         if not isinstance(position, dict):
             continue
         global_pnl += _extract_position_pnl(position)
-
         initial_val = _parse_float(position.get("initialValue") or 0)
         if initial_val > 0:
             total_cost_basis += initial_val
-
         total_balance += _extract_position_value(position)
-
     if closed_positions:
         for position in closed_positions:
             if not isinstance(position, dict):
                 continue
             global_pnl += _extract_position_pnl(position)
-
             total_bought = _parse_float(position.get("totalBought") or 0)
             if total_bought > 0:
                 total_cost_basis += total_bought
-
     if total_balance <= 0 and total_cost_basis > 0:
         total_balance = max(0.0, total_cost_basis + global_pnl)
-
     global_roi = (global_pnl / total_cost_basis * 100) if total_cost_basis > 0 else 0.0
     return global_pnl, global_roi, total_balance
 
@@ -191,14 +165,8 @@ def _compute_global_stats(
 async def _fetch_top_traders(
     market: Market, days: int = 7, limit: int = 500, top_n: int = 5
 ) -> list[dict]:
-    """
-    Fetch top actors for the Debate Floor.
-
-    Preference order:
-    1) Top holders (current positions) for the market (most aligned with "who matters now")
-    2) Fallback to top traders by recent traded volume (if holders unavailable)
-    """
-    # 1) Try top holders first (these are guaranteed to be positioned on this market)
+    """Fetch top holders or top traders for the Debate Floor."""
+    # Try top holders first
     try:
         async with httpx.AsyncClient(timeout=15.0) as client:
             response = await client.get(
@@ -212,10 +180,7 @@ async def _fetch_top_traders(
                     for token_data in data:
                         if not isinstance(token_data, dict):
                             continue
-                        token_holders = token_data.get("holders", [])
-                        if not isinstance(token_holders, list):
-                            continue
-                        for holder in token_holders:
+                        for holder in token_data.get("holders", []):
                             if not isinstance(holder, dict):
                                 continue
                             address = holder.get("proxyWallet")
@@ -234,23 +199,21 @@ async def _fetch_top_traders(
                                     "source": "holders",
                                 }
                             )
-
                     if holders:
                         holders.sort(
                             key=lambda x: x.get("position_amount", 0), reverse=True
                         )
                         top_holders = holders[: max(1, top_n)]
-
-                        # Enrich with global stats + portfolio value
                         async with httpx.AsyncClient(timeout=15.0) as client2:
                             semaphore = asyncio.Semaphore(8)
 
                             async def enrich(address: str):
                                 async with semaphore:
-                                    positions = []
-                                    closed_positions = []
-                                    value_total = 0.0
-
+                                    positions, closed_positions, value_total = (
+                                        [],
+                                        [],
+                                        0.0,
+                                    )
                                     try:
                                         r = await client2.get(
                                             "https://data-api.polymarket.com/positions",
@@ -259,8 +222,7 @@ async def _fetch_top_traders(
                                         if r.status_code == 200:
                                             positions = r.json()
                                     except Exception:
-                                        positions = []
-
+                                        pass
                                     try:
                                         r = await client2.get(
                                             "https://data-api.polymarket.com/closed-positions",
@@ -269,8 +231,7 @@ async def _fetch_top_traders(
                                         if r.status_code == 200:
                                             closed_positions = r.json()
                                     except Exception:
-                                        closed_positions = []
-
+                                        pass
                                     try:
                                         r = await client2.get(
                                             "https://data-api.polymarket.com/value",
@@ -283,8 +244,7 @@ async def _fetch_top_traders(
                                                     payload[0].get("value") or 0
                                                 )
                                     except Exception:
-                                        value_total = 0.0
-
+                                        pass
                                 positions = (
                                     positions if isinstance(positions, list) else []
                                 )
@@ -317,9 +277,10 @@ async def _fetch_top_traders(
                             holder["total_balance"] = bal
 
                         return top_holders
-    except Exception as e:
-        logger.debug(f"Top holders fetch failed (falling back to trades): {e}")
+    except Exception as exc:
+        logger.debug("Top holders fetch failed (falling back to trades): %s", exc)
 
+    # Fallback: top traders by volume
     identifiers = []
     if market.slug:
         identifiers.append(market.slug)
@@ -344,32 +305,25 @@ async def _fetch_top_traders(
     market_keys.discard(None)
 
     def trade_matches_market(trade: dict) -> bool:
-        trade_fields = [
+        fields = [
             trade.get("slug"),
             trade.get("marketSlug"),
             trade.get("market_slug"),
             trade.get("market"),
             trade.get("marketId"),
             trade.get("conditionId"),
-            trade.get("condition_id"),
         ]
         normalized = [
-            str(value).strip().lower()
-            for value in trade_fields
-            if value is not None and str(value).strip() != ""
+            str(v).strip().lower() for v in fields if v is not None and str(v).strip()
         ]
-        if not normalized:
-            return False
-        return any(value in market_keys for value in normalized)
+        return bool(normalized) and any(v in market_keys for v in normalized)
 
     aggregates: dict[str, dict[str, Any]] = {}
-
     for trade in trades:
         if not isinstance(trade, dict):
             continue
         if not trade_matches_market(trade):
             continue
-
         ts_val = trade.get("timestamp")
         if not ts_val:
             continue
@@ -377,43 +331,36 @@ async def _fetch_top_traders(
         if isinstance(ts_val, (int, float)):
             ts_int = int(ts_val)
             if ts_int > 10**12:
-                ts_int = ts_int // 1000
+                ts_int //= 1000
             trade_time = datetime.utcfromtimestamp(ts_int)
         else:
             try:
                 trade_time = datetime.fromisoformat(str(ts_val).replace("Z", "+00:00"))
             except ValueError:
                 continue
-
         if trade_time < cutoff:
             continue
-
         side = str(trade.get("side", "")).upper()
         if side not in ("BUY", "SELL"):
             continue
-
         outcome = str(trade.get("outcome", ""))
-        outcome_lower = outcome.lower() if outcome else ""
+        outcome_lower = outcome.lower()
         is_yes = outcome_lower in ("yes", "up")
         is_no = outcome_lower in ("no", "down")
         is_bullish = (side == "BUY" and is_yes) or (side == "SELL" and is_no)
-
         try:
             size = float(trade.get("size", 0))
             price = float(trade.get("price", 0))
         except (TypeError, ValueError):
             continue
-
         volume = _parse_trade_value(trade, size, price)
         if volume <= 0:
             continue
-
         address = (
             trade.get("proxyWallet") or trade.get("wallet") or trade.get("address")
         )
         if not address:
             continue
-
         name = trade.get("name") or trade.get("pseudonym")
         agg = aggregates.setdefault(
             address,
@@ -427,25 +374,23 @@ async def _fetch_top_traders(
                 "last_trade_at": trade_time.isoformat() + "Z",
             },
         )
-
         agg["total_volume"] += volume
         agg["trade_count"] += 1
         if is_bullish:
             agg["bullish_volume"] += volume
         else:
             agg["bearish_volume"] += volume
-
         if trade_time.isoformat() + "Z" > agg["last_trade_at"]:
             agg["last_trade_at"] = trade_time.isoformat() + "Z"
-
         if not agg.get("name") and name:
             agg["name"] = name
 
     if not aggregates:
         return []
 
-    traders = list(aggregates.values())
-    traders.sort(key=lambda x: x.get("total_volume", 0), reverse=True)
+    traders = sorted(
+        aggregates.values(), key=lambda x: x.get("total_volume", 0), reverse=True
+    )
     top_traders = traders[:top_n]
 
     async with httpx.AsyncClient(timeout=15.0) as client:
@@ -453,42 +398,36 @@ async def _fetch_top_traders(
 
         async def fetch_user_stats(address: str):
             async with semaphore:
-                positions = []
-                closed_positions = []
-                value_total = 0.0
-
+                positions, closed_positions, value_total = [], [], 0.0
                 try:
-                    response = await client.get(
+                    r = await client.get(
                         "https://data-api.polymarket.com/positions",
                         params={"user": address, "limit": "500"},
                     )
-                    if response.status_code == 200:
-                        positions = response.json()
+                    if r.status_code == 200:
+                        positions = r.json()
                 except Exception:
-                    positions = []
-
+                    pass
                 try:
-                    response = await client.get(
+                    r = await client.get(
                         "https://data-api.polymarket.com/closed-positions",
                         params={"user": address, "limit": "500"},
                     )
-                    if response.status_code == 200:
-                        closed_positions = response.json()
+                    if r.status_code == 200:
+                        closed_positions = r.json()
                 except Exception:
-                    closed_positions = []
-
+                    pass
                 try:
-                    response = await client.get(
+                    r = await client.get(
                         "https://data-api.polymarket.com/value",
                         params={"user": address},
                     )
-                    if response.status_code == 200:
-                        payload = response.json()
+                    if r.status_code == 200:
+                        payload = r.json()
                         if isinstance(payload, list) and payload:
                             value_total = _parse_float(payload[0].get("value") or 0)
                 except Exception:
-                    value_total = 0.0
-
+                    pass
             positions = positions if isinstance(positions, list) else []
             closed_positions = (
                 closed_positions if isinstance(closed_positions, list) else []
@@ -503,27 +442,99 @@ async def _fetch_top_traders(
         stats_results = await asyncio.gather(
             *[fetch_user_stats(t["address"]) for t in top_traders]
         )
-        stats_map = {
-            address: (pnl, roi, balance) for address, pnl, roi, balance in stats_results
-        }
+        stats_map = {addr: (pnl, roi, bal) for addr, pnl, roi, bal in stats_results}
 
     for trader in top_traders:
-        bullish = trader.get("bullish_volume", 0.0)
-        bearish = trader.get("bearish_volume", 0.0)
-        if bullish > bearish * 1.1:
-            bias = "bullish"
-        elif bearish > bullish * 1.1:
-            bias = "bearish"
-        else:
-            bias = "mixed"
-        trader["bias"] = bias
-
-        pnl, roi, balance = stats_map.get(trader["address"], (0.0, 0.0, 0.0))
+        bull = trader.get("bullish_volume", 0.0)
+        bear = trader.get("bearish_volume", 0.0)
+        trader["bias"] = (
+            "bullish"
+            if bull > bear * 1.1
+            else "bearish" if bear > bull * 1.1 else "mixed"
+        )
+        pnl, roi, bal = stats_map.get(trader["address"], (0.0, 0.0, 0.0))
         trader["global_pnl"] = pnl
         trader["global_roi"] = roi
-        trader["total_balance"] = balance
+        trader["total_balance"] = bal
 
     return top_traders
+
+
+def _build_agent_config(request: Optional[DebateRequest]) -> AgentConfig:
+    default: AgentConfig = {
+        "statistics_expert": True,
+        "generalist_expert": True,
+        "devils_advocate": True,
+        "crypto_macro_analyst": True,
+        "time_decay_analyst": True,
+        "top_traders_analyst": True,
+    }
+    if request and request.agents:
+        return {
+            "statistics_expert": request.agents.statistics_expert,
+            "generalist_expert": request.agents.generalist_expert,
+            "devils_advocate": request.agents.devils_advocate,
+            "crypto_macro_analyst": request.agents.crypto_macro_analyst,
+            "time_decay_analyst": request.agents.time_decay_analyst,
+            "top_traders_analyst": request.agents.top_traders_analyst,
+        }
+    return default
+
+
+async def _prepare_initial_state(market: Market) -> DebateState:
+    """Fetch price history and top traders, build DebateState."""
+    price_history_24h: List[float] = []
+    price_history_7d: List[float] = []
+
+    if market.clob_token_ids:
+        try:
+            token_ids = json.loads(market.clob_token_ids)
+            if token_ids:
+                yes_token_id = token_ids[0]
+                history_24h = await fetch_price_history_from_clob(
+                    yes_token_id, "1d", 15
+                )
+                if history_24h:
+                    price_history_24h = [h["p"] * 100 for h in history_24h]
+                history_7d = await fetch_price_history_from_clob(yes_token_id, "7d", 60)
+                if history_7d:
+                    price_history_7d = [h["p"] * 100 for h in history_7d]
+        except Exception as exc:
+            logger.warning("Failed to fetch price history for debate: %s", exc)
+
+    top_traders: list[dict] = []
+    try:
+        top_traders = await _fetch_top_traders(market)
+    except Exception as exc:
+        logger.warning("Failed to fetch top traders for debate: %s", exc)
+
+    return DebateState(
+        messages=[],
+        market_data={
+            "title": market.title,
+            "price": market.yes_percentage,
+            "volume_24h": market.volume_24h,
+            "volume_7d": market.volume_7d,
+            "liquidity": market.liquidity,
+            "end_date": str(market.end_date),
+        },
+        market_question=market.title,
+        verdict="",
+        price_history_24h=price_history_24h,
+        price_history_7d=price_history_7d,
+        top_traders=top_traders,
+    )
+
+
+async def _get_market_or_404(market_id: str, db: AsyncSession) -> Market:
+    result = await db.execute(select(Market).where(Market.id == market_id))
+    market = result.scalar_one_or_none()
+    if not market:
+        result = await db.execute(select(Market).where(Market.slug == market_id))
+        market = result.scalar_one_or_none()
+    if not market:
+        raise HTTPException(status_code=404, detail="Market not found")
+    return market
 
 
 @router.post("/{market_id}", response_model=DebateResponse)
@@ -532,119 +543,23 @@ async def initiate_debate(
     request: Optional[DebateRequest] = None,
     db: AsyncSession = Depends(get_db),
 ) -> DebateResponse:
-    """
-    Initiates an AI debate for a specific market.
-
-    Users can optionally specify which agents to include in the debate
-    to reduce token usage and processing time.
-    """
-    # 1. Fetch Market Data
-    result = await db.execute(select(Market).where(Market.id == market_id))
-    market = result.scalar_one_or_none()
-
-    if not market:
-        result = await db.execute(select(Market).where(Market.slug == market_id))
-        market = result.scalar_one_or_none()
-
-    if not market:
-        raise HTTPException(status_code=404, detail="Market not found")
-
-    # 2. Fetch Price History for Statistics Expert
-    price_history_24h: List[float] = []
-    price_history_7d: List[float] = []
-
-    if market.clob_token_ids:
-        try:
-            token_ids = json.loads(market.clob_token_ids)
-            if token_ids and len(token_ids) > 0:
-                yes_token_id = token_ids[0]
-
-                # Fetch 24h history (15-min fidelity)
-                history_24h = await fetch_price_history_from_clob(
-                    yes_token_id, "1d", 15
-                )
-                if history_24h:
-                    price_history_24h = [
-                        h["p"] * 100 for h in history_24h
-                    ]  # Convert to 0-100 scale
-
-                # Fetch 7d history (1-hour fidelity)
-                history_7d = await fetch_price_history_from_clob(yes_token_id, "7d", 60)
-                if history_7d:
-                    price_history_7d = [
-                        h["p"] * 100 for h in history_7d
-                    ]  # Convert to 0-100 scale
-
-                logger.info(
-                    "Fetched price history: 24h=%d points, 7d=%d points",
-                    len(price_history_24h),
-                    len(price_history_7d),
-                )
-        except Exception as e:
-            logger.warning(f"Failed to fetch price history for debate: {e}")
-
-    # 3. Prepare Data for Agents
-    market_data = {
-        "title": market.title,
-        "price": market.yes_percentage,
-        "volume_24h": market.volume_24h,
-        "volume_7d": market.volume_7d,
-        "liquidity": market.liquidity,
-        "end_date": str(market.end_date),
-    }
-
-    top_traders = []
-    try:
-        top_traders = await _fetch_top_traders(market)
-    except Exception as e:
-        logger.warning(f"Failed to fetch top traders for debate: {e}")
-
-    initial_state: DebateState = {
-        "messages": [],
-        "market_data": market_data,
-        "market_question": market.title,
-        "verdict": "",
-        "price_history_24h": price_history_24h,
-        "price_history_7d": price_history_7d,
-        "top_traders": top_traders,
-    }
-
-    # 3. Build Agent Config from Request
-    agent_config: AgentConfig = {
-        "statistics_expert": True,
-        "generalist_expert": True,
-        "devils_advocate": True,
-        "crypto_macro_analyst": True,
-        "time_decay_analyst": True,
-        "top_traders_analyst": True,
-    }
-
-    if request and request.agents:
-        agent_config = {
-            "statistics_expert": request.agents.statistics_expert,
-            "generalist_expert": request.agents.generalist_expert,
-            "devils_advocate": request.agents.devils_advocate,
-            "crypto_macro_analyst": request.agents.crypto_macro_analyst,
-            "time_decay_analyst": request.agents.time_decay_analyst,
-            "top_traders_analyst": request.agents.top_traders_analyst,
-        }
-
-    # Track enabled agents for response
+    """Initiate a multi-agent AI debate for the specified market."""
+    market = await _get_market_or_404(market_id, db)
+    initial_state = await _prepare_initial_state(market)
+    agent_config = _build_agent_config(request)
     enabled_agents = [k for k, v in agent_config.items() if v]
 
-    # 4. Build Dynamic Graph and Run
     try:
         debate_graph = build_debate_graph(agent_config)
         final_state = await debate_graph.ainvoke(initial_state)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Debate failed: {str(e)}")
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Debate failed: {exc}") from exc
 
-    # 5. Format Output
-    formatted_messages = []
-    for msg in final_state["messages"]:
-        if isinstance(msg, HumanMessage) and msg.name:
-            formatted_messages.append({"agent": msg.name, "content": str(msg.content)})
-
+    formatted_messages = [
+        {"agent": msg.name, "content": str(msg.content)}
+        for msg in final_state["messages"]
+        if isinstance(msg, HumanMessage) and msg.name
+    ]
     return DebateResponse(
         market_id=market_id,
         messages=formatted_messages,
@@ -659,80 +574,10 @@ async def debate_stream(
     request: Optional[DebateRequest] = None,
     db: AsyncSession = Depends(get_db),
 ):
-    # Reuse the market fetching logic from above
-    result = await db.execute(select(Market).where(Market.id == market_id))
-    market = result.scalar_one_or_none()
-
-    if not market:
-        result = await db.execute(select(Market).where(Market.slug == market_id))
-        market = result.scalar_one_or_none()
-
-    if not market:
-        raise HTTPException(status_code=404, detail="Market not found")
-
-    # Prepare data (same as above)
-    price_history_24h: List[float] = []
-    price_history_7d: List[float] = []
-
-    if market.clob_token_ids:
-        try:
-            token_ids = json.loads(market.clob_token_ids)
-            if token_ids and len(token_ids) > 0:
-                yes_token_id = token_ids[0]
-                history_24h = await fetch_price_history_from_clob(
-                    yes_token_id, "1d", 15
-                )
-                if history_24h:
-                    price_history_24h = [h["p"] * 100 for h in history_24h]
-                history_7d = await fetch_price_history_from_clob(yes_token_id, "7d", 60)
-                if history_7d:
-                    price_history_7d = [h["p"] * 100 for h in history_7d]
-        except Exception as e:
-            logger.warning(f"Failed to fetch price history for debate: {e}")
-
-    market_data = {
-        "title": market.title,
-        "price": market.yes_percentage,
-        "volume_24h": market.volume_24h,
-        "volume_7d": market.volume_7d,
-        "liquidity": market.liquidity,
-        "end_date": str(market.end_date),
-    }
-
-    top_traders = []
-    try:
-        top_traders = await _fetch_top_traders(market)
-    except Exception as e:
-        logger.warning(f"Failed to fetch top traders for debate: {e}")
-
-    initial_state: DebateState = {
-        "messages": [],
-        "market_data": market_data,
-        "market_question": market.title,
-        "verdict": "",
-        "price_history_24h": price_history_24h,
-        "price_history_7d": price_history_7d,
-        "top_traders": top_traders,
-    }
-
-    agent_config: AgentConfig = {
-        "statistics_expert": True,
-        "generalist_expert": True,
-        "devils_advocate": True,
-        "crypto_macro_analyst": True,
-        "time_decay_analyst": True,
-        "top_traders_analyst": True,
-    }
-
-    if request and request.agents:
-        agent_config = {
-            "statistics_expert": request.agents.statistics_expert,
-            "generalist_expert": request.agents.generalist_expert,
-            "devils_advocate": request.agents.devils_advocate,
-            "crypto_macro_analyst": request.agents.crypto_macro_analyst,
-            "time_decay_analyst": request.agents.time_decay_analyst,
-            "top_traders_analyst": request.agents.top_traders_analyst,
-        }
+    """Stream debate events as Server-Sent Events."""
+    market = await _get_market_or_404(market_id, db)
+    initial_state = await _prepare_initial_state(market)
+    agent_config = _build_agent_config(request)
 
     async def event_generator():
         try:
