@@ -19,9 +19,9 @@ except ImportError:
     HAS_LLAMA_INDEX = False
 
 try:
-    from mem0 import Mem0
+    from mem0 import Memory as _Mem0Memory  # mem0ai exports Memory, not Mem0
 except ImportError:
-    Mem0 = None
+    _Mem0Memory = None
 
 from src.backend.config import settings
 from src.backend.polymarket.client import polymarket_client
@@ -30,10 +30,10 @@ logger = logging.getLogger(__name__)
 
 # Initialize Mem0
 mem0 = None
-if Mem0 is not None:
+if _Mem0Memory is not None:
     try:
         mem0_config = json.loads(settings.MEM0_CONFIG)
-        mem0 = Mem0.from_config(mem0_config)
+        mem0 = _Mem0Memory.from_config(mem0_config)
     except Exception as e:
         logger.warning(f"Mem0 initialization failed in WhaleCopyRAG: {e}")
 
@@ -117,9 +117,7 @@ class WhaleCopyRAG:
         """
         documents = []
         for fill in fills:
-            wallet = fill.get(
-                "wallet", fill.get("taker_order", {}).get("maker_address", "unknown")
-            )
+            wallet = fill.get("wallet", fill.get("taker_order", {}).get("maker_address", "unknown"))
             side = fill.get("side", fill.get("taker_order", {}).get("side", "unknown"))
             size = fill.get("size", 0)
             price = fill.get("price", 0)
@@ -180,9 +178,7 @@ class WhaleCopyRAG:
                             index.insert(doc)
                         except Exception as e:
                             logger.debug(f"WhaleCopyRAG: insert failed for doc: {e}")
-                    logger.info(
-                        f"WhaleCopyRAG: ingested {len(docs)} whale fill documents"
-                    )
+                    logger.info(f"WhaleCopyRAG: ingested {len(docs)} whale fill documents")
 
             # Step 3: Query for top profitable strategies
             market_title = state.get("question", market_id)
@@ -198,9 +194,7 @@ class WhaleCopyRAG:
                     query_engine = index.as_query_engine()
                     response = await query_engine.aquery(query)
                     whale_strategies = str(response)
-                    logger.info(
-                        f"WhaleCopyRAG: query returned {len(whale_strategies)} chars"
-                    )
+                    logger.info(f"WhaleCopyRAG: query returned {len(whale_strategies)} chars")
                 except Exception as e:
                     logger.debug(f"WhaleCopyRAG: query failed: {e}")
 

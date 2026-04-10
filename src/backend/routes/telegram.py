@@ -20,7 +20,7 @@ from src.backend.config import settings
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/telegram", tags=["Telegram Controls"])
+router = APIRouter(tags=["Telegram Controls"])
 
 # Telegram Application (built lazily when bot token is available)
 app_telegram: Application | None = None
@@ -183,9 +183,7 @@ async def cmd_real_mode(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "_Use /beast <market_id> to execute live trades_",
         parse_mode="Markdown",
     )
-    logger.info(
-        f"Telegram: PAPER-TO-REAL activated — mode switched from {old_mode} to 3 (LIVE)"
-    )
+    logger.info(f"Telegram: PAPER-TO-REAL activated — mode switched from {old_mode} to 3 (LIVE)")
 
 
 async def cmd_kill_switch(update: Update, context: ContextTypes.DEFAULT_TYPE):

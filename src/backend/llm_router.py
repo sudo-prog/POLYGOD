@@ -4,11 +4,10 @@ import os
 from litellm import Router
 
 try:
-    from mem0 import Mem0
+    from mem0 import Memory as _Mem0Memory  # mem0ai exports Memory, not Mem0
 
-    mem0 = Mem0.from_config({"vector_store": {"provider": "qdrant"}})
-except ImportError:
-    Mem0 = None
+    mem0 = _Mem0Memory.from_config({"vector_store": {"provider": "qdrant"}})
+except (ImportError, Exception):
     mem0 = None
 
 try:
