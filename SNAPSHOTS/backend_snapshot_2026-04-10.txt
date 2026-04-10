@@ -1,0 +1,66 @@
+POLYGOD Backend Snapshot - 2026-04-10
+=====================================
+
+Session: Claude (Kilo) - 12-bug audit batch
+Date: 2026-04-10
+
+FIXES APPLIED IN THIS SESSION
+-----------------------------
+
+CRITICAL BUGS (12 total):
+
+1. Routes Double Prefix (CRITICAL - all endpoints returning 404)
+   - src/backend/routes/debate.py: Already fixed in prior session
+   - src/backend/routes/users.py: Already fixed in prior session
+   - src/backend/routes/telegram.py: Fixed NOW - removed prefix="/telegram"
+
+2. SQLite Checkpointer Dead Connection (CRITICAL - checkpoints never persisted)
+   - src/backend/polygod_graph.py: Already fixed in prior session
+   - src/backend/snapshot_engine.py: Already fixed in prior session
+
+3. Mem0 Import Wrong Class (HIGH - AttributeError at startup)
+   - src/backend/self_improving_memory_loop.py: Already fixed
+   - src/backend/whale_copy_rag.py: Fixed NOW - changed Mem0 to Memory
+   - src/backend/llm_router.py: Fixed NOW - changed Mem0 to Memory
+
+4. WebSocket Disconnect (HIGH - infinite loop crash on client disconnect)
+   - src/backend/main.py: Already fixed in prior session
+
+5. Scheduler Singleton Bug (HIGH - health endpoint reporting false)
+   - src/backend/main.py: Already fixed in prior session
+
+6. Config Hardening (CRITICAL)
+   - src/backend/config.py: Already has all fixes
+   - DATABASE_URL default: sqlite (not postgres)
+   - INTERNAL_API_KEY: model_validator with DEBUG check
+   - ENCRYPTION_KEY: auto-generates valid Fernet key
+
+7. Database Production Safety (CRITICAL)
+   - src/backend/database.py: Already fixed
+   - init_db() only calls create_all in DEBUG mode
+   - SQLite uses StaticPool (no pool_size)
+
+8. Duplicate LLMConcierge Class (MEDIUM)
+   - src/backend/services/__init__.py: Fixed NOW - replaced with import only
+
+WORKFLOW ADDITIONS
+------------------
+- SNAPSHOTS/ folder created with take_snapshot.md
+- AGENT_NOTES.md updated with snapshot protocol
+
+FILES MODIFIED
+--------------
+- src/backend/routes/telegram.py (prefix fix)
+- src/backend/whale_copy_rag.py (Mem0 import)
+- src/backend/llm_router.py (Mem0 import)
+- src/backend/services/__init__.py (duplicate class removed)
+- SNAPSHOTS/take_snapshot.md (NEW)
+- AGENT_NOTES.md (append protocol section)
+
+GIT COMMIT
+---------
+SHA: 4a1d0a0
+Message: "fix: apply 12-bug audit batch from Claude session 2026-04-10"
+
+SNAPSHOT GENERATED: 2026-04-10
+Backend audit snapshot complete.
