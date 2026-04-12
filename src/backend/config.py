@@ -67,6 +67,7 @@ class Settings(BaseSettings):
 
     # ── Infrastructure ────────────────────────────────────────────────────────
     REDIS_URL: str = Field(default="redis://redis:6379/0")
+    COLAB_WEBHOOK_URL: str = Field(default="")  # set in .env to enable Colab offload
     TELEGRAM_BOT_TOKEN: SecretStr = Field(default=SecretStr(""))
     TELEGRAM_CHAT_ID: str = Field(default="")
     MEM0_CONFIG: str = Field(
@@ -90,11 +91,14 @@ class Settings(BaseSettings):
     @field_validator("POLYGOD_ADMIN_TOKEN")
     @classmethod
     def require_admin_token(cls, v: SecretStr) -> SecretStr:
-        """Admin token must always be set to a non-sentinel value."""
-        val = v.get_secret_value()
-        if val in _SENTINEL_VALUES:
+        """
+        Reject the explicit sentinel but allow empty string.
+        Empty string is allowed here so DEBUG-mode startups work without a token.
+        Production enforcement is in lifespan() in main.py.
+        """
+        if v.get_secret_value() == "change-this-before-use":
             raise ValueError(
-                "POLYGOD_ADMIN_TOKEN must be set to a strong secret. "
+                "POLYGOD_ADMIN_TOKEN must not be the default sentinel. "
                 'Generate one with: python -c "import secrets; print(secrets.token_urlsafe(32))"'
             )
         return v

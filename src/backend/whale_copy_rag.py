@@ -117,7 +117,9 @@ class WhaleCopyRAG:
         """
         documents = []
         for fill in fills:
-            wallet = fill.get("wallet", fill.get("taker_order", {}).get("maker_address", "unknown"))
+            wallet = fill.get(
+                "wallet", fill.get("taker_order", {}).get("maker_address", "unknown")
+            )
             side = fill.get("side", fill.get("taker_order", {}).get("side", "unknown"))
             size = fill.get("size", 0)
             price = fill.get("price", 0)
@@ -178,7 +180,9 @@ class WhaleCopyRAG:
                             index.insert(doc)
                         except Exception as e:
                             logger.debug(f"WhaleCopyRAG: insert failed for doc: {e}")
-                    logger.info(f"WhaleCopyRAG: ingested {len(docs)} whale fill documents")
+                    logger.info(
+                        f"WhaleCopyRAG: ingested {len(docs)} whale fill documents"
+                    )
 
             # Step 3: Query for top profitable strategies
             market_title = state.get("question", market_id)
@@ -194,7 +198,9 @@ class WhaleCopyRAG:
                     query_engine = index.as_query_engine()
                     response = await query_engine.aquery(query)
                     whale_strategies = str(response)
-                    logger.info(f"WhaleCopyRAG: query returned {len(whale_strategies)} chars")
+                    logger.info(
+                        f"WhaleCopyRAG: query returned {len(whale_strategies)} chars"
+                    )
                 except Exception as e:
                     logger.debug(f"WhaleCopyRAG: query failed: {e}")
 

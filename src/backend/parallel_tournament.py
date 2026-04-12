@@ -13,20 +13,29 @@ import random
 from typing import List
 
 import httpx
-from mem0 import Memory
+
+try:
+    from mem0 import Memory as _Mem0Memory
+
+    _HAS_MEM0 = True
+except ImportError:
+    _Mem0Memory = None
+    _HAS_MEM0 = False
 
 from src.backend.config import settings
 
 logger = logging.getLogger(__name__)
 
 # Mem0 for hindsight storage
-try:
-    mem0 = Memory.from_config(
-        {"vector_store": {"provider": "qdrant", "url": "http://qdrant:6333"}}
-    )
-except Exception as e:
-    logger.warning(f"Mem0 init failed in parallel_tournament: {e}")
-    mem0 = None
+mem0 = None
+if _HAS_MEM0:
+    try:
+        mem0 = _Mem0Memory.from_config(
+            {"vector_store": {"provider": "qdrant", "url": "http://qdrant:6333"}}
+        )
+    except Exception as e:
+        logger.warning(f"Mem0 init failed in parallel_tournament: {e}")
+        mem0 = None
 
 
 # ==================== LOCAL PAPER TRADING SIMULATION ====================
@@ -131,11 +140,10 @@ async def run_single_paper_tournament(state: dict, config_variant: dict) -> dict
 
 async def offload_to_lightning_ai(variants: List[dict]) -> List[dict]:
     """Offload heavy tournament batches to Lightning AI free tier."""
-    lightning_token = (
-        settings.LIGHTNING_AI_TOKEN if hasattr(settings, "LIGHTNING_AI_TOKEN") else None
-    )
-
-    if not lightning_token:
+    # SecretStr.get_secret_value() required — SecretStr("") is truthy so
+    # `if not lightning_token` on a SecretStr object is always False.
+    _token_val = settings.LIGHTNING_AI_TOKEN.get_secret_value()
+    if not _token_val:
         logger.warning("LIGHTNING_AI_TOKEN not set — skipping offload")
         return []
 
@@ -143,7 +151,7 @@ async def offload_to_lightning_ai(variants: List[dict]) -> List[dict]:
         async with httpx.AsyncClient() as client:
             response = await client.post(
                 "https://api.lightning.ai/v1/run",
-                headers={"Authorization": f"Bearer {lightning_token}"},
+                headers={"Authorization": f"Bearer {_token_val}"},
                 json={
                     "task": "tournament_batch",
                     "variants": variants,
@@ -164,9 +172,7 @@ async def offload_to_lightning_ai(variants: List[dict]) -> List[dict]:
 
 async def offload_to_colab(variants: List[dict]) -> List[dict]:
     """Fallback offload to Google Colab (one-click deploy)."""
-    colab_url = (
-        settings.COLAB_WEBHOOK_URL if hasattr(settings, "COLAB_WEBHOOK_URL") else None
-    )
+    colab_url = settings.COLAB_WEBHOOK_URL  # now a proper Settings field
 
     if not colab_url:
         logger.warning("COLAB_WEBHOOK_URL not set — skipping Colab offload")

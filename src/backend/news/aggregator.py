@@ -296,6 +296,7 @@ class NewsAggregator:
                     logger.warning(f"Failed to parse article: {e}")
                     continue
 
+            self._circuit_breaker.success()  # must be BEFORE return to register success
             return articles[:limit]
 
         except httpx.HTTPStatusError as e:
@@ -312,8 +313,12 @@ class NewsAggregator:
             logger.error(f"Error fetching news: {e}")
             return []
 
-        self._circuit_breaker.success()
 
+# Global aggregator instance — wire in the API key from settings so news works.
+# Previously instantiated with no key (api_key=None) which silently returned []
+# on every fetch call.
+from src.backend.config import settings as _settings  # noqa: E402
 
-# Global aggregator instance
-news_aggregator = NewsAggregator()
+news_aggregator = NewsAggregator(
+    api_key=_settings.NEWS_API_KEY.get_secret_value() or None
+)

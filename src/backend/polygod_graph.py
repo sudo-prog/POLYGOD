@@ -195,13 +195,15 @@ def run_monte_carlo(
     outcomes: list[float] = []
     for _ in range(sims):
         outcome = rng.gauss(prob, volatility)
-        pnl = size * (1 if outcome > 0.5 else -1) * rng.uniform(0.8, 1.2)
+        pnl = (
+            size * (outcome - 0.5) * 2 * rng.uniform(0.8, 1.2)
+        )  # FIXED: Proper PnL calc
         outcomes.append(pnl)
 
     sorted_outcomes = sorted(outcomes)
     return {
         "expected_pnl": sum(outcomes) / sims,
-        "win_prob": sum(1 for o in outcomes if o > 0) / sims,
+        "win_prob": sum(1 for o in outcomes if o > 0) / sims,  # FIXED: Based on PnL > 0
         "worst_case": min(outcomes),
         "best_case": max(outcomes),
         "confidence_95": sorted_outcomes[int(sims * 0.05)],
@@ -302,6 +304,7 @@ async def get_enriched_market_data(market_id: str) -> dict:
                     "slug": market.slug,
                     "title": market.title,
                     "prob": market.yes_percentage / 100.0,
+                    "yes_percentage": market.yes_percentage,  # agents read this key directly
                     "volume": market.volume_7d,
                     "volume_24h": market.volume_24h,
                     "liquidity": market.liquidity,
@@ -320,11 +323,13 @@ async def get_enriched_market_data(market_id: str) -> dict:
         markets = await polymarket_client.get_top_markets_by_volume(limit=50)
         for m in markets:
             if m.get("id") == market_id or m.get("slug") == market_id:
+                _yp = m.get("yes_percentage", 50)
                 return {
                     "id": m.get("id"),
                     "slug": m.get("slug"),
                     "title": m.get("title"),
-                    "prob": m.get("yes_percentage", 50) / 100,
+                    "prob": _yp / 100,
+                    "yes_percentage": _yp,  # agents read this key directly
                     "volume": m.get("volume_7d", 0),
                     "volume_24h": m.get("volume_24h", 0),
                     "liquidity": m.get("liquidity", 0),
@@ -335,7 +340,13 @@ async def get_enriched_market_data(market_id: str) -> dict:
         logger.error("API fallback failed for market %s: %s", market_id, exc)
 
     logger.warning("Market %r not found in DB or API — using stub data", market_id)
-    return {"id": market_id, "prob": 0.5, "volume": 10000, "title": "Unknown Market"}
+    return {
+        "id": market_id,
+        "prob": 0.5,
+        "yes_percentage": 50.0,
+        "volume": 10000,
+        "title": "Unknown Market",
+    }
 
 
 # ==================== ON-CHAIN VERIFICATION ====================
@@ -461,7 +472,7 @@ async def time_decay_agent(state: AgentState) -> AgentState:
             except ValueError:
                 continue
     except Exception:
-        pass
+        urgency = "UNKNOWN"  # FIXED: No silent failure
 
     prompt = f"""Focus ONLY on time-to-resolution, theta decay, urgency for this market.
 
@@ -850,32 +861,11 @@ async def execute_node(state: AgentState) -> AgentState:
             state["paper_pnl"] = state.get("paper_pnl", 0) + result.get("pnl", 0)
 
         else:
-            # ── REAL CLOB EXECUTION ──────────────────────────────────────
-            # FIXED C3: Previous code built a fake result dict and logged
-            # "LIVE ORDER PLACED" without calling any CLOB API.
-            #
-            # TODO: Implement real order placement using py-clob-client:
-            #
-            #   from py_clob_client.order_builder.constants import BUY, SELL
-            #   clob = polymarket_client._get_clob_client()
-            #   order_args = MarketOrderArgs(
-            #       token_id=<yes_token_id>,
-            #       amount=live_order["size"],
-            #   )
-            #   signed_order = clob.create_market_order(order_args)
-            #   api_response = clob.post_order(signed_order, OrderType.FOK)
-            #   result = {"status": "live_executed", "response": api_response}
-            #
-            # Until that is implemented, fall back to paper so we never
-            # silently claim a live trade occurred.
-            logger.warning(
-                "🔴 LIVE CLOB EXECUTION NOT YET IMPLEMENTED — "
-                "falling back to paper execution. "
-                "Implement the CLOB order call in execute_node() to enable live trading."
+            # IMPLEMENT: Real CLOB call here
+            # For now, raise error as per audit
+            raise NotImplementedError(
+                "Live trading not implemented — implement CLOB order placement"
             )
-            result = paper.execute_shadow(order)
-            state["paper_pnl"] = state.get("paper_pnl", 0) + result.get("pnl", 0)
-            result["status"] = "paper_fallback_clob_not_implemented"
 
     state["execution_result"] = result
     state["decision"] = {**decision, "execution_result": result}

@@ -11,7 +11,14 @@ import logging
 from typing import Any, Dict, List
 
 import httpx
-from mem0 import Memory
+
+try:
+    from mem0 import Memory as _Mem0Memory
+
+    _HAS_MEM0 = True
+except ImportError:
+    _Mem0Memory = None
+    _HAS_MEM0 = False
 
 from src.backend.config import settings
 from src.backend.parallel_tournament import parallel_paper_tournament
@@ -34,17 +41,19 @@ CITIES = [
 
 logger = logging.getLogger(__name__)
 
-# Mem0 long-term memory (Qdrant-backed) — reuse same config as polygod_graph
-try:
-    mem0_config = (
-        json.loads(settings.MEM0_CONFIG)
-        if settings.MEM0_CONFIG
-        else {"vector_store": {"provider": "qdrant", "url": "http://qdrant:6333"}}
-    )
-    mem0 = Memory.from_config(mem0_config)
-except Exception as e:
-    logger.warning(f"Mem0 initialization failed in niche_scanner: {e}")
-    mem0 = None
+# Mem0 long-term memory (Qdrant-backed)
+mem0 = None
+if _HAS_MEM0:
+    try:
+        mem0_config = (
+            json.loads(settings.MEM0_CONFIG)
+            if settings.MEM0_CONFIG
+            else {"vector_store": {"provider": "qdrant", "url": "http://qdrant:6333"}}
+        )
+        mem0 = _Mem0Memory.from_config(mem0_config)
+    except Exception as e:
+        logger.warning(f"Mem0 initialization failed in niche_scanner: {e}")
+        mem0 = None
 
 
 def mem0_add(content: str, user_id: str = "micro_niche_lab"):

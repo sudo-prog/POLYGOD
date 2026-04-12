@@ -10,8 +10,10 @@ import logging
 from datetime import datetime, timedelta
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -26,6 +28,8 @@ from src.backend.polymarket.schemas import (
 )
 
 logger = logging.getLogger(__name__)
+
+limiter = Limiter(key_func=get_remote_address)
 
 router = APIRouter(tags=["markets"])
 
@@ -155,7 +159,11 @@ def _compute_global_stats(
 
 
 @router.get("/top50", response_model=MarketListResponse)
-async def get_top_50_markets(db: AsyncSession = Depends(get_db)) -> MarketListResponse:
+@limiter.limit("10/minute")
+async def get_top_50_markets(
+    request: Request,  # required by slowapi rate limiter
+    db: AsyncSession = Depends(get_db),
+) -> MarketListResponse:
     """
     Get the top 100 markets by 7-day volume.
 
@@ -1047,10 +1055,7 @@ async def get_market_trades(
                 if raw_id:
                     dedupe_key = str(raw_id)
                 else:
-                    dedupe_key = (
-                        f"{trade_time.isoformat()}|{address}"
-                        f"|{size}|{price}|{side}|{outcome}"
-                    )
+                    dedupe_key = f"{trade_time.isoformat()}|{address}|{size}|{price}|{side}|{outcome}"
 
                 if dedupe_key in seen_trade_keys:
                     continue
@@ -1248,8 +1253,7 @@ async def get_market_holders(market_id: str, db: AsyncSession = Depends(get_db))
             # ── 2. Check cache first ─────────────────────────────────────
             cached_map, uncached_addresses = user_stats_cache.get_many(unique_addresses)
             logger.info(
-                f"Holders stats cache: {len(cached_map)} hits, "
-                f"{len(uncached_addresses)} misses"
+                f"Holders stats cache: {len(cached_map)} hits, {len(uncached_addresses)} misses"
             )
 
             # Pre-populate global stats from cache

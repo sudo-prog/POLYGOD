@@ -14,7 +14,13 @@ import logging
 import os
 from typing import Dict
 
-import git
+try:
+    import git as _git
+
+    _GIT_AVAILABLE = True
+except ImportError:
+    _git = None
+    _GIT_AVAILABLE = False
 
 from src.backend.llm_router import router
 from src.backend.parallel_tournament import parallel_paper_tournament
@@ -55,11 +61,14 @@ class AutoResearchLab:
         )
         self.mem0 = mem0_instance
 
-    def _init_repo(self) -> git.Repo:
-        """Initialize git repo with error handling."""
+    def _init_repo(self) -> None | _git.Repo:
+        """Initialize git repo with error handling. Returns None if git unavailable."""
+        if not _GIT_AVAILABLE:
+            logger.warning("gitpython not installed — git mutations disabled")
+            return None
         try:
-            return git.Repo(os.path.join(os.path.dirname(__file__), "..", ".."))
-        except git.InvalidGitRepositoryError:
+            return _git.Repo(os.path.join(os.path.dirname(__file__), "..", ".."))
+        except _git.InvalidGitRepositoryError:
             logger.warning("Not a git repository — git mutations disabled")
             return None
         except Exception as e:
@@ -273,8 +282,7 @@ Propose your mutation:"""
         if sharpe > self.SHARPE_THRESHOLD and pnl > self.PNL_THRESHOLD:
             # Winner — keep mutation
             self._mem0_add(
-                f"WINNER mutation kept: {mutation_summary} | "
-                f"sharpe={sharpe:.3f}, pnl={pnl:.2f}",
+                f"WINNER mutation kept: {mutation_summary} | sharpe={sharpe:.3f}, pnl={pnl:.2f}",
                 user_id="evolution_lab",
             )
             logger.info(f"MUTATION KEPT: sharpe={sharpe:.3f}, pnl={pnl:.2f}")
@@ -288,8 +296,7 @@ Propose your mutation:"""
                 self._write_strategy(current_code)
 
             self._mem0_add(
-                f"Mutation discarded: {mutation_summary} | "
-                f"sharpe={sharpe:.3f}, pnl={pnl:.2f}",
+                f"Mutation discarded: {mutation_summary} | sharpe={sharpe:.3f}, pnl={pnl:.2f}",
                 user_id="evolution_lab",
             )
             logger.info(f"MUTATION DISCARDED: sharpe={sharpe:.3f}, pnl={pnl:.2f}")
