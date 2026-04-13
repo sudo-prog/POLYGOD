@@ -136,3 +136,39 @@ class AppState(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, server_default=func.now(), onupdate=func.now()
     )
+
+
+class Trade(Base):
+    """Live CLOB fills / whale trades — persisted for dashboard + history."""
+
+    __tablename__ = "trades"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    # fill_id is the unique CLOB transaction/fill identifier for deduplication
+    fill_id: Mapped[str] = mapped_column(String(128), unique=True, nullable=False)
+    market_id: Mapped[str] = mapped_column(String(255), index=True, nullable=False)
+    size: Mapped[float] = mapped_column(Float, nullable=False)
+    price: Mapped[float] = mapped_column(Float, nullable=False)
+    side: Mapped[str] = mapped_column(String(10), nullable=False)  # "buy" or "sell"
+    maker_fee: Mapped[float] = mapped_column(Float, default=0.0)
+    taker_fee: Mapped[float] = mapped_column(Float, default=0.0)
+    timestamp: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), index=True
+    )
+
+    __table_args__ = (
+        Index("idx_trades_market_time", "market_id", "timestamp"),
+        Index("idx_trades_whale", "market_id", "size"),  # fast whale queries
+    )
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "fill_id": self.fill_id,
+            "market_id": self.market_id,
+            "size": self.size,
+            "price": self.price,
+            "side": self.side,
+            "value_usd": round(self.size * self.price, 2),
+            "timestamp": self.timestamp.isoformat() if self.timestamp else None,
+        }

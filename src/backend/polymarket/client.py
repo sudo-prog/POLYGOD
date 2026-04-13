@@ -33,8 +33,11 @@ from datetime import datetime, timezone
 from typing import Literal
 
 import httpx
+from fastapi import WebSocket  # BUG-5 fix: was missing
 
 from src.backend.config import settings
+from src.backend.database import async_session_factory  # BUG-2 fix: was missing
+from src.backend.db_models import Trade  # BUG-2 fix: was missing
 from src.backend.polymarket.schemas import MarketResponse
 
 logger = logging.getLogger(__name__)
@@ -101,6 +104,28 @@ def _make_clob_client():
     except Exception as exc:
         logger.error("Failed to initialise CLOB client: %s", exc)
         return None
+
+
+# Global active WS connections for live whale alerts
+active_connections: list[WebSocket] = []
+
+
+async def _broadcast_whale_trade(trade_dict: dict) -> None:
+    """Broadcast a whale trade to all connected frontend clients."""
+    message = {
+        "type": "whale_trade",
+        "data": trade_dict,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+    dead: list[WebSocket] = []
+    for ws in active_connections[:]:
+        try:
+            await ws.send_json(message)
+        except Exception:
+            dead.append(ws)
+    for d in dead:
+        if d in active_connections:
+            active_connections.remove(d)
 
 
 class PolymarketClient:
@@ -200,11 +225,7 @@ class PolymarketClient:
         if not end_date_iso:
             return None
         try:
-            date_str = (
-                end_date_iso.replace("Z", "+00:00")
-                if "T" in end_date_iso
-                else end_date_iso
-            )
+            date_str = end_date_iso.replace("Z", "+00:00") if "T" in end_date_iso else end_date_iso
             return datetime.fromisoformat(date_str)
         except ValueError:
             return None
@@ -231,18 +252,14 @@ class PolymarketClient:
             "volume_24h": v24,
             "volume_7d": v7d,
             "liquidity": liq,
-            "yes_percentage": round(
-                self._parse_yes_percentage(market.outcome_prices), 2
-            ),
+            "yes_percentage": round(self._parse_yes_percentage(market.outcome_prices), 2),
             "is_active": market.active and not market.closed,
             "end_date": self._parse_end_date(market.end_date_iso),
             "image_url": market.image or market.icon,
             "clob_token_ids": market.clob_token_ids,
         }
 
-    async def _fetch_all_active_markets(
-        self, target_count: int
-    ) -> list[MarketResponse]:
+    async def _fetch_all_active_markets(self, target_count: int) -> list[MarketResponse]:
         all_markets: list[MarketResponse] = []
         offset = 0
         fetch_limit = 100
@@ -270,9 +287,7 @@ class PolymarketClient:
     async def get_top_markets_by_volume(self, limit: int = 100) -> list[dict]:
         all_markets = await self._fetch_all_active_markets(limit)
         processed = [
-            self._transform_market_to_dict(m)
-            for m in all_markets
-            if self._is_market_active(m)
+            self._transform_market_to_dict(m) for m in all_markets if self._is_market_active(m)
         ]
         processed.sort(key=lambda x: (x["volume_7d"], x["volume_24h"]), reverse=True)
         return processed[:limit]
@@ -452,9 +467,7 @@ class PolymarketClient:
             }
 
         # ── Resolve token ID ──────────────────────────────────────────────────
-        token_id: str | None = order.get(
-            "token_id"
-        ) or await self.get_token_id_for_market(
+        token_id: str | None = order.get("token_id") or await self.get_token_id_for_market(
             market_id,
             side,  # type: ignore[arg-type]
         )
@@ -474,8 +487,6 @@ class PolymarketClient:
         # ── Build and post order ──────────────────────────────────────────────
         try:
             from py_clob_client.clob_types import (
-                AssetType,
-                BalanceAllowanceParams,
                 LimitOrderArgs,
                 MarketOrderArgs,
                 OrderType,
@@ -499,19 +510,13 @@ class PolymarketClient:
                     amount=size,  # USD amount to spend
                 )
                 # create_market_order is synchronous in py_clob_client
-                signed_order = await asyncio.to_thread(
-                    clob.create_market_order, order_args
-                )
-                resp = await asyncio.to_thread(
-                    clob.post_order, signed_order, OrderType.FOK
-                )
+                signed_order = await asyncio.to_thread(clob.create_market_order, order_args)
+                resp = await asyncio.to_thread(clob.post_order, signed_order, OrderType.FOK)
             else:
                 if limit_price is None:
                     raise ValueError("limit_price is required for LIMIT orders")
                 if not (0.0 < limit_price < 1.0):
-                    raise ValueError(
-                        f"limit_price must be between 0 and 1, got {limit_price}"
-                    )
+                    raise ValueError(f"limit_price must be between 0 and 1, got {limit_price}")
 
                 logger.info(
                     "Placing LIMIT order: %s $%.2f @ %.4f on market=%s token=%s",
@@ -527,12 +532,8 @@ class PolymarketClient:
                     size=size,
                     side=side,
                 )
-                signed_order = await asyncio.to_thread(
-                    clob.create_limit_order, order_args
-                )
-                resp = await asyncio.to_thread(
-                    clob.post_order, signed_order, OrderType.GTC
-                )
+                signed_order = await asyncio.to_thread(clob.create_limit_order, order_args)
+                resp = await asyncio.to_thread(clob.post_order, signed_order, OrderType.GTC)
 
             # ── Parse response ────────────────────────────────────────────────
             # py_clob_client returns a dict with keys: orderId, status, ...
@@ -671,6 +672,101 @@ class PolymarketClient:
         except Exception as exc:
             logger.warning("Failed to fetch USDC balance: %s", exc)
             return 0.0
+
+    # ── CLOB live fill streaming ─────────────────────────────────────────────
+
+    async def stream_clob_fills(
+        self,
+        market_id: str | None = None,
+        limit: int = 50,
+    ) -> list[dict]:
+        """
+        Fetch recent fills from the CLOB /fills endpoint and filter for whales (>$100).
+
+        NOTE: This is a DIFFERENT method from get_recent_fills() which hits
+        settings.POLYMARKET_API_HOST/trades. This method hits the dedicated
+        /fills endpoint on CLOB_HOST and is used exclusively by stream_live_trades().
+        """
+        client = await self._get_http()
+        params: dict = {"limit": limit}
+        if market_id:
+            params["market"] = market_id
+
+        try:
+            resp = await client.get(f"{CLOB_HOST}/fills", params=params)
+            resp.raise_for_status()
+            fills: list[dict] = list(resp.json())
+            # Whale filter: only fills with notional > $100
+            return [f for f in fills if float(f.get("size", 0)) * float(f.get("price", 0)) > 100]
+        except Exception as exc:
+            logger.error("Failed to fetch CLOB fills: %s", exc)
+            return []
+
+    async def stream_live_trades(self) -> None:
+        """
+        Background task: poll CLOB fills every 5s → deduplicate → save to DB
+        → broadcast via WebSocket to connected frontend clients.
+
+        Start this in the FastAPI lifespan with asyncio.create_task().
+        """
+        logger.info("CLOB live trade stream started (5s poll)")
+        seen_fill_ids: set[str] = set()
+
+        while True:
+            try:
+                fills = await self.stream_clob_fills(limit=30)
+                if fills:
+                    async with async_session_factory() as db:
+                        for fill in fills:
+                            # BUG-6 fix: deduplicate by fill_id
+                            fill_id = str(
+                                fill.get("transactionHash")
+                                or fill.get("id")
+                                or fill.get("fillId")
+                                or ""
+                            )
+                            if not fill_id or fill_id in seen_fill_ids:
+                                continue
+                            seen_fill_ids.add(fill_id)
+                            # Keep seen_fill_ids bounded (last 1000)
+                            if len(seen_fill_ids) > 1000:
+                                seen_fill_ids.pop()
+
+                            trade = Trade(
+                                fill_id=fill_id,
+                                market_id=str(fill.get("market", "")),
+                                size=float(fill.get("size", 0)),
+                                price=float(fill.get("price", 0)),
+                                side=str(fill.get("side", "unknown")),
+                                maker_fee=float(fill.get("makerFee", fill.get("maker_fee", 0))),
+                                taker_fee=float(fill.get("takerFee", fill.get("taker_fee", 0))),
+                            )
+                            db.add(trade)
+
+                        await db.commit()
+
+                    # Broadcast each new trade to WS clients
+                    for fill in fills:
+                        fill_id = str(fill.get("transactionHash") or fill.get("id") or "")
+                        if fill_id in seen_fill_ids:
+                            trade_dict = {
+                                "fill_id": fill_id,
+                                "market_id": fill.get("market", ""),
+                                "size": float(fill.get("size", 0)),
+                                "price": float(fill.get("price", 0)),
+                                "side": fill.get("side", "unknown"),
+                                "value_usd": round(
+                                    float(fill.get("size", 0)) * float(fill.get("price", 0)),
+                                    2,
+                                ),
+                            }
+                            await _broadcast_whale_trade(trade_dict)
+
+                await asyncio.sleep(5.0)
+
+            except Exception as exc:
+                logger.error("Live trade stream error (will retry): %s", exc)
+                await asyncio.sleep(10.0)
 
 
 # Module-level singleton

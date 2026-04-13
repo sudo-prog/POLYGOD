@@ -9,6 +9,7 @@ import socket
 from contextlib import asynccontextmanager
 
 import structlog  # ADDED: Structured logging
+import uvicorn
 from fastapi import Depends, FastAPI, HTTPException, Request, WebSocket
 from fastapi.middleware import Middleware
 from fastapi.middleware.cors import CORSMiddleware
@@ -27,7 +28,7 @@ from src.backend.middleware.auth import admin_required
 from src.backend.middleware.security_headers import SecurityHeadersMiddleware
 from src.backend.news.aggregator import news_aggregator
 from src.backend.polygod_graph import POLYGOD_MODE, paper, polygod_graph, run_polygod
-from src.backend.polymarket.client import polymarket_client
+from src.backend.polymarket.client import active_connections, polymarket_client
 from src.backend.routes import debate, llm, markets, news, telegram, users
 from src.backend.routes.telegram import run_telegram_bot  # required by lifespan()
 from src.backend.self_improving_memory_loop import forgetting_engine, memory_loop
@@ -50,9 +51,7 @@ _SECRET_KEYS = (
     "TELEGRAM_BOT_TOKEN",
     "X_BEARER_TOKEN",
 )
-_SECRET_VALUES = frozenset(
-    v for k in _SECRET_KEYS if (v := os.getenv(k, "")) and len(v) > 4
-)
+_SECRET_VALUES = frozenset(v for k in _SECRET_KEYS if (v := os.getenv(k, "")) and len(v) > 4)
 
 
 def mask_secrets(text: str) -> str:
@@ -123,9 +122,7 @@ async def get_mode_from_db():
     from src.backend.db_models import AppState
 
     async with async_session_factory() as db:
-        result = await db.execute(
-            select(AppState).where(AppState.key == "polygod_mode")
-        )
+        result = await db.execute(select(AppState).where(AppState.key == "polygod_mode"))
         row = result.scalar_one_or_none()
         return int(row.value) if row else POLYGOD_MODE
 
@@ -137,9 +134,7 @@ async def set_mode_in_db(mode: int):
     from src.backend.db_models import AppState
 
     async with async_session_factory() as db:
-        result = await db.execute(
-            select(AppState).where(AppState.key == "polygod_mode")
-        )
+        result = await db.execute(select(AppState).where(AppState.key == "polygod_mode"))
         row = result.scalar_one_or_none()
         if row:
             row.value = str(mode)
@@ -157,9 +152,7 @@ async def refresh_llm_stats():
     from src.backend.models.llm import Provider, UsageLog
 
     async with async_session_factory() as db:
-        today_start = datetime.now(timezone.utc).replace(
-            hour=0, minute=0, second=0, microsecond=0
-        )
+        today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
         result = await db.execute(
             select(
                 UsageLog.provider,
@@ -226,6 +219,9 @@ async def lifespan(app: FastAPI):
         scheduler.start()
     except Exception as exc:
         logger.error("Scheduler start failed", error=str(exc))
+
+    # Start CLOB live whale-trade monitor
+    asyncio.create_task(polymarket_client.stream_live_trades())
 
     def _add_job(func, **kwargs):
         try:
@@ -393,14 +389,31 @@ async def debate_websocket(websocket: WebSocket, market_id: str):
             pass
 
 
+@app.websocket("/ws/live-trades")
+async def websocket_live_trades(websocket: WebSocket):
+    # BUG-7 fix: authenticate before accepting, same as all other WS endpoints
+    await websocket.accept()
+    if not await _ws_authenticate(websocket):
+        return
+    await websocket.send_json({"type": "auth_ok"})
+
+    active_connections.append(websocket)
+    try:
+        while True:
+            await websocket.receive_text()  # keep-alive ping/pong
+    except WebSocketDisconnect:
+        pass
+    finally:
+        if websocket in active_connections:
+            active_connections.remove(websocket)
+
+
 @app.post("/polygod/switch-mode")
 async def switch_mode(new_mode: int, _: bool = Depends(admin_required)):
     global POLYGOD_MODE
     POLYGOD_MODE = new_mode
     await set_mode_in_db(new_mode)
-    mode_label = {0: "OBSERVE", 1: "PAPER", 2: "LOW", 3: "BEAST"}.get(
-        new_mode, "UNKNOWN"
-    )
+    mode_label = {0: "OBSERVE", 1: "PAPER", 2: "LOW", 3: "BEAST"}.get(new_mode, "UNKNOWN")
     return {"status": f"Switched to Mode {POLYGOD_MODE} — {mode_label}"}
 
 
@@ -414,9 +427,7 @@ async def monte_carlo_simulate(
     sim = run_monte_carlo({"size": order_size}, market_data)
     return {
         "simulation": sim,
-        "recommendation": (
-            "BEAST APPROVED" if sim["win_prob"] > 0.65 else "SAFE MODE ONLY"
-        ),
+        "recommendation": ("BEAST APPROVED" if sim["win_prob"] > 0.65 else "SAFE MODE ONLY"),
     }
 
 
