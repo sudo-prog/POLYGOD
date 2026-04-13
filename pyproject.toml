@@ -137,8 +137,11 @@ dev = [
     "ipython",
     "mypy",
     "pre-commit",
+    "pytest-asyncio",
     "pytest-cov",
+    "respx",
     "ruff>=0.14.14",
+    "structlog",
 ]
 
 [tool.mypy]

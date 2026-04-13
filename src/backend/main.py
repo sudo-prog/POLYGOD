@@ -51,7 +51,9 @@ _SECRET_KEYS = (
     "TELEGRAM_BOT_TOKEN",
     "X_BEARER_TOKEN",
 )
-_SECRET_VALUES = frozenset(v for k in _SECRET_KEYS if (v := os.getenv(k, "")) and len(v) > 4)
+_SECRET_VALUES = frozenset(
+    v for k in _SECRET_KEYS if (v := os.getenv(k, "")) and len(v) > 4
+)
 
 
 def mask_secrets(text: str) -> str:
@@ -122,7 +124,9 @@ async def get_mode_from_db():
     from src.backend.db_models import AppState
 
     async with async_session_factory() as db:
-        result = await db.execute(select(AppState).where(AppState.key == "polygod_mode"))
+        result = await db.execute(
+            select(AppState).where(AppState.key == "polygod_mode")
+        )
         row = result.scalar_one_or_none()
         return int(row.value) if row else POLYGOD_MODE
 
@@ -134,7 +138,9 @@ async def set_mode_in_db(mode: int):
     from src.backend.db_models import AppState
 
     async with async_session_factory() as db:
-        result = await db.execute(select(AppState).where(AppState.key == "polygod_mode"))
+        result = await db.execute(
+            select(AppState).where(AppState.key == "polygod_mode")
+        )
         row = result.scalar_one_or_none()
         if row:
             row.value = str(mode)
@@ -152,7 +158,9 @@ async def refresh_llm_stats():
     from src.backend.models.llm import Provider, UsageLog
 
     async with async_session_factory() as db:
-        today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+        today_start = datetime.now(timezone.utc).replace(
+            hour=0, minute=0, second=0, microsecond=0
+        )
         result = await db.execute(
             select(
                 UsageLog.provider,
@@ -413,7 +421,9 @@ async def switch_mode(new_mode: int, _: bool = Depends(admin_required)):
     global POLYGOD_MODE
     POLYGOD_MODE = new_mode
     await set_mode_in_db(new_mode)
-    mode_label = {0: "OBSERVE", 1: "PAPER", 2: "LOW", 3: "BEAST"}.get(new_mode, "UNKNOWN")
+    mode_label = {0: "OBSERVE", 1: "PAPER", 2: "LOW", 3: "BEAST"}.get(
+        new_mode, "UNKNOWN"
+    )
     return {"status": f"Switched to Mode {POLYGOD_MODE} — {mode_label}"}
 
 
@@ -427,7 +437,9 @@ async def monte_carlo_simulate(
     sim = run_monte_carlo({"size": order_size}, market_data)
     return {
         "simulation": sim,
-        "recommendation": ("BEAST APPROVED" if sim["win_prob"] > 0.65 else "SAFE MODE ONLY"),
+        "recommendation": (
+            "BEAST APPROVED" if sim["win_prob"] > 0.65 else "SAFE MODE ONLY"
+        ),
     }
 
 

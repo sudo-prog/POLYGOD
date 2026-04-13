@@ -30,20 +30,25 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 # ── Force test settings before importing anything from the app ────────────────
 import os
-os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///:memory:")
+
+os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///./test.db")
 os.environ.setdefault("DEBUG", "true")
 os.environ.setdefault("POLYGOD_ADMIN_TOKEN", "test-admin-token-for-ci")
 os.environ.setdefault("INTERNAL_API_KEY", "test-internal-key-for-ci")
-os.environ.setdefault("ENCRYPTION_KEY", "dGVzdC1lbmNyeXB0aW9uLWtleS0zMi1ieXRlcyE=")
+os.environ.setdefault("ENCRYPTION_KEY", "TPHU_mpE_VnqYuIQayhCDLFiNOAY2oJC5JV5z1i9ddw=")
 os.environ.setdefault("POLYGOD_MODE", "0")
+os.environ.setdefault("GEMINI_API_KEY", "dummy-key-for-tests")
+os.environ.setdefault("TAVILY_API_KEY", "dummy-key-for-tests")
+os.environ.setdefault("OPENAI_API_KEY", "dummy-key-for-tests")
 
 from src.backend.database import Base, get_db  # noqa: E402 — must follow env setup
-from src.backend.main import app                # noqa: E402
+from src.backend.main import app  # noqa: E402
 
 fake = Faker()
 
 
 # ── In-memory database ────────────────────────────────────────────────────────
+
 
 @pytest.fixture(scope="session")
 def event_loop():
@@ -55,9 +60,11 @@ def event_loop():
 
 @pytest_asyncio.fixture(scope="session")
 async def test_engine():
-    """Create an in-memory SQLite engine for the session."""
+    """Use the same DB as the app."""
+    from src.backend.config import settings
+
     engine = create_async_engine(
-        "sqlite+aiosqlite:///:memory:",
+        settings.DATABASE_URL,
         echo=False,
         connect_args={"check_same_thread": False},
     )
@@ -85,6 +92,7 @@ async def client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
     Yield an HTTPX AsyncClient wired to the FastAPI app.
     The database dependency is overridden to use the test session.
     """
+
     async def _override_get_db():
         yield db_session
 
@@ -98,6 +106,7 @@ async def client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
 
 
 # ── Test data factories ───────────────────────────────────────────────────────
+
 
 def make_market(
     market_id: str | None = None,
