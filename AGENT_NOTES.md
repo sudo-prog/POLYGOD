@@ -1,5 +1,91 @@
 # Agent Implementation Notes - POLYGOD Critical Fixes & Test Suite
 
+## 2026-04-13 - Naming Refactor + Test Suite Additions
+
+**Date:** 2026-04-13
+**Agent:** Kilo (GOD TIER ENGINEER)
+**Project:** POLYGOD - Real-time Polymarket AI Trading Dashboard
+
+### Overview
+Renamed developer workflow tool to eliminate confusion with runtime snapshot system. Added comprehensive test suite for config, database models, markets route, and risk gate. Multiple code formatting improvements applied.
+
+### Naming Convention Fix
+
+#### Problem
+Two completely separate systems both used the word "snapshot":
+1. `src/backend/snapshot_engine.py` — Runtime Python class for LangGraph checkpoints, git commits, Mem0 during live trading
+2. `SNAPSHOTS/take_snapshot.md` — Developer workflow prompt to export codebase for Claude audit
+
+Agents were conflating these two systems.
+
+#### Solution
+- Renamed `SNAPSHOTS/` → `AUDIT_EXPORTS/`
+- Renamed `take_snapshot.md` → `generate_audit_export.md`
+- Renamed `backend_snapshot_*.txt` → `backend_audit_*.txt`
+- Updated `generate_audit_export.md` with clear documentation distinguishing the two systems
+- Added "Audit Export Protocol" section to AGENT_NOTES.md
+
+### Test Suite Additions (4 new files)
+
+#### tests/backend/test_config.py
+- `test_database_url_defaults_to_sqlite()` — Verifies SQLite default
+- `test_admin_token_rejects_sentinel()` — Rejects "change-this-before-use"
+- `test_encryption_key_auto_generates_when_empty()` — Auto-generates Fernet key
+- `test_internal_api_key_rejects_sentinel_in_production()` — Production validation
+
+#### tests/backend/test_db_models.py
+- `test_market_to_dict_has_required_keys()` — Market model serialization
+- `test_trade_to_dict_computes_value_usd()` — Trade value calculation
+- `test_trade_has_fill_id_field()` — Trade model has unique fill_id
+
+#### tests/backend/test_markets_route.py
+- Tests for `/api/markets/` endpoint responses
+
+#### tests/backend/test_risk_gate.py
+- Tests for risk gate logic and decision thresholds
+
+### Code Formatting Improvements
+
+#### pyproject.toml
+- Added `pytest-asyncio`, `respx`, `structlog` to dev dependencies
+
+#### src/backend/main.py
+- Line length formatting for readability
+- Improved SQLAlchemy query formatting
+- Datetime handling improvements
+
+#### src/backend/polygod_graph.py
+- Streamlined single-line expressions
+- Reduced redundant parentheses
+- Improved log message formatting
+
+#### src/backend/polymarket/client.py
+- Order processing formatting
+- Async/await threading improvements
+- Error message formatting
+
+#### tests/backend/conftest.py
+- Added required env vars for tests (GEMINI_API_KEY, TAVILY_API_KEY, OPENAI_API_KEY)
+- Changed from in-memory to file-based SQLite for test consistency
+- Added test Fernet key
+
+### Session Log
+
+| Date       | Agent  | Changes Made                                              |
+|------------|--------|-----------------------------------------------------------|
+| 2026-04-10 | Claude | Fixed 12 bugs: dead SQLite checkpointer, double-prefix   |
+|            |        | routers (debate/users/telegram), wrong Mem0 import class,|
+|            |        | WebSocket disconnect crash, scheduler singleton, config   |
+|            |        | hardening, database.py Alembic-ready                     |
+| 2026-04-12 | Claude | Fixed 13 more bugs. All 25 confirmed in audit export.    |
+|            |        | Completed Alembic setup, CLOB live trade wiring, Trade   |
+|            |        | model, stream_live_trades, /ws/live-trades endpoint       |
+| 2026-04-13 | Claude | Renamed SNAPSHOTS/ → AUDIT_EXPORTS/ to fix naming        |
+|            |        | confusion between runtime snapshot_engine.py and dev      |
+|            |        | workflow audit export tool. Added test suite (4 new files)|
+
+---
+
 ## 2026-04-12 - 13 Bug Final Patch Applied
 
 **Date:** 2026-04-12
