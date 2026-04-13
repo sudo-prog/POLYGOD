@@ -1233,70 +1233,6 @@ uv run python -c "from src.backend.main import app; print('OK')"
 
 ---
 
-## Snapshot & Handoff Protocol
-
-### Purpose
-At the end of every agent session (or whenever significant changes are made),
-generate a backend snapshot and push it to GitHub. This lets Me analyse
-the exact state of the codebase in the next session without needing a fresh
-file upload.
-
-### When to Snapshot
-- End of any session where files were created or modified
-- Before starting a major refactor
-- After applying a batch of bug fixes
-- Before upgrading any dependency
-
-### How to Generate a Snapshot
-1. Paste the prompt from `SNAPSHOTS/take_snapshot.md` into the agent chat
-2. Save the output as `SNAPSHOTS/backend_snapshot_YYYY-MM-DD.txt`
-3. Run the commit commands below
-
-### Commit Commands
-```bash
-# Stage snapshot and docs
-git add SNAPSHOTS/ AGENT_NOTES.md
-
-# Commit with session summary
-git commit -m "snapshot: YYYY-MM-DD — [brief description of changes this session]"
-
-# Push
-git push origin main
-```
-
-### Snapshot Naming Convention
-```
-SNAPSHOTS/backend_snapshot_2026-04-10.txt
-SNAPSHOTS/backend_snapshot_2026-04-11.txt
-```
-Always use ISO date format. One snapshot per day maximum unless a major
-breaking change is made mid-day (suffix with _v2, _v3 etc).
-
-### What I Need From Each Snapshot
-The snapshot must contain complete raw code — no truncation.
-I will use it to:
-- Track which bugs have been fixed vs outstanding
-- Verify new code matches the intended fixes
-- Identify any regressions introduced by other changes
-- Plan the next batch of improvements
-
-### Current Known Outstanding Work (update this list each session)
-- [ ] Alembic migration setup (`uv add alembic`, init, first revision)
-- [ ] RadarScore real on-chain implementation (currently placeholder in whale_copy_rag.py)
-- [ ] CopyTradeAgent node (not yet implemented — see Grok Technical Analysis)
-- [ ] Full test suite (unit + integration + security)
-- [ ] OpenTelemetry tracing for LLM calls and tournament runs
-- [ ] Correlation matrix for copy-trading (prevents copying correlated whales)
-
-### Session Log
-| Date       | Agent | Changes Made                                              |
-|------------|-------|-----------------------------------------------------------|
-| 2026-04-10 | Claude| Fixed 12 bugs: dead SQLite checkpointer, double-prefix   |
-|            |       | routers (debate/users/telegram), wrong Mem0 import class,|
-|            |       | WebSocket disconnect crash, scheduler singleton, config   |
-|            |       | hardening, database.py Alembic-ready, snapshot_engine    |
-|            |       | async git ops + confidence threshold + SHA fix            |
-
 ---
 
 ## 2026-04-10 - Full Codebase Audit Fixes Applied
@@ -1367,3 +1303,88 @@ Applied all patches from comprehensive surgical code audit. Fixed critical bugs,
 - Only missing: Live trading implementation (est. 1-2 days with CLOB)
 
 ---
+
+---
+
+## Audit Export Protocol
+
+### Two Systems — Do Not Confuse Them
+
+There are two systems in this project that both involve code and state.
+They have completely different purposes and must never be confused.
+
+**System 1 — `src/backend/snapshot_engine.py` (RUNTIME, DO NOT TOUCH)**
+
+This is a Python class that runs automatically inside the live trading system.
+It is called by `polygod_graph.py` during agent execution and by the Telegram
+`/snapshot` command. It does three things at runtime:
+- Commits code changes to git with a timestamped message
+- Saves the LangGraph agent state to `checkpoints.db` via SqliteSaver
+- Writes a memory record to Mem0 for long-term pattern recognition
+
+Do not manually invoke this. Do not rename it. Do not modify it unless
+explicitly instructed to fix a bug in that file.
+
+**System 2 — `AUDIT_EXPORTS/generate_audit_export.md` (DEVELOPER WORKFLOW)**
+
+This is a prompt template. A human copies it and pastes it into an agent
+chat to produce a static text file containing the full backend codebase.
+That text file is then uploaded to Claude for code review and auditing.
+It has no connection to the Python class. It never runs in production.
+It does not commit to git, does not touch checkpoints.db, and does not
+interact with Mem0.
+
+**The rule:** When a task says "generate an audit export" or "run the audit
+export prompt", use `AUDIT_EXPORTS/generate_audit_export.md`. When
+polygod_graph.py or the Telegram bot calls `snapshot_engine.take_snapshot()`,
+that is the runtime system doing its job automatically — leave it alone.
+
+---
+
+### When to Generate an Audit Export
+
+- End of any session where files were created or modified
+- Before starting a major refactor
+- After applying a batch of bug fixes
+- Before upgrading any dependency
+
+### How to Generate an Audit Export
+
+1. Copy the prompt from `AUDIT_EXPORTS/generate_audit_export.md`
+2. Paste it into the agent chat
+3. Save the output as `AUDIT_EXPORTS/backend_audit_YYYY-MM-DD.txt`
+4. Run the commit commands below
+
+### Commit Commands
+
+```bash
+git add AUDIT_EXPORTS/backend_audit_YYYY-MM-DD.txt AGENTS.md
+git commit -m "audit-export: YYYY-MM-DD — [brief description of changes this session]"
+git push origin main
+```
+
+### Naming Convention
+
+```
+AUDIT_EXPORTS/backend_audit_2026-04-10.txt
+AUDIT_EXPORTS/backend_audit_2026-04-12.txt
+AUDIT_EXPORTS/backend_audit_2026-04-13.txt
+```
+
+Always use ISO date format. One export per day unless a major breaking change
+is made mid-day (suffix with _v2, _v3 etc).
+
+### Session Log
+
+| Date       | Agent  | Changes Made                                              |
+|------------|--------|-----------------------------------------------------------|
+| 2026-04-10 | Claude | Fixed 12 bugs: dead SQLite checkpointer, double-prefix   |
+|            |        | routers (debate/users/telegram), wrong Mem0 import class,|
+|            |        | WebSocket disconnect crash, scheduler singleton, config   |
+|            |        | hardening, database.py Alembic-ready                     |
+| 2026-04-12 | Claude | Fixed 13 more bugs. All 25 confirmed in audit export.    |
+|            |        | Completed Alembic setup, CLOB live trade wiring, Trade   |
+|            |        | model, stream_live_trades, /ws/live-trades endpoint       |
+| 2026-04-13 | Claude | Renamed SNAPSHOTS/ → AUDIT_EXPORTS/ to fix naming        |
+|            |        | confusion between runtime snapshot_engine.py and dev      |
+|            |        | workflow audit export tool                                |

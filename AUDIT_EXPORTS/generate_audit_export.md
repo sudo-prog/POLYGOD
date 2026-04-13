@@ -1,14 +1,37 @@
-# How to Generate a POLYGOD Backend Snapshot
+# How to Generate a POLYGOD Backend Audit Export
 
-Copy and paste the prompt below directly into your agent chat box.
-The agent will generate a single text document you can save to this folder.
+## IMPORTANT — Two Different Systems
+
+This file is a DEVELOPER WORKFLOW TOOL.
+It has nothing to do with `src/backend/snapshot_engine.py`.
+
+| System | What it is | When it runs |
+|--------|-----------|--------------|
+| `src/backend/snapshot_engine.py` | Runtime Python class — checkpoints LangGraph state, commits code to git during live trading | Automatically, called by polygod_graph.py and Telegram /snapshot command |
+| This file (`generate_audit_export.md`) | A prompt you paste into your agent to export the codebase as a text file for Claude to review | Manually, by a human, at the end of a dev session |
+
+Never ask an agent to "run the snapshot engine" when you mean "generate an
+audit export". Use the exact phrase "generate an audit export" or "run the
+audit export prompt" to avoid confusion.
 
 ---
 
-## SNAPSHOT PROMPT (copy everything between the lines)
+## How to Use This File
 
-────────────────────────────────────────────────────────────
-I need you to generate a clean, single-text snapshot of the backend only
+1. Copy everything between the dashed lines below
+2. Paste it into your VS Code agent chat
+3. The agent will output the full codebase as a single text block
+4. Save that output as: AUDIT_EXPORTS/backend_audit_YYYY-MM-DD.txt
+5. Commit and push (commands at the bottom of this file)
+6. Upload the .txt file to Claude in the next audit session
+
+---
+
+## AUDIT EXPORT PROMPT
+## (copy everything between the lines below and paste into your agent)
+
+--------------------------------------------------------------------------------
+I need you to generate a clean, single-text audit export of the backend only
 from the POLYGOD project folder.
 
 Please structure the output exactly like this:
@@ -75,26 +98,26 @@ Use this exact format for every file:
 Rules:
 - Include EVERY Python file listed above with complete raw content.
 - Do NOT summarise, truncate, or add "... rest of file ..." anywhere.
-- Do NOT include frontend/, node_modules/, qdrant_storage/, .git/, or SNAPSHOTS/.
+- Do NOT include frontend/, node_modules/, qdrant_storage/, .git/, or AUDIT_EXPORTS/.
 - File paths must be relative to the repo root.
 - Start with the directory tree, then follow the exact order above.
 - At the very end, add this footer:
-  "Snapshot generated on [TODAY'S DATE]. Backend audit snapshot."
+  "Audit export generated on [TODAY'S DATE]. Backend audit export."
 
-Now generate the full snapshot.
-────────────────────────────────────────────────────────────
+Now generate the full audit export.
+--------------------------------------------------------------------------------
 
 ---
 
-## After the agent generates the snapshot:
+## After the agent generates the audit export
 
 1. Save the output as:
-   SNAPSHOTS/backend_snapshot_YYYY-MM-DD.txt
-   (use today's date, e.g. SNAPSHOTS/backend_snapshot_2026-04-10.txt)
+   AUDIT_EXPORTS/backend_audit_YYYY-MM-DD.txt
+   (use today's date, e.g. AUDIT_EXPORTS/backend_audit_2026-04-13.txt)
 
 2. Commit and push:
-   git add SNAPSHOTS/backend_snapshot_YYYY-MM-DD.txt AGENT_NOTES.md
-   git commit -m "snapshot: backend audit snapshot YYYY-MM-DD"
+   git add AUDIT_EXPORTS/backend_audit_YYYY-MM-DD.txt
+   git commit -m "audit-export: backend audit YYYY-MM-DD"
    git push
 
-3. Share the snapshot file with Me for the next audit session.
+3. Upload the .txt file to Claude for the next audit session.
