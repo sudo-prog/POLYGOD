@@ -1,0 +1,138 @@
+Directory Tree
+src/backend/
+├── __init__.py
+├── main.py
+├── config.py
+├── database.py
+├── db_models.py
+├── auth.py
+├── llm_router.py
+├── polygod_graph.py
+├── self_improving_memory_loop.py
+├── snapshot_engine.py
+├── whale_copy_rag.py
+├── autoresearch_lab.py
+├── niche_scanner.py
+├── parallel_tournament.py
+├── cache.py
+├── agents/
+│   └── debate.py
+├── polymarket/
+│   ├── __init__.py
+│   ├── client.py
+│   └── schemas.py
+├── news/
+│   ├── __init__.py
+│   ├── aggregator.py
+│   └── schemas.py
+├── tasks/
+│   ├── __init__.py
+│   └── update_markets.py
+├── services/
+│   ├── __init__.py
+│   └── llm_concierge.py
+├── routes/
+│   ├── __init__.py
+│   ├── markets.py
+│   ├── news.py
+│   ├── debate.py
+│   ├── users.py
+│   ├── llm.py
+│   └── telegram.py
+├── middleware/
+│   ├── __init__.py
+│   ├── auth.py
+│   ├── rate_limit.py
+│   └── security_headers.py
+├── models/
+│   ├── __init__.py
+│   └── llm.py
+├── strategies/
+│   └── micro_niche_strategy.py
+└── tools/
+    └── x_sentiment.py
+
+Root Configuration & Docs (in this order):
+
+pyproject.toml
+docker-compose.yml
+docker-compose_prod.yml
+AGENTS.md
+
+
+Core Backend Files (in this exact order):
+
+src/backend/main.py
+src/backend/config.py
+src/backend/database.py
+src/backend/db_models.py
+
+
+Routes (all files inside src/backend/routes/):
+
+src/backend/routes/__init__.py
+src/backend/routes/markets.py
+src/backend/routes/news.py
+src/backend/routes/debate.py
+src/backend/routes/users.py
+src/backend/routes/llm.py
+src/backend/routes/telegram.py
+
+
+Key Modules (all files inside each folder/path):
+
+src/backend/polymarket/__init__.py
+src/backend/polymarket/client.py
+src/backend/polymarket/schemas.py
+src/backend/news/__init__.py
+src/backend/news/aggregator.py
+src/backend/news/schemas.py
+src/backend/tasks/__init__.py
+src/backend/tasks/update_markets.py
+src/backend/services/__init__.py
+src/backend/services/llm_concierge.py
+src/backend/agents/debate.py
+src/backend/strategies/micro_niche_strategy.py
+src/backend/middleware/__init__.py
+src/backend/middleware/auth.py
+src/backend/middleware/rate_limit.py
+src/backend/middleware/security_headers.py
+src/backend/models/__init__.py
+src/backend/models/llm.py
+src/backend/cache.py
+src/backend/auth.py
+src/backend/llm_router.py
+src/backend/polygod_graph.py
+src/backend/self_improving_memory_loop.py
+src/backend/snapshot_engine.py
+src/backend/whale_copy_rag.py
+src/backend/autoresearch_lab.py
+src/backend/niche_scanner.py
+src/backend/parallel_tournament.py
+
+
+Use this exact format for every file:
+=== FILE: src/backend/main.py ===
+<full raw code here — no omissions, no truncation>
+Rules:
+
+Include EVERY Python file listed above with complete raw content.
+Do NOT summarise, truncate, or add "... rest of file ..." anywhere.
+Do NOT include frontend/, node_modules/, qdrant_storage/, .git/, or AUDIT_EXPORTS/.
+File paths must be relative to the repo root.
+Start with the directory tree, then follow the exact order above.
+At the very end, add this footer:
+"Audit export generated on [TODAY'S DATE]. Backend audit export."
+
+Now generate the full audit export.
+
+After the agent generates the audit export
+
+Save the output as:
+AUDIT_EXPORTS/backend_audit_YYYY-MM-DD.txt
+(use today's date, e.g. AUDIT_EXPORTS/backend_audit_2026-04-13.txt)
+Commit and push:
+git add AUDIT_EXPORTS/backend_audit_YYYY-MM-DD.txt
+git commit -m "audit-export: backend audit YYYY-MM-DD"
+git push
+Upload the .txt file to Claude for the next audit session.
