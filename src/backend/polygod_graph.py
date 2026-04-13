@@ -74,7 +74,9 @@ except Exception as _e:
         checkpointer = MemorySaver()
         logger.info("Checkpointer: MemorySaver (in-memory, state is not persisted)")
     else:
-        logger.error("No checkpointer available — graph state will not persist across runs")
+        logger.error(
+            "No checkpointer available — graph state will not persist across runs"
+        )
 
 try:
     from mem0 import Memory
@@ -146,7 +148,9 @@ except Exception as _e:
 def mem0_add(content: str, user_id: str = "polygod") -> None:
     if mem0_memory:
         try:
-            mem0_memory.add(messages=[{"role": "system", "content": content}], user_id=user_id)
+            mem0_memory.add(
+                messages=[{"role": "system", "content": content}], user_id=user_id
+            )
         except Exception as exc:
             logger.debug("mem0 add failed: %s", exc)
 
@@ -191,7 +195,9 @@ def run_monte_carlo(
     outcomes: list[float] = []
     for _ in range(sims):
         outcome = rng.gauss(prob, volatility)
-        pnl = size * (outcome - 0.5) * 2 * rng.uniform(0.8, 1.2)  # FIXED: Proper PnL calc
+        pnl = (
+            size * (outcome - 0.5) * 2 * rng.uniform(0.8, 1.2)
+        )  # FIXED: Proper PnL calc
         outcomes.append(pnl)
 
     sorted_outcomes = sorted(outcomes)
@@ -244,8 +250,14 @@ class PaperMirror:
             adjusted_order = {**order, "size": order.get("size", 100) * kf}
             outcomes = [self.execute_shadow(adjusted_order)["pnl"] for _ in range(sims)]
             avg_pnl = sum(outcomes) / len(outcomes) if outcomes else 0
-            win_rate = sum(1 for o in outcomes if o > 0) / len(outcomes) if outcomes else 0
-            variance = sum((o - avg_pnl) ** 2 for o in outcomes) / len(outcomes) if outcomes else 0
+            win_rate = (
+                sum(1 for o in outcomes if o > 0) / len(outcomes) if outcomes else 0
+            )
+            variance = (
+                sum((o - avg_pnl) ** 2 for o in outcomes) / len(outcomes)
+                if outcomes
+                else 0
+            )
             sharpe = avg_pnl / max(0.001, variance**0.5) if outcomes else 0
             results.append(
                 {
@@ -281,7 +293,9 @@ async def get_enriched_market_data(market_id: str) -> dict:
 
         async with async_session_factory() as db:
             result = await db.execute(
-                select(Market).where(or_(Market.id == market_id, Market.slug == market_id))
+                select(Market).where(
+                    or_(Market.id == market_id, Market.slug == market_id)
+                )
             )
             market = result.scalar_one_or_none()
             if market:
@@ -294,11 +308,15 @@ async def get_enriched_market_data(market_id: str) -> dict:
                     "volume": market.volume_7d,
                     "volume_24h": market.volume_24h,
                     "liquidity": market.liquidity,
-                    "end_date": (market.end_date.isoformat() if market.end_date else "Unknown"),
+                    "end_date": (
+                        market.end_date.isoformat() if market.end_date else "Unknown"
+                    ),
                     "is_active": market.is_active,
                 }
     except Exception as exc:
-        logger.warning("DB lookup failed for market %s: %s — falling back to API", market_id, exc)
+        logger.warning(
+            "DB lookup failed for market %s: %s — falling back to API", market_id, exc
+        )
 
     # ── API fallback ─────────────────────────────────────────────────────────
     try:
@@ -488,7 +506,8 @@ async def generalist_agent(state: AgentState) -> AgentState:
     market_data = state.get("market_data", {})
     question = state.get("question", "")
     prior_args = "\n".join(
-        f"- {d['agent']}: {d['output'][:150]}" for d in state.get("debate_history", [])[-6:]
+        f"- {d['agent']}: {d['output'][:150]}"
+        for d in state.get("debate_history", [])[-6:]
     )
     prompt = f"""You are the Generalist Analyst on the POLYGOD Debate Floor.
 Market: "{question}"
@@ -521,7 +540,8 @@ async def macro_agent(state: AgentState) -> AgentState:
     llm = get_llm("gemini")
     question = state.get("question", "")
     prior_args = "\n".join(
-        f"- {d['agent']}: {d['output'][:150]}" for d in state.get("debate_history", [])[-6:]
+        f"- {d['agent']}: {d['output'][:150]}"
+        for d in state.get("debate_history", [])[-6:]
     )
     prompt = f"""You are the Macro Analyst on the POLYGOD Debate Floor.
 Market: "{question}"
@@ -553,7 +573,8 @@ async def devil_agent(state: AgentState) -> AgentState:
     llm = get_llm("gemini")
     question = state.get("question", "")
     prior_args = "\n".join(
-        f"- {d['agent']}: {d['output'][:200]}" for d in state.get("debate_history", [])[-8:]
+        f"- {d['agent']}: {d['output'][:200]}"
+        for d in state.get("debate_history", [])[-8:]
     )
     prompt = f"""You are the Devil's Advocate on the POLYGOD Debate Floor.
 Market: "{question}"
@@ -689,7 +710,9 @@ Provide your FINAL VERDICT:
     msg = await llm.ainvoke([HumanMessage(content=prompt)])
     verdict_text = str(msg.content)
     confidence = 50.0
-    conf_match = re.search(r"(?:confidence|odds)[:\s]*(\d+)", verdict_text, re.IGNORECASE)
+    conf_match = re.search(
+        r"(?:confidence|odds)[:\s]*(\d+)", verdict_text, re.IGNORECASE
+    )
     if conf_match:
         confidence = float(conf_match.group(1))
 
@@ -716,7 +739,9 @@ async def evolution_supervisor_node(state: AgentState) -> AgentState:
     new_round = state.get("debate_round", 0) + 1
     state["debate_round"] = new_round
     debate = state.get("debate_history", [])
-    logger.info("Evolution Supervisor: round %d, %d total agent outputs", new_round, len(debate))
+    logger.info(
+        "Evolution Supervisor: round %d, %d total agent outputs", new_round, len(debate)
+    )
     state["debate_history"] = debate + [
         {
             "agent": "EvolutionSupervisor",
@@ -744,7 +769,10 @@ async def risk_gate_node(state: AgentState) -> AgentState:
     volume = market_data.get("volume", 0)
 
     risk_low = (
-        kelly > 0.08 and sim.get("worst_case", 0) > -size * 0.25 and volume > 3000 and p_win > 0.52
+        kelly > 0.08
+        and sim.get("worst_case", 0) > -size * 0.25
+        and volume > 3000
+        and p_win > 0.52
     )
     if risk_low:
         state["decision"] = {**decision, "risk_status": "low", "next": "execute"}
@@ -771,7 +799,9 @@ async def risk_gate_node(state: AgentState) -> AgentState:
 async def approve_node(state: AgentState) -> AgentState:
     """Approve trade for human review (observe mode)."""
     verdict = state.get("verdict", "No verdict")
-    logger.info("OBSERVE MODE: Trade requires human approval. Verdict: %.100s...", verdict)
+    logger.info(
+        "OBSERVE MODE: Trade requires human approval. Verdict: %.100s...", verdict
+    )
     state["decision"] = {**state.get("decision", {}), "status": "pending_approval"}
     return state
 
@@ -835,13 +865,17 @@ async def execute_node(state: AgentState) -> AgentState:
         # Safety guard 1: liquidity
         liquidity = await polymarket_client.check_liquidity(live_order)
         if liquidity < 5000:
-            logger.warning(f"🔴 LIVE TRADE ABORTED: liquidity ${liquidity:,.0f} < $5,000 minimum")
+            logger.warning(
+                f"🔴 LIVE TRADE ABORTED: liquidity ${liquidity:,.0f} < $5,000 minimum"
+            )
             result = paper.execute_shadow(order)
             state["paper_pnl"] = state.get("paper_pnl", 0) + result.get("pnl", 0)
 
         # Safety guard 2: confidence
         elif confidence < 90:
-            logger.warning(f"🔴 LIVE TRADE ABORTED: confidence {confidence:.0f}% < 90% minimum")
+            logger.warning(
+                f"🔴 LIVE TRADE ABORTED: confidence {confidence:.0f}% < 90% minimum"
+            )
             result = paper.execute_shadow(order)
             state["paper_pnl"] = state.get("paper_pnl", 0) + result.get("pnl", 0)
 
@@ -1021,7 +1055,9 @@ async def run_polygod(market_id: str, mode: int = 0, question: str = "") -> dict
         question,
     )
 
-    config: RunnableConfig = {"configurable": {"thread_id": f"polygod-{market_id}-{run_id}"}}
+    config: RunnableConfig = {
+        "configurable": {"thread_id": f"polygod-{market_id}-{run_id}"}
+    }
 
     # ── Execution timeout to prevent runaway CPU/memory ───────────────────────
     async def _execute_with_timeout():
