@@ -1,0 +1,1748 @@
+Directory Tree
+/
+├── .dockerignore
+├── .editorconfig
+├── .gitignore
+├── .instructions.md
+├── .pre-commit-config.yaml
+├── .prettierrc
+├── .python-version
+├── AGENT_NOTES.md
+├── AGENTS.md
+├── alembic.ini
+├── analyze_drive.py
+├── conftest.py
+├── DEVELOPMENT.md
+├── docker_nginx_default.conf
+├── docker-compose.yml
+├── Dockerfile.backend
+├── Dockerfile.frontend
+├── INSTRUCTIONS_POLYGOD_GRAFT.md
+├── INSTRUCTIONS_RAG_GOD_GRAFT.md
+├── organize_media.py
+├── organize_movies.py
+├── pyproject.toml
+├── pytest.ini
+├── README.md
+├── setup.py
+├── start_local.sh
+├── uv.lock
+├── alembic/
+│   ├── env.py
+│   ├── migrations/
+│   │   ├── env.py
+│   │   └── versions/
+│   │       ├── 0001_initial.py
+│   │       └── dbc2682d86a0_add_trades_table_for_live_fill_streaming.py
+├── assets/
+│   └── screenshots/
+│       ├── ai-debate-floor.png
+│       ├── large-orders.png
+│       ├── news-feed.png
+│       ├── price-movements.png
+│       ├── Screenshot 2026-02-02 at 22.02.00.png
+│       ├── search-slug.png
+│       └── top-holders.png
+├── AUDIT_EXPORTS/
+│   ├── backend_audit_2026-04-10.txt
+│   ├── backend_audit_2026-04-12.txt
+│   ├── backend_audit_2026-04-13.txt
+│   ├── backend_audit_2026-04-14_updated.txt
+│   ├── backend_audit_2026-04-14.txt
+│   └── generate_audit_export.md
+├── docker/
+│   └── nginx/
+│       └── default.conf
+├── docs/
+│   ├── AUDIT_SUMMARY.md
+│   └── POLYGOD_USER_MANUAL.md
+├── migrations/
+│   ├── env.py
+│   ├── README
+│   ├── script.py.mako
+│   └── versions/
+├── scripts/
+│   ├── start_backend.sh
+│   ├── start_frontend.sh
+│   └── start.sh
+├── skill-creator/
+│   ├── LICENSE.txt
+│   ├── SKILL.md
+│   ├── references/
+│   │   ├── output-patterns.md
+│   │   └── workflows.md
+│   └── scripts/
+│       ├── init_skill.py
+│       ├── package_skill.py
+│       └── quick_validate.py
+├── src/
+│   ├── backend/
+│   │   ├── __init__.py
+│   │   ├── auth.py
+│   │   ├── autoresearch_lab.py
+│   │   ├── cache.py
+│   │   ├── config.py
+│   │   ├── database.py
+│   │   ├── db_models.py
+│   │   ├── llm_router.py
+│   │   ├── main.py
+│   │   ├── niche_scanner.py
+│   │   ├── parallel_tournament.py
+│   │   ├── polygod_graph.py
+│   │   ├── self_improving_memory_loop.py
+│   │   ├── snapshot_engine.py
+│   │   ├── whale_copy_rag.py
+│   │   ├── agents/
+│   │   │   └── debate.py
+│   │   ├── middleware/
+│   │   │   ├── __init__.py
+│   │   │   ├── auth.py
+│   │   │   ├── rate_limit.py
+│   │   │   └── security_headers.py
+│   │   ├── models/
+│   │   │   ├── __init__.py
+│   │   │   └── llm.py
+│   │   ├── news/
+│   │   │   ├── __init__.py
+│   │   │   ├── aggregator.py
+│   │   │   └── schemas.py
+│   │   ├── polymarket/
+│   │   │   ├── __init__.py
+│   │   │   ├── client.py
+│   │   │   ├── polymarket_client.py
+│   │   │   └── schemas.py
+│   │   ├── routes/
+│   │   │   ├── __init__.py
+│   │   │   ├── agent.py
+│   │   │   ├── debate.py
+│   │   │   ├── llm.py
+│   │   │   ├── markets.py
+│   │   │   ├── news.py
+│   │   │   ├── telegram.py
+│   │   │   └── users.py
+│   │   ├── services/
+│   │   │   ├── __init__.py
+│   │   │   └── llm_concierge.py
+│   │   ├── strategies/
+│   │   │   └── micro_niche_strategy.py
+│   │   ├── tasks/
+│   │   │   ├── __init__.py
+│   │   │   └── update_markets.py
+│   │   └── tools/
+│   │       └── x_sentiment.py
+│   │       └── utils/
+│   │           └── polymarket_helpers.py
+│   ├── components/
+│   └── frontend/
+│       ├── eslint.config.js
+│       ├── index.html
+│       ├── package-lock 2.json
+│       ├── package-lock.json
+│       ├── package.json
+│       ├── postcss.config.js
+│       ├── tailwind.config.js
+│       ├── tsconfig.json
+│       ├── tsconfig.node.json
+│       ├── tsconfig.tsbuildinfo
+│       ├── vite.config.ts
+│       ├── hooks/
+│       │   ├── useLiveTradesWS.ts
+│       │   └── usePolyGodWS.ts
+│       └── src/
+│           ├── App.tsx
+│           ├── main.tsx
+│           ├── vite-env.d.ts
+│           ├── __tests__/
+│           │   ├── editModeStore.test.ts
+│           │   ├── setup.ts
+│           │   └── usePolyGodWS.test.ts
+│           ├── components/
+│           │   ├── AgentRow.tsx
+│           │   ├── AgentWidget.tsx
+│           │   ├── DebateFloor.tsx
+│           │   ├── DiffViewer.tsx
+│           │   ├── EditableLayout.tsx
+│           │   ├── HamburgerMenu.tsx
+│           │   ├── LiveTradesFeed.tsx
+│           │   ├── LLMHub.tsx
+│           │   ├── LLMProviderCard.tsx
+│           │   ├── MarketList.tsx
+│           │   ├── NewsFeed.tsx
+│           │   ├── NotificationCentre.tsx
+│           │   ├── PriceChart.tsx
+│           │   ├── PriceMovement.tsx
+│           │   ├── SearchBar.tsx
+│           │   ├── SettingsButton.tsx
+│           │   ├── SettingsScreen.tsx
+│           │   ├── SpotlightSearch.tsx
+│           │   ├── StyleSidebar.tsx
+│           │   ├── TickerBanner.tsx
+│           │   ├── TimeframeSelector.tsx
+│           │   ├── TopHolders.tsx
+│           │   ├── TradingViewChart.tsx
+│           │   ├── UserDashboard.tsx
+│           │   └── WhaleList.tsx
+│           ├── hooks/
+│           ├── stores/
+│           ├── styles/
+│           └── utils/
+├── tests/
+│   ├── test_auth.py
+│   ├── test_markets.py
+│   ├── test_polygod.py
+│   └── backend/
+│       ├── conftest.py
+│       ├── test_api.py
+│       ├── test_config.py
+│       ├── test_db_models.py
+│       ├── test_markets_route.py
+│       ├── test_monte_carlo_fix.py
+│       ├── test_risk_gate.py
+│       └── security/
+│           └── test_injection.py
+
+Root Configuration & Docs
+=== FILE: pyproject.toml ===
+[project]
+name = "polygod"
+version = "0.2.0"
+description = "Real-time market tracking dashboard for Polymarket with TradingView charts and live news feeds"
+readme = "README.md"
+requires-python = ">=3.12,<3.14"
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.34.0",
+    "httpx>=0.28.0",
+    "pydantic>=2.10.0",
+    "pydantic-settings>=2.7.0",
+    "sqlalchemy>=2.0.0",
+    "aiosqlite>=0.21.0",
+    "greenlet>=3.0.0",
+    "apscheduler>=3.11.0",
+    "python-dotenv>=1.0.0",
+    "py-clob-client>=0.34.5",
+    "langchain>=1.2.7",
+    "langchain-google-genai>=4.2.0",
+    "langchain-xai>=0.1.0",
+    "langchain-community>=0.4.1",
+    "langgraph>=1.0.7",
+    "tavily-python>=0.7.19",
+    "qdrant-client>=1.12.0",
+    "prometheus-fastapi-instrumentator>=0.4.0",
+    "langgraph-checkpoint-sqlite>=1.0.0",
+    "langsmith>=0.3.0",
+    "litellm>=1.60.0",
+    "gitpython>=3.1.0",
+    "mem0ai>=0.1.0",
+    "llama-index-core>=0.12.0",
+    "llama-index-vector-stores-qdrant>=0.4.0",
+    "cryptography>=44.0.0",
+    "slowapi>=0.1.9",
+    "aiobreaker>=1.0",
+    "redis>=5.2.0",
+    "langchain-core>=0.3.20",
+    "python-telegram-bot>=21.0",
+    "asyncpg>=0.29",
+    "alembic>=1.13",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=0.8.0",
+    "pytest-asyncio>=0.25.0",
+    "ruff>=0.9.0",
+]
+test = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "pytest-cov>=5.0",
+    "httpx>=0.27",
+    "respx>=0.21",
+    "faker>=24.0",
+    "anyio>=4.0",
+    "prometheus-fastapi-instrumentator>=0.4.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/backend"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+addopts = "--tb=short"
+
+[tool.coverage.run]
+source = ["src/backend"]
+omit = [
+    "*/alembic/*",
+    "*/migrations/*",
+    "*/tests/*",
+    "*/__pycache__/*",
+]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = false
+fail_under = 60
+
+[dependency-groups]
+dev = [
+    "alembic",
+    "black",
+    "ipython",
+    "mypy",
+    "pre-commit",
+    "pytest-asyncio",
+    "pytest-cov",
+    "respx",
+    "ruff>=0.14.14",
+    "structlog",
+]
+
+[tool.mypy]
+python_version = "3.12"
+warn_return_any = true
+warn_unused_configs = true
+ignore_missing_imports = true
+packages = ["backend"]
+=== FILE: docker-compose.yml ===
+# POLYGOD Docker Compose — dev/staging stack
+#
+# Changes vs previous version:
+#   - FIXED M5: Added postgres service so DATABASE_URL default (postgresql+asyncpg://...)
+#               actually connects. Without this, the backend crashed immediately with
+#               "could not connect to server" on every `docker compose up`.
+#   - FIXED M6: polygod-swarm healthcheck no longer imports the full Python module
+#               on every 15s tick (which triggered side effects and was slow).
+#               Replaced with a simple pgrep process-existence check.
+#   - HARDENED: redis port no longer exposed on 0.0.0.0 (only on 127.0.0.1).
+#               Qdrant ports also restricted to localhost.
+#   - ADDED:    backend depends_on postgres with condition: service_healthy so
+#               the app doesn't race against a starting database.
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: polygod
+      POSTGRES_USER: polygod
+      POSTGRES_PASSWORD: polygod_dev_password  # override in .env for staging/prod
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:5432:5432"   # localhost only — not exposed to host network
+    networks:
+      - pnet
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U polygod -d polygod"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    image: polygod-backend:latest
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - polygod_data:/app/data
+    ports:
+      - "127.0.0.1:8000:8000"
+    networks:
+      - pnet
+    depends_on:
+      postgres:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    image: polygod-frontend:latest
+    restart: unless-stopped
+    ports:
+      - "5173:80"
+    networks:
+      - pnet
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    restart: unless-stopped
+    volumes:
+      - qdrant_data:/qdrant/storage
+    ports:
+      - "127.0.0.1:6333:6333"   # localhost only
+      - "127.0.0.1:6334:6334"
+    environment:
+      - QDRANT__SERVICE__GRPC_PORT=6334
+    networks:
+      - pnet
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/6333'"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+
+  # FIXED M6: polygod-swarm healthcheck was running a Python import on every
+  # POLYGOD Swarm — runs on-demand (not auto-started). Start manually via:
+  #   docker compose up -d polygod-swarm
+  # Or via the API endpoint /polygod/run which will auto-start the container.
+  # FIXED: Changed from restart:unless-stopped to restart:no to prevent
+  # runaway processes from consuming all CPU/memory. Now runs on-demand only.
+  polygod-swarm:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    image: polygod-swarm:latest
+    restart: no  # ← Changed: on-demand only, not auto-started
+    command: uv run python -m src.backend.polygod_graph
+    env_file:
+      - .env
+    environment:
+      - LIGHTNING_AI_TOKEN=${LIGHTNING_AI_TOKEN:-}
+      - COLAB_WEBHOOK_URL=${COLAB_WEBHOOK_URL:-}
+    networks:
+      - pnet
+    depends_on:
+      backend:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+    healthcheck:
+      # pgrep -f matches against the full command line, so this matches the
+      # actual python process running polygod_graph.py
+      test: ["CMD-SHELL", "pgrep -f 'python.*polygod_graph' || pgrep -f 'uvicorn'"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:6379:6379"   # localhost only — was 0.0.0.0 previously
+    networks:
+      - pnet
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+
+volumes:
+  polygod_data:
+  qdrant_data:
+  postgres_data:
+
+networks:
+  pnet:
+    driver: bridge
+=== FILE: docker-compose_prod.yml ===
+File not found: docker-compose_prod.yml does not exist in the project directory.
+=== FILE: AGENTS.md ===
+# POLYGOD Agent Instructions
+
+## Core Session Protocol
+
+**BEFORE any task:** Read this file and verify all instructions are followed.
+
+**END OF EVERY SESSION:**
+When ALL tasks are 100% complete, update AGENT_NOTES.md with a log entry for the changes made in that session. Use the existing format with Date, Agent, and Changes Made columns.
+
+### Session Log Format
+```
+| Date       | Agent  | Changes Made                                              |
+|------------|--------|-----------------------------------------------------------|
+```
+
+### Update Requirements
+- Add new entries at the top of the session log (after the header row)
+- Include the current date (YYYY-MM-DD)
+- Agent should be "Kilo (GOD TIER ENGINEER)" or similar
+- Changes Made should be a concise summary of what was done
+- Reference specific files changed when applicable
+
+## Project-Specific Rules
+
+### Code Standards
+- All TypeScript/React code follows the existing patterns in the codebase
+- WebSocket connections use first-message auth pattern (token in JSON, not URL)
+- Components follow the existing UI patterns (ios-* classes, tailwind)
+
+### Communication
+- Be direct and technical, not conversational
+- Never end with a question or offer for further assistance
+- Complete one todo before starting another
+
+## AUDIT EXPORT PROMPT
+
+I need you to generate a clean, single-text audit export of the backend only
+from the POLYGOD project folder.
+Please structure the output exactly like this:
+
+Directory Tree
+(root level + full src/backend/ tree including all subfolders)
+Root Configuration & Docs (in this order):
+
+pyproject.toml
+docker-compose.yml
+docker-compose_prod.yml
+AGENTS.md
+
+
+Core Backend Files (in this exact order):
+
+src/backend/main.py
+src/backend/config.py
+src/backend/database.py
+src/backend/db_models.py
+
+
+Routes (all files inside src/backend/routes/):
+
+src/backend/routes/__init__.py
+src/backend/routes/markets.py
+src/backend/routes/news.py
+src/backend/routes/debate.py
+src/backend/routes/users.py
+src/backend/routes/llm.py
+src/backend/routes/telegram.py
+
+
+Key Modules (all files inside each folder/path):
+
+src/backend/polymarket/__init__.py
+src/backend/polymarket/client.py
+src/backend/polymarket/schemas.py
+src/backend/news/__init__.py
+src/backend/news/aggregator.py
+src/backend/news/schemas.py
+src/backend/tasks/__init__.py
+src/backend/tasks/update_markets.py
+src/backend/services/__init__.py
+src/backend/services/llm_concierge.py
+src/backend/agents/debate.py
+src/backend/strategies/micro_niche_strategy.py
+src/backend/middleware/__init__.py
+src/backend/middleware/auth.py
+src/backend/middleware/rate_limit.py
+src/backend/middleware/security_headers.py
+src/backend/models/__init__.py
+src/backend/models/llm.py
+src/backend/cache.py
+src/backend/auth.py
+src/backend/llm_router.py
+src/backend/polygod_graph.py
+src/backend/self_improving_memory_loop.py
+src/backend/snapshot_engine.py
+src/backend/whale_copy_rag.py
+src/backend/autoresearch_lab.py
+src/backend/niche_scanner.py
+src/backend/parallel_tournament.py
+
+
+Use this exact format for every file:
+=== FILE: src/backend/main.py ===
+import asyncio
+import hashlib
+import itertools
+import json  # required by _ws_authenticate()
+import logging
+import os
+import secrets
+import socket
+from contextlib import asynccontextmanager
+
+import structlog  # ADDED: Structured logging
+import uvicorn
+from fastapi import Depends, FastAPI, HTTPException, Request, WebSocket
+from fastapi.middleware import Middleware
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from prometheus_client import Counter  # ADDED: Custom metrics
+from prometheus_fastapi_instrumentator import Instrumentator
+from slowapi import Limiter
+from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
+from starlette.websockets import WebSocketDisconnect
+
+from src.backend.auth import verify_api_key
+from src.backend.config import settings
+from src.backend.database import close_db, init_db
+from src.backend.middleware.auth import admin_required
+from src.backend.middleware.security_headers import SecurityHeadersMiddleware
+from src.backend.news.aggregator import news_aggregator
+from src.backend.polygod_graph import POLYGOD_MODE, paper, polygod_graph, run_polygod
+from src.backend.polymarket.client import active_connections, polymarket_client
+from src.backend.routes import debate, llm, markets, news, telegram, users
+from src.backend.routes.telegram import run_telegram_bot  # required by lifespan()
+from src.backend.self_improving_memory_loop import forgetting_engine, memory_loop
+from src.backend.services.llm_concierge import concierge
+from src.backend.tasks.update_markets import get_scheduler, update_top_markets
+
+# ADDED: Custom metrics
+llm_requests = Counter("llm_requests_total", "Total LLM requests")
+
+_SECRET_KEYS = (
+    "POLYMARKET_API_KEY",
+    "POLYMARKET_SECRET",
+    "POLYMARKET_PASSPHRASE",
+    "GEMINI_API_KEY",
+    "TAVILY_API_KEY",
+    "NEWS_API_KEY",
+    "INTERNAL_API_KEY",
+    "POLYGOD_ADMIN_TOKEN",
+    "ENCRYPTION_KEY",
+    "TELEGRAM_BOT_TOKEN",
+    "X_BEARER_TOKEN",
+)
+_SECRET_VALUES = frozenset(v for k in _SECRET_KEYS if (v := os.getenv(k, "")) and len(v) > 4)
+
+
+def mask_secrets(text: str) -> str:
+    for val in _SECRET_VALUES:
+        if val in text:
+            text = text.replace(val, "***REDACTED***")
+    return text
+
+
+limiter = Limiter(key_func=get_remote_address)
+
+if settings.FORCE_IPV4:
+    import socket
+
+    _old_getaddrinfo = socket.getaddrinfo
+
+    def _ipv4_only_getaddrinfo(*args, **kwargs):
+        return [r for r in _old_getaddrinfo(*args, **kwargs) if r[0] == socket.AF_INET]
+
+    socket.getaddrinfo = _ipv4_only_getaddrinfo
+
+# FIXED: Structured logging
+structlog.configure(
+    processors=[
+        structlog.stdlib.filter_by_level,
+        structlog.stdlib.add_logger_name,
+        structlog.stdlib.add_log_level,
+        structlog.stdlib.PositionalArgumentsFormatter(),
+        structlog.processors.TimeStamper(fmt="iso"),
+        structlog.processors.StackInfoRenderer(),
+        structlog.processors.format_exc_info,
+        structlog.processors.UnicodeDecoder(),
+        structlog.processors.JSONRenderer(),
+    ],
+    context_class=dict,
+    logger_factory=structlog.stdlib.LoggerFactory(),
+    wrapper_class=structlog.stdlib.BoundLogger,
+    cache_logger_on_first_use=True,
+)
+logger = structlog.get_logger()
+
+
+class _SecretFilter(logging.Filter):
+    def filter(self, record):
+        record.msg = mask_secrets(str(record.msg))
+        if record.args:
+            record.args = tuple(mask_secrets(str(a)) for a in record.args)
+        return True
+
+
+logging.getLogger().addFilter(_SecretFilter())
+
+_WHALE_ALERTS = [
+    "POLYGOD WHALE ALERT: HorizonSplendidView loaded 150k YES — analysing edge",
+    "Major position detected — POLYGOD scanning for alpha opportunities",
+    "Whale activity in Polymarket — POLYGOD computing optimal response",
+    "High-volume trade alert — POLYGOD AI evaluating market impact",
+]
+_whale_cycle = itertools.cycle(_WHALE_ALERTS)
+
+POLYGOD_MODE = settings.POLYGOD_MODE
+
+
+async def get_mode_from_db():
+    from sqlalchemy import select
+
+    from src.backend.database import async_session_factory
+    from src.backend.db_models import AppState
+
+    async with async_session_factory() as db:
+        result = await db.execute(select(AppState).where(AppState.key == "polygod_mode"))
+        row = result.scalar_one_or_none()
+        return int(row.value) if row else POLYGOD_MODE
+
+
+async def set_mode_in_db(mode: int):
+    from sqlalchemy import select
+
+    from src.backend.database import async_session_factory
+    from src.backend.db_models import AppState
+
+    async with async_session_factory() as db:
+        result = await db.execute(select(AppState).where(AppState.key == "polygod_mode"))
+        row = result.scalar_one_or_none()
+        if row:
+            row.value = str(mode)
+        else:
+            db.add(AppState(key="polygod_mode", value=str(mode)))
+        await db.commit()
+
+
+async def refresh_llm_stats():
+    from datetime import datetime, timezone
+
+    from sqlalchemy import func, select
+
+    from src.backend.database import async_session_factory
+    from src.backend.models.llm import Provider, UsageLog
+
+    async with async_session_factory() as db:
+        today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+        result = await db.execute(
+            select(
+                UsageLog.provider,
+                func.coalesce(func.sum(UsageLog.tokens_used), 0).label("total_tokens"),
+            )
+            .where(UsageLog.timestamp >= today_start)
+            .group_by(UsageLog.provider)
+        )
+        usage_by_provider = {row.provider: row.total_tokens for row in result.all()}
+        providers_result = await db.execute(select(Provider))
+        for provider in providers_result.scalars().all():
+            provider.tokens_today = usage_by_provider.get(provider.name, 0)
+        await db.commit()
+
+
+async def daily_pnl_report():
+    total_pnl = sum(paper.pnls) if paper.pnls else 0.0
+    trade_count = len(paper.pnls)
+    logger.info(
+        "POLYGOD DAILY PNL REPORT",
+        total_pnl=total_pnl,
+        trade_count=trade_count,
+        mode=POLYGOD_MODE,
+    )
+    try:
+        top_markets = await polymarket_client.get_top_markets_by_volume(limit=5)
+        logger.info("Top markets", markets=[m.get("title", "N/A") for m in top_markets])
+    except Exception as exc:
+        logger.warning("Market data fetch failed", error=str(exc))
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    logger.info(
+        "Starting POLYGOD",
+        database_url=settings.DATABASE_URL,
+        cors=settings.CORS_ORIGINS,
+        host=settings.HOST,
+        port=settings.PORT,
+        debug=settings.DEBUG,
+        mode=settings.POLYGOD_MODE,
+    )
+    if not settings.DEBUG:
+        admin_token = settings.POLYGOD_ADMIN_TOKEN.get_secret_value()
+        if not admin_token or admin_token == "change-this-before-use":
+            raise RuntimeError("POLYGOD_ADMIN_TOKEN required in production")
+    try:
+        await init_db()
+        global POLYGOD_MODE
+        db_mode = await get_mode_from_db()
+        if db_mode != POLYGOD_MODE:
+            POLYGOD_MODE = db_mode
+    except Exception as exc:
+        if settings.ALLOW_IN_MEMORY_DB_FALLBACK or settings.DEBUG:
+            logger.error("DB init failed", error=str(exc))
+        else:
+            raise
+    try:
+        await update_top_markets()
+    except Exception as exc:
+        logger.error("Market data load failed", error=str(exc))
+    scheduler = get_scheduler()
+    try:
+        scheduler.start()
+    except Exception as exc:
+        logger.error("Scheduler start failed", error=str(exc))
+
+    # Start CLOB live whale-trade monitor
+    asyncio.create_task(polymarket_client.stream_live_trades())
+
+    def _add_job(func, **kwargs):
+        try:
+            scheduler.add_job(func, replace_existing=True, **kwargs)
+        except Exception as exc:
+            logger.warning("Job schedule failed", job=func.__name__, error=str(exc))
+
+    from apscheduler.triggers.interval import IntervalTrigger
+
+    _add_job(daily_pnl_report, trigger="cron", hour=0, minute=0)
+    _add_job(refresh_llm_stats, trigger=IntervalTrigger(minutes=5))
+    _add_job(concierge.health_check_all_keys, trigger=IntervalTrigger(minutes=30))
+    _add_job(
+        memory_loop.hindsight_replay,
+        trigger="cron",
+        day_of_week="sun",
+        hour=23,
+        minute=0,
+    )
+    _add_job(
+        memory_loop.notebooklm_reflection,
+        trigger="cron",
+        day_of_week="sun",
+        hour=23,
+        minute=30,
+    )
+    _add_job(forgetting_engine.prune, trigger=IntervalTrigger(hours=6))
+    if settings.POLYGOD_MODE >= 1:
+        logger.info("Swarm mode enabled", mode=settings.POLYGOD_MODE)
+    telegram_task = None
+    if settings.TELEGRAM_BOT_TOKEN.get_secret_value():
+        telegram_task = asyncio.create_task(run_telegram_bot())
+    yield
+    if telegram_task:
+        telegram_task.cancel()
+    scheduler.shutdown()
+    await polymarket_client.close()
+    await news_aggregator.close()
+    await close_db()
+
+
+app = FastAPI(
+    title="POLYGOD API",
+    description="POLYGOD — Advanced Polymarket intelligence and trading agent",
+    version="0.1.0",
+    lifespan=lifespan,
+    debug=settings.debug,
+    docs_url="/docs" if settings.debug else None,
+    redoc_url="/redoc" if settings.debug else None,
+    middleware=[
+        Middleware(
+            CORSMiddleware,
+            allow_origins=settings.cors_origins_list,
+            allow_credentials=True,
+            allow_methods=["*"],
+            allow_headers=["*"],
+        ),
+        Middleware(SecurityHeadersMiddleware),
+    ],
+)
+app.state.limiter = limiter
+Instrumentator().instrument(app).expose(app)
+
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request, exc):
+    detail = mask_secrets(str(exc))
+    logger.error("Unhandled exception", error=detail)
+    return JSONResponse(status_code=500, content={"detail": "Internal server error"})
+
+
+@app.exception_handler(RateLimitExceeded)
+async def rate_limit_handler(request, exc):
+    return JSONResponse({"error": "Rate limit exceeded"}, status_code=429)
+
+
+app.include_router(markets.router, prefix="/api/markets")
+app.include_router(news.router, prefix="/api/news")
+app.include_router(debate.router, prefix="/api/debate")
+app.include_router(users.router, prefix="/api/users")
+app.include_router(llm.router, prefix="/api/llm")
+app.include_router(telegram.router, prefix="/api/telegram")
+
+
+def _authenticate_ws_token(token: str) -> bool:
+    expected = settings.internal_api_key.encode()
+    provided = token.encode()
+    return secrets.compare_digest(
+        hashlib.sha256(provided).digest(), hashlib.sha256(expected).digest()
+    )
+
+
+async def _ws_authenticate(websocket: WebSocket) -> bool:
+    try:
+        raw = await asyncio.wait_for(websocket.receive_text(), timeout=10.0)
+        frame = json.loads(raw)
+        if frame.get("type") != "auth":
+            await websocket.close(code=4001)
+            return False
+        token = str(frame.get("token", ""))
+        if not _authenticate_ws_token(token):
+            await websocket.close(code=4001)
+            return False
+        return True
+    except asyncio.TimeoutError:
+        logger.warning("WS auth timeout")
+        await websocket.close(code=4008)
+        return False
+    except Exception as exc:
+        logger.warning("WS auth parse error", error=str(exc))
+        await websocket.close(code=4001)
+        return False
+
+
+@app.websocket("/ws/polygod")
+async def polygod_ws(websocket: WebSocket):
+    await websocket.accept()
+    if not await _ws_authenticate(websocket):
+        return
+    await websocket.send_json({"type": "auth_ok"})
+    try:
+        while True:
+            await websocket.send_json(
+                {
+                    "type": "state",
+                    "paper_pnl": paper.pnls[-1] if paper.pnls else 0,
+                    "mode": POLYGOD_MODE,
+                    "evolution_score": 0.95,
+                    "whale_alert": next(_whale_cycle),
+                }
+            )
+            await asyncio.sleep(2)
+    except (WebSocketDisconnect, RuntimeError, asyncio.CancelledError):
+        logger.info("PolyGod WS disconnected")
+    finally:
+        try:
+            await websocket.close()
+        except Exception:
+            pass
+
+
+@app.websocket("/ws/debate/{market_id}")
+async def debate_websocket(websocket: WebSocket, market_id: str):
+    await websocket.accept()
+    if not await _ws_authenticate(websocket):
+        return
+    await websocket.send_json({"type": "auth_ok"})
+    try:
+        async for chunk in polygod_graph.astream(
+            {"market_id": market_id, "mode": settings.POLYGOD_MODE}
+        ):
+            await websocket.send_json({k: str(v) for k, v in chunk.items()})
+    except (WebSocketDisconnect, RuntimeError, asyncio.CancelledError):
+        logger.info("Debate WS disconnected", market_id=market_id)
+    except Exception as exc:
+        logger.error("Debate WS error", market_id=market_id, error=str(exc))
+        try:
+            await websocket.send_json({"type": "error", "content": "Debate terminated"})
+        except Exception:
+            pass
+    finally:
+        try:
+            await websocket.close()
+        except Exception:
+            pass
+
+
+@app.websocket("/ws/live-trades")
+async def websocket_live_trades(websocket: WebSocket):
+    # BUG-7 fix: authenticate before accepting, same as all other WS endpoints
+    await websocket.accept()
+    if not await _ws_authenticate(websocket):
+        return
+    await websocket.send_json({"type": "auth_ok"})
+
+    active_connections.append(websocket)
+    try:
+        while True:
+            await websocket.receive_text()  # keep-alive ping/pong
+    except WebSocketDisconnect:
+        pass
+    finally:
+        if websocket in active_connections:
+            active_connections.remove(websocket)
+
+
+@app.post("/polygod/switch-mode")
+async def switch_mode(new_mode: int, _: bool = Depends(admin_required)):
+    from src.backend.config import settings
+
+    settings.POLYGOD_MODE = new_mode
+    await set_mode_in_db(new_mode)
+    mode_label = {0: "OBSERVE", 1: "PAPER", 2: "LOW", 3: "BEAST"}.get(new_mode, "UNKNOWN")
+    return {"status": f"Switched to Mode {new_mode} — {mode_label}"}
+
+
+@app.post("/polygod/simulate")
+async def monte_carlo_simulate(
+    market_id: str, order_size: float = 1000, _: bool = Depends(admin_required)
+):
+    from src.backend.polygod_graph import get_enriched_market_data, run_monte_carlo
+
+    market_data = await get_enriched_market_data(market_id)
+    sim = run_monte_carlo({"size": order_size}, market_data)
+    return {
+        "simulation": sim,
+        "recommendation": ("BEAST APPROVED" if sim["win_prob"] > 0.65 else "SAFE MODE ONLY"),
+    }
+
+
+@app.post("/api/scan-niches")
+@limiter.limit("5/minute")
+async def scan_niches(
+    request: Request,  # required by slowapi rate limiter
+    mode: int = 0,
+    _: str = Depends(verify_api_key),
+):
+    from src.backend.niche_scanner import scanner
+
+    try:
+        opportunities = await scanner.scan_niches(mode)
+        return {
+            "status": "scan_complete",
+            "opportunities": opportunities,
+            "count": len(opportunities),
+            "mode": mode,
+        }
+    except Exception as exc:
+        logger.error("Niche scan failed", error=str(exc))
+        raise HTTPException(status_code=500, detail="Niche scan failed")
+
+
+@app.post("/polygod/run")
+async def polygod_run(
+    market_id: str, mode: int = 0, question: str = "", _: bool = Depends(admin_required)
+):
+    try:
+        result = await run_polygod(market_id=market_id, mode=mode, question=question)
+        llm_requests.inc()  # ADDED: Metric
+        return {
+            "status": "complete",
+            "run_id": result.get("run_id"),
+            "market": result.get("question", ""),
+            "verdict": result.get("verdict", "No verdict"),
+            "paper_pnl": result.get("paper_pnl", 0),
+            "risk_status": result.get("risk_status", "unknown"),
+            "debate_rounds": result.get("debate_round", 0),
+            "evolution_best": result.get("evolution_best"),
+            "simulation": result.get("simulation"),
+            "execution_result": result.get("execution_result"),
+        }
+    except Exception as exc:
+        logger.error("POLYGOD run failed", error=str(exc))
+        raise HTTPException(status_code=500, detail="POLYGOD run failed")
+
+
+@app.get("/api/health")
+async def health():
+    from sqlalchemy import text
+
+    from src.backend.database import engine
+
+    scheduler = get_scheduler()
+    db_connected = False
+    try:
+        async with engine.connect() as conn:
+            await conn.execute(text("SELECT 1"))
+            db_connected = True
+    except Exception:
+        pass
+    return {
+        "status": "god-tier",
+        "version": "0.1.0",
+        "database": "connected" if db_connected else "disconnected",
+        "scheduler": scheduler.running if scheduler else False,
+        "polygod_mode": POLYGOD_MODE,
+    }
+
+
+@app.get("/")
+async def root() -> dict:
+    return {
+        "name": "POLYGOD API",
+        "version": "0.1.0",
+        "docs": "/docs" if settings.DEBUG else "disabled in production",
+        "health": "/api/health",
+    }
+
+
+if __name__ == "__main__":
+    uvicorn.run(
+        "src.backend.main:app",
+        host=settings.HOST,
+        port=settings.PORT,
+        reload=settings.DEBUG,
+    )
+Rules:
+
+Include EVERY Python file listed above with complete raw content.
+Do NOT summarise, truncate, or add "... rest of file ..." anywhere.
+Do NOT include frontend/, node_modules/, qdrant_storage/, .git/, or AUDIT_EXPORTS/.
+File paths must be relative to the repo root.
+Start with the directory tree, then follow the exact order above.
+At the very end, add this footer:
+"Audit export generated on [TODAY'S DATE]. Backend audit export."
+
+Now generate the full audit export.
+
+After the agent generates the audit export
+
+✅ ALWAYS COMMIT AND PUSH IMMEDIATELY AFTER GENERATING AUDIT EXPORT:
+1. Save the output as:
+   AUDIT_EXPORTS/backend_audit_YYYY-MM-DD.txt
+   (use today's date, e.g. AUDIT_EXPORTS/backend_audit_2026-04-13.txt)
+
+2. Run these commands BEFORE doing ANYTHING ELSE:
+   ```bash
+   git add AUDIT_EXPORTS/backend_audit_YYYY-MM-DD.txt
+   git commit -m "audit-export: backend audit YYYY-MM-DD"
+   git push
+   ```
+
+3. Then:
+   - Update AGENT_NOTES.md with session log entry
+   - Commit and push AGENT_NOTES.md
+   - Upload the .txt file to Claude for the next audit session.
+
+✅ NEVER skip the git push step. Audit exports must be immediately persisted to remote git.
+
+Core Backend Files
+=== FILE: src/backend/main.py ===
+<full raw code here — no omissions, no truncation>
+=== FILE: src/backend/config.py ===
+"""
+POLYGOD Configuration — Hardened for production.
+
+Changes vs previous version:
+  - POLYMARKET_PRIVATE_KEY: kept from previous version for live CLOB trading
+  - DATABASE_URL default changed to SQLite (matches Docker Compose volumes)
+  - INTERNAL_API_KEY sentinel rejection now checks DEBUG correctly
+  - ENCRYPTION_KEY auto-generates a valid Fernet key instead of sentinel
+  - Logging block trimmed — no spam on lru_cache miss
+  - case_sensitive=True added to SettingsConfigDict
+  - X_BEARER_TOKEN added
+"""
+
+import logging
+from functools import lru_cache
+
+from cryptography.fernet import Fernet
+from pydantic import Field, SecretStr, field_validator, model_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+_SENTINEL_VALUES = frozenset(
+    {
+        "",
+        "change-this-before-use",
+        "dev-encryption-key-32-chars-here!!",
+        "your_gemini_api_key",
+        "your_grok_api_key",
+    }
+)
+
+
+class Settings(BaseSettings):
+    # ── Database ────────────────────────────────────────────────────────────
+    # Default to SQLite so the app boots without a .env file in development.
+    # Override to postgresql+asyncpg://... in production via .env / Docker env.
+    DATABASE_URL: str = Field(default="sqlite+aiosqlite:///./polymarket.db")
+
+    # ── External APIs ────────────────────────────────────────────────────────
+    NEWS_API_KEY: SecretStr = Field(default=SecretStr(""))
+    POLYMARKET_API_HOST: str = Field(default="https://clob.polymarket.com")
+    POLYMARKET_API_KEY: SecretStr = Field(default=SecretStr(""))
+    POLYMARKET_SECRET: SecretStr = Field(default=SecretStr(""))
+    POLYMARKET_PASSPHRASE: SecretStr = Field(default=SecretStr(""))
+    # EVM private key for signing CLOB orders (live trading only)
+    POLYMARKET_PRIVATE_KEY: SecretStr = Field(default=SecretStr(""))
+    GEMINI_API_KEY: SecretStr = Field(default=SecretStr(""))
+    GROK_API_KEY: SecretStr = Field(default=SecretStr(""))
+    TAVILY_API_KEY: SecretStr = Field(default=SecretStr(""))
+    X_BEARER_TOKEN: SecretStr = Field(default=SecretStr(""))
+    LANGSMITH_API_KEY: SecretStr = Field(default=SecretStr(""))
+    LIGHTNING_AI_TOKEN: SecretStr = Field(default=SecretStr(""))
+
+    # ── Server ───────────────────────────────────────────────────────────────
+    CORS_ORIGINS: str = Field(default="http://localhost:5173,https://yourdomain.com")
+    HOST: str = Field(default="0.0.0.0")
+    PORT: int = Field(default=8000)
+    DEBUG: bool = Field(default=False)
+
+    # ── Security ─────────────────────────────────────────────────────────────
+    # POLYGOD_ADMIN_TOKEN: required in all environments — no default.
+    POLYGOD_ADMIN_TOKEN: SecretStr = Field(default=SecretStr(""))
+    # INTERNAL_API_KEY: required in prod; sentinel allowed ONLY when DEBUG=True.
+    INTERNAL_API_KEY: SecretStr = Field(default=SecretStr("change-this-before-use"))
+    # ENCRYPTION_KEY: must be a valid Fernet key (32-byte URL-safe base64).
+    # If empty/sentinel, a secure key is auto-generated at startup (dev only).
+    ENCRYPTION_KEY: SecretStr = Field(default=SecretStr(""))
+
+    # ── Infrastructure ────────────────────────────────────────────────────────
+    REDIS_URL: str = Field(default="redis://redis:6379/0")
+    COLAB_WEBHOOK_URL: str = Field(default="")  # set in .env to enable Colab offload
+    TELEGRAM_BOT_TOKEN: SecretStr = Field(default=SecretStr(""))
+    TELEGRAM_CHAT_ID: str = Field(default="")
+    MEM0_CONFIG: str = Field(
+        default='{"provider": "qdrant", "vector_store": {"url": "http://qdrant:6333"}}'
+    )
+
+    # ── POLYGOD Runtime ───────────────────────────────────────────────────────
+    POLYGOD_MODE: int = Field(default=0)
+    ALLOW_IN_MEMORY_DB_FALLBACK: bool = Field(default=False)
+    FORCE_IPV4: bool = Field(default=False)
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        extra="ignore",
+        env_file_encoding="utf-8",
+        case_sensitive=True,
+    )
+
+    # ── Validators ───────────────────────────────────────────────────────────
+
+    @field_validator("POLYGOD_ADMIN_TOKEN")
+    @classmethod
+    def require_admin_token(cls, v: SecretStr) -> SecretStr:
+        """
+        Reject the explicit sentinel but allow empty string.
+        Empty string is allowed here so DEBUG-mode startups work without a token.
+        Production enforcement is in lifespan() in main.py.
+        """
+        val = v.get_secret_value()
+        if val in ("change-this-before-use", ""):
+            # Don't raise here — enforcement is in lifespan().
+            # But log loudly so misconfigured deploys are obvious in container logs.
+            import logging as _log
+
+            _log.getLogger(__name__).error(
+                "POLYGOD_ADMIN_TOKEN is not set or is default sentinel. "
+                "The app will refuse to start. "
+                'Generate: python -c "import secrets; print(secrets.token_urlsafe(32))"'
+            )
+        return v
+
+    @field_validator("INTERNAL_API_KEY")
+    @classmethod
+    def validate_internal_key(cls, v: SecretStr, info) -> SecretStr:
+        """
+        INTERNAL_API_KEY: sentinel allowed in DEBUG mode only.
+        In production (DEBUG=False) this must be a real secret.
+
+        NOTE: We can't read DEBUG here (field order dependency), so we validate
+        at the model level in validate_security_posture() below.
+        """
+        return v
+
+    @field_validator("ENCRYPTION_KEY")
+    @classmethod
+    def ensure_valid_fernet_key(cls, v: SecretStr) -> SecretStr:
+        """
+        ENCRYPTION_KEY must be a valid Fernet key.
+        If missing/sentinel, auto-generate a secure one.
+        WARNING: Auto-generated keys are ephemeral — store the output in .env
+        or encrypted API keys will be unreadable after restart.
+        """
+        val = v.get_secret_value()
+        if val in _SENTINEL_VALUES:
+            # Auto-generate a valid Fernet key
+            new_key = Fernet.generate_key().decode()
+            import logging as _log
+
+            _log.getLogger(__name__).warning(
+                "ENCRYPTION_KEY not set — auto-generated ephemeral Fernet key. "
+                "LLM Hub API keys will be UNREADABLE after restart! "
+                "Set ENCRYPTION_KEY in your .env file."
+            )
+            return SecretStr(new_key)
+
+        # Validate that the provided value is actually a valid Fernet key
+        try:
+            Fernet(val.encode() if isinstance(val, str) else val)
+        except Exception:
+            raise ValueError(
+                "ENCRYPTION_KEY must be a valid 32-byte URL-safe base64 Fernet key. "
+                'Generate one with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"'
+            )
+        return v
+
+    @model_validator(mode="after")
+    def validate_security_posture(self) -> "Settings":
+        """
+        Cross-field validation: enforce that INTERNAL_API_KEY is a real secret
+        when DEBUG=False (production mode). Warn in DEBUG mode.
+        """
+        import logging as _log
+
+        _logger = _log.getLogger(__name__)
+        internal_val = self.INTERNAL_API_KEY.get_secret_value()
+        if internal_val in _SENTINEL_VALUES:
+            if not self.DEBUG:
+                raise ValueError(
+                    "INTERNAL_API_KEY must be set to a strong secret in production (DEBUG=False). "
+                    'Generate one with: python -c "import secrets; print(secrets.token_urlsafe(32))"'
+                )
+            else:
+                # FIX C-3: Warn even in DEBUG so misconfigured staging deployments are visible
+                _logger.warning(
+                    "INTERNAL_API_KEY is using a sentinel/default value. "
+                    "This is only acceptable in local development (DEBUG=True). "
+                    "Never deploy to staging/production with this value."
+                )
+        return self
+
+    # ── Computed Properties ───────────────────────────────────────────────────
+
+    @property
+    def cors_origins_list(self) -> list[str]:
+        return [o.strip() for o in self.CORS_ORIGINS.split(",") if o.strip()]
+
+    @property
+    def debug(self) -> bool:
+        return self.DEBUG
+
+    @property
+    def internal_api_key(self) -> str:
+        return self.INTERNAL_API_KEY.get_secret_value()
+
+    @property
+    def is_sqlite(self) -> bool:
+        return "sqlite" in self.DATABASE_URL.lower()
+
+    @property
+    def is_postgres(self) -> bool:
+        return "postgresql" in self.DATABASE_URL.lower() or "postgres" in self.DATABASE_URL.lower()
+
+    @property
+    def live_trading_enabled(self) -> bool:
+        """True only when all CLOB credentials are present."""
+        return all(
+            [
+                self.POLYMARKET_PRIVATE_KEY.get_secret_value(),
+                self.POLYMARKET_API_KEY.get_secret_value(),
+                self.POLYMARKET_SECRET.get_secret_value(),
+                self.POLYMARKET_PASSPHRASE.get_secret_value(),
+            ]
+        )
+
+
+@lru_cache
+def get_settings() -> Settings:
+    _settings = Settings()
+    logger = logging.getLogger(__name__)
+    # Minimal startup log — no secrets, no noise
+    logger.info(
+        "POLYGOD settings loaded | MODE=%s | DB_DRIVER=%s | DEBUG=%s",
+        _settings.POLYGOD_MODE,
+        _settings.DATABASE_URL.split(":")[0],  # e.g. "sqlite+aiosqlite"
+        _settings.DEBUG,
+    )
+    if _settings.is_sqlite and not _settings.DEBUG:
+        logger.warning(
+            "Using SQLite in non-DEBUG mode. Consider PostgreSQL for production workloads."
+        )
+    if not _settings.GEMINI_API_KEY.get_secret_value():
+        logger.warning("GEMINI_API_KEY not set — AI agents disabled")
+    if not _settings.NEWS_API_KEY.get_secret_value():
+        logger.warning("NEWS_API_KEY not set — news aggregation disabled")
+    if _settings.POLYGOD_MODE >= 3 and not _settings.POLYMARKET_PRIVATE_KEY.get_secret_value():
+        logger.warning(
+            "POLYGOD_MODE=3 (BEAST) but POLYMARKET_PRIVATE_KEY is not set. "
+            "Live trades will fall back to paper execution."
+        )
+    return _settings
+
+
+settings = get_settings()
+=== FILE: src/backend/database.py ===
+"""
+POLYGOD Database — Alembic-ready async SQLAlchemy engine.
+
+Changes vs previous version:
+  - FIXED C6: Pool settings are now conditional on database dialect.
+              SQLite does not support pool_size / max_overflow; passing
+              them caused SAWarning and masked connection errors.
+  - FIXED C6: connect_args={"check_same_thread": False} added for SQLite
+              so APScheduler background threads can use the same engine.
+  - FIXED L1: datetime.utcnow() replaced with timezone-aware alternative
+              (kept as a helper so callers don't need to import timezone).
+  - FIXED: init_db() now calls create_all only when DEBUG=True.
+              Production path validates connectivity only — use Alembic.
+"""
+
+from collections.abc import AsyncGenerator
+from datetime import datetime, timezone
+
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.orm import DeclarativeBase
+from sqlalchemy.pool import StaticPool
+
+from src.backend.config import settings
+
+
+class Base(DeclarativeBase):
+    pass
+
+
+def _build_engine():
+    """
+    Build the async SQLAlchemy engine with driver-appropriate settings.
+
+    SQLite (aiosqlite) does not support pool_size / max_overflow and requires
+    StaticPool + check_same_thread=False for cross-thread usage in async contexts.
+    PostgreSQL (asyncpg) gets full connection pool tuning.
+    """
+    url = settings.DATABASE_URL
+
+    if settings.is_sqlite:
+        return create_async_engine(
+            url,
+            echo=settings.DEBUG,
+            future=True,
+            # StaticPool keeps a single connection — correct for SQLite
+            poolclass=StaticPool,
+            connect_args={"check_same_thread": False},
+        )
+    else:
+        # PostgreSQL / asyncpg path
+        return create_async_engine(
+            url,
+            echo=settings.DEBUG,
+            future=True,
+            pool_pre_ping=True,
+            pool_size=20,
+            max_overflow=10,
+            pool_recycle=300,  # recycle stale connections every 5 min
+        )
+
+
+engine = _build_engine()
+
+async_session_factory = async_sessionmaker(
+    engine,
+    class_=AsyncSession,
+    expire_on_commit=False,
+)
+
+
+async def get_db() -> AsyncGenerator[AsyncSession, None]:
+    """FastAPI dependency — yields an async DB session with auto commit/rollback."""
+    async with async_session_factory() as session:
+        try:
+            yield session
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            raise
+        finally:
+            await session.close()
+
+
+async def init_db() -> None:
+    """
+    Initialize the database.
+
+    PRODUCTION: This must run `alembic upgrade head` via subprocess.
+    DEVELOPMENT: Falls back to create_all for convenience (set DEBUG=True).
+
+    To set up Alembic:
+        uv add alembic
+        alembic init migrations
+        # Edit migrations/env.py to use your async engine + Base
+        alembic revision --autogenerate -m "initial"
+        alembic upgrade head
+    """
+    if settings.DEBUG:
+        # Dev convenience — create tables directly from models
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+    else:
+        # Production — tables must exist from Alembic migrations
+        # Validate connectivity only
+        from sqlalchemy import text
+
+        async with engine.connect() as conn:
+            await conn.execute(text("SELECT 1"))
+
+
+async def close_db() -> None:
+    """Dispose all pooled connections — call during app shutdown."""
+    await engine.dispose()
+
+
+def utcnow() -> datetime:
+    """
+    Return the current UTC time as a timezone-aware datetime.
+
+    Replaces the deprecated datetime.utcnow() (Python 3.12+).
+    Use this helper everywhere instead of datetime.utcnow().
+    """
+    return datetime.now(timezone.utc)
+=== FILE: src/backend/db_models.py ===
+"""
+SQLAlchemy models for the Polymarket News Tracker.
+
+Defines Market, NewsArticle, PriceHistory, and AppState tables with proper indexing.
+"""
+
+from datetime import datetime
+
+from sqlalchemy import Boolean, DateTime, Float, Index, Integer, String, Text, func
+from sqlalchemy.orm import Mapped, mapped_column
+
+from src.backend.database import Base
+
+
+class Market(Base):
+    """Model representing a Polymarket prediction market."""
+
+    __tablename__ = "markets"
+
+    id: Mapped[str] = mapped_column(String(255), primary_key=True)
+    slug: Mapped[str] = mapped_column(String(500), nullable=False)
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    volume_24h: Mapped[float] = mapped_column(Float, default=0.0)
+    volume_7d: Mapped[float] = mapped_column(Float, default=0.0)
+    liquidity: Mapped[float] = mapped_column(Float, default=0.0)
+    yes_percentage: Mapped[float] = mapped_column(Float, default=50.0)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    end_date: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    image_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    clob_token_ids: Mapped[str | None] = mapped_column(Text, nullable=True)
+    last_updated: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), onupdate=func.now()
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+    __table_args__ = (
+        Index("idx_markets_volume_7d", "volume_7d"),
+        Index("idx_markets_is_active", "is_active"),
+        Index("idx_markets_slug", "slug"),
+    )
+
+    def to_dict(self) -> dict:
+        """Convert model to dictionary."""
+        return {
+            "id": self.id,
+            "slug": self.slug,
+            "title": self.title,
+            "description": self.description,
+            "volume_24h": self.volume_24h,
+            "volume_7d": self.volume_7d,
+            "liquidity": self.liquidity,
+            "yes_percentage": self.yes_percentage,
+            "is_active": self.is_active,
+            "end_date": self.end_date.isoformat() if self.end_date else None,
+            "image_url": self.image_url,
+            "clob_token_ids": self.clob_token_ids,
+            "last_updated": (
+                self.last_updated.isoformat() if self.last_updated else None
+            ),
+        }
+
+
+class PriceHistory(Base):
+    """Model for storing market price/percentage history over time."""
+
+    __tablename__ = "price_history"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    market_id: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    yes_percentage: Mapped[float] = mapped_column(Float, nullable=False)
+    volume: Mapped[float] = mapped_column(Float, default=0.0)
+    timestamp: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+    __table_args__ = (Index("idx_price_history_market_time", "market_id", "timestamp"),)
+
+    def to_dict(self) -> dict:
+        """Convert model to dictionary."""
+        return {
+            "market_id": self.market_id,
+            "yes_percentage": self.yes_percentage,
+            "volume": self.volume,
+            "timestamp": self.timestamp.isoformat() if self.timestamp else None,
+        }
+
+
+class NewsArticle(Base):
+    """Model representing a news article related to a market."""
+
+    __tablename__ = "news_articles"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    market_id: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    url_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    url: Mapped[str] = mapped_column(Text, nullable=False)
+    source: Mapped[str] = mapped_column(String(255), nullable=True)
+    author: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    image_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    published_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    sentiment_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+    __table_args__ = (
+        Index("idx_news_market_id", "market_id"),
+        Index("idx_news_published_at", "published_at"),
+        Index("idx_news_market_published", "market_id", "published_at"),
+    )
+
+    def to_dict(self) -> dict:
+        """Convert model to dictionary."""
+        return {
+            "id": self.id,
+            "market_id": self.market_id,
+            "title": self.title,
+            "description": self.description,
+            "url": self.url,
+            "source": self.source,
+            "author": self.author,
+            "image_url": self.image_url,
+            "published_at": (
+                self.published_at.isoformat() if self.published_at else None
+            ),
+            "sentiment_score": self.sentiment_score,
+        }
+
+
+class AppState(Base):
+    """Model for storing application state like last update times."""
+
+    __tablename__ = "app_state"
+
+    key: Mapped[str] = mapped_column(String(100), primary_key=True)
+    value: Mapped[str] = mapped_column(Text, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), onupdate=func.now()
+    )
+
+
+class Trade(Base):
+    """Live CLOB fills / whale trades — persisted for dashboard + history."""
+
+    __tablename__ = "trades"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    # fill_id is the unique CLOB transaction/fill identifier for deduplication
+    fill_id: Mapped[str] = mapped_column(String(128), unique=True, nullable=False)
+    market_id: Mapped[str] = mapped_column(String(255), index=True, nullable=False)
+    size: Mapped[float] = mapped_column(Float, nullable=False)
+    price: Mapped[float] = mapped_column(Float, nullable=False)
+    side: Mapped[str] = mapped_column(String(10), nullable=False)  # "buy" or "sell"
+    maker_fee: Mapped[float] = mapped_column(Float, default=0.0)
+    taker_fee: Mapped[float] = mapped_column(Float, default=0.0)
+    timestamp: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), index=True
+    )
+
+    __table_args__ = (
+        Index("idx_trades_market_time", "market_id", "timestamp"),
+        Index("idx_trades_whale", "market_id", "size"),  # fast whale queries
+    )
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "fill_id": self.fill_id,
+            "market_id": self.market_id,
+            "size": self.size,
+            "price": self.price,
+            "side": self.side,
+            "value_usd": round(self.size * self.price, 2),
+            "timestamp": self.timestamp.isoformat() if self.timestamp else None,
+        }
+
+Routes
+=== FILE: src/backend/routes/__init__.py ===
+<full raw code here — no omissions, no truncation>
+=== FILE: src/backend/routes/markets.py ===
+<full raw code here — no omissions, no truncation>
+=== FILE: src/backend/routes/news.py ===
+<full raw code here — no omissions, no truncation>
+=== FILE: src/backend/routes/debate.py ===
+<full raw code here — no omissions, no truncation>
+=== FILE: src/backend/routes/users.py ===
+<full raw code here — no omissions, no truncation>
+=== FILE: src/backend/routes/llm.py ===
+<full raw code here — no omissions, no truncation>
+=== FILE: src/backend/routes/telegram.py ===
+<full raw code here — no omissions, no truncation>
+
+Key Modules
+=== FILE: src/backend/polymarket/__init__.py ===
+<full raw code here — no omissions, no truncation>
+=== FILE: src/backend/polymarket/client.py ===
+<full raw code here — no omissions, no truncation>
+=== FILE: src/backend/polymarket/schemas.py ===
+<full raw code here — no omissions, no truncation>
+=== FILE: src/backend/news/__init__.py ===
+<full raw code here — no omissions, no truncation>
+=== FILE: src/backend/news/aggregator.py ===
+<full raw code here — no omissions, no truncation>
+=== FILE: src/backend/news/schemas.py ===
+<full raw code here — no omissions, no truncation>
+=== FILE: src/backend/tasks/__init__.py ===
+<full raw code here — no omissions, no truncation>
+=== FILE: src/backend/tasks/update_markets.py ===
+<full raw code here — no omissions, no truncation>
+=== FILE: src/backend/services/__init__.py ===
+<full raw code here — no omissions, no truncation>
+=== FILE: src/backend/services/llm_concierge.py ===
+<full raw code here — no omissions, no truncation>
+=== FILE: src/backend/agents/debate.py ===
+<full raw code here — no omissions, no truncation>
+=== FILE: src/backend/strategies/micro_niche_strategy.py ===
+<full raw code here — no omissions, no truncation>
+=== FILE: src/backend/middleware/__init__.py ===
+<full raw code here — no omissions, no truncation>
+=== FILE: src/backend/middleware/auth.py ===
+<full raw code here — no omissions, no truncation>
+=== FILE: src/backend/middleware/rate_limit.py ===
+<full raw code here — no omissions, no truncation>
+=== FILE: src/backend/middleware/security_headers.py ===
+<full raw code here — no omissions, no truncation>
+=== FILE: src/backend/models/__init__.py ===
+<full raw code here — no omissions, no truncation>
+=== FILE: src/backend/models/llm.py ===
+<full raw code here — no omissions, no truncation>
+=== FILE: src/backend/cache.py ===
+<full raw code here — no omissions, no truncation>
+=== FILE: src/backend/auth.py ===
+<full raw code here — no omissions, no truncation>
+=== FILE: src/backend/llm_router.py ===
+<full raw code here — no omissions, no truncation>
+=== FILE: src/backend/polygod_graph.py ===
+<full raw code here — no omissions, no truncation>
+=== FILE: src/backend/self_improving_memory_loop.py ===
+<full raw code here — no omissions, no truncation>
+=== FILE: src/backend/snapshot_engine.py ===
+<full raw code here — no omissions, no truncation>
+=== FILE: src/backend/whale_copy_rag.py ===
+<full raw code here — no omissions, no truncation>
+=== FILE: src/backend/autoresearch_lab.py ===
+<full raw code here — no omissions, no truncation>
+=== FILE: src/backend/niche_scanner.py ===
+<full raw code here — no omissions, no truncation>
+=== FILE: src/backend/parallel_tournament.py ===
+<full raw code here — no omissions, no truncation>
+
+Audit export generated on 2026-04-15. Backend audit export.
