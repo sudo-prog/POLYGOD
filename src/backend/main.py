@@ -29,6 +29,7 @@ from src.backend.middleware.security_headers import SecurityHeadersMiddleware
 from src.backend.news.aggregator import news_aggregator
 from src.backend.polygod_graph import POLYGOD_MODE, paper, polygod_graph, run_polygod
 from src.backend.polymarket.client import active_connections, polymarket_client
+from src.backend.routes import agent as agent_route  # RESTORED: AI Agent Widget
 from src.backend.routes import debate, llm, markets, news, telegram, users
 from src.backend.routes.telegram import run_telegram_bot  # required by lifespan()
 from src.backend.self_improving_memory_loop import forgetting_engine, memory_loop
@@ -51,9 +52,7 @@ _SECRET_KEYS = (
     "TELEGRAM_BOT_TOKEN",
     "X_BEARER_TOKEN",
 )
-_SECRET_VALUES = frozenset(
-    v for k in _SECRET_KEYS if (v := os.getenv(k, "")) and len(v) > 4
-)
+_SECRET_VALUES = frozenset(v for k in _SECRET_KEYS if (v := os.getenv(k, "")) and len(v) > 4)
 
 
 def mask_secrets(text: str) -> str:
@@ -124,9 +123,7 @@ async def get_mode_from_db():
     from src.backend.db_models import AppState
 
     async with async_session_factory() as db:
-        result = await db.execute(
-            select(AppState).where(AppState.key == "polygod_mode")
-        )
+        result = await db.execute(select(AppState).where(AppState.key == "polygod_mode"))
         row = result.scalar_one_or_none()
         return int(row.value) if row else POLYGOD_MODE
 
@@ -138,9 +135,7 @@ async def set_mode_in_db(mode: int):
     from src.backend.db_models import AppState
 
     async with async_session_factory() as db:
-        result = await db.execute(
-            select(AppState).where(AppState.key == "polygod_mode")
-        )
+        result = await db.execute(select(AppState).where(AppState.key == "polygod_mode"))
         row = result.scalar_one_or_none()
         if row:
             row.value = str(mode)
@@ -158,9 +153,7 @@ async def refresh_llm_stats():
     from src.backend.models.llm import Provider, UsageLog
 
     async with async_session_factory() as db:
-        today_start = datetime.now(timezone.utc).replace(
-            hour=0, minute=0, second=0, microsecond=0
-        )
+        today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
         result = await db.execute(
             select(
                 UsageLog.provider,
@@ -307,6 +300,7 @@ async def rate_limit_handler(request, exc):
 
 
 app.include_router(markets.router, prefix="/api/markets")
+app.include_router(agent_route.router, prefix="/api/agent")  # RESTORED: AI Agent Widget
 app.include_router(news.router, prefix="/api/news")
 app.include_router(debate.router, prefix="/api/debate")
 app.include_router(users.router, prefix="/api/users")
@@ -418,13 +412,25 @@ async def websocket_live_trades(websocket: WebSocket):
 
 @app.post("/polygod/switch-mode")
 async def switch_mode(new_mode: int, _: bool = Depends(admin_required)):
+    """
+    Switch POLYGOD operating mode.
+
+    FIXED C-2: Updates the module-level POLYGOD_MODE global, NOT settings.
+    Also syncs to polygod_graph module so running agents see the change.
+    Mode is persisted to DB so it survives restarts.
+    """
     global POLYGOD_MODE
     POLYGOD_MODE = new_mode
+
+    # Also sync to polygod_graph module so running agents see the change
+    import src.backend.polygod_graph as _pg
+
+    _pg.POLYGOD_MODE = new_mode
+
     await set_mode_in_db(new_mode)
-    mode_label = {0: "OBSERVE", 1: "PAPER", 2: "LOW", 3: "BEAST"}.get(
-        new_mode, "UNKNOWN"
-    )
-    return {"status": f"Switched to Mode {POLYGOD_MODE} — {mode_label}"}
+    mode_label = {0: "OBSERVE", 1: "PAPER", 2: "LOW", 3: "BEAST"}.get(new_mode, "UNKNOWN")
+    logger.info("POLYGOD mode switched", new_mode=new_mode, label=mode_label)
+    return {"status": f"Switched to Mode {new_mode} — {mode_label}"}
 
 
 @app.post("/polygod/simulate")
@@ -437,9 +443,7 @@ async def monte_carlo_simulate(
     sim = run_monte_carlo({"size": order_size}, market_data)
     return {
         "simulation": sim,
-        "recommendation": (
-            "BEAST APPROVED" if sim["win_prob"] > 0.65 else "SAFE MODE ONLY"
-        ),
+        "recommendation": ("BEAST APPROVED" if sim["win_prob"] > 0.65 else "SAFE MODE ONLY"),
     }
 
 

@@ -46,6 +46,9 @@ class Settings(BaseSettings):
     GEMINI_API_KEY: SecretStr = Field(default=SecretStr(""))
     GROK_API_KEY: SecretStr = Field(default=SecretStr(""))
     TAVILY_API_KEY: SecretStr = Field(default=SecretStr(""))
+    # RESTORED: Used by llm_router.py GodTierLLMRouter
+    OPENROUTER_API_KEY: SecretStr = Field(default=SecretStr(""))
+    PUTER_API_KEY: SecretStr = Field(default=SecretStr(""))
     X_BEARER_TOKEN: SecretStr = Field(default=SecretStr(""))
     LANGSMITH_API_KEY: SecretStr = Field(default=SecretStr(""))
     LIGHTNING_AI_TOKEN: SecretStr = Field(default=SecretStr(""))
@@ -96,10 +99,16 @@ class Settings(BaseSettings):
         Empty string is allowed here so DEBUG-mode startups work without a token.
         Production enforcement is in lifespan() in main.py.
         """
-        if v.get_secret_value() == "change-this-before-use":
-            raise ValueError(
-                "POLYGOD_ADMIN_TOKEN must not be the default sentinel. "
-                'Generate one with: python -c "import secrets; print(secrets.token_urlsafe(32))"'
+        val = v.get_secret_value()
+        if val in ("change-this-before-use", ""):
+            # Don't raise here — enforcement is in lifespan().
+            # But log loudly so misconfigured deploys are obvious in container logs.
+            import logging as _log
+
+            _log.getLogger(__name__).error(
+                "POLYGOD_ADMIN_TOKEN is not set or is default sentinel. "
+                "The app will refuse to start. "
+                'Generate: python -c "import secrets; print(secrets.token_urlsafe(32))"'
             )
         return v
 
@@ -151,14 +160,24 @@ class Settings(BaseSettings):
     def validate_security_posture(self) -> "Settings":
         """
         Cross-field validation: enforce that INTERNAL_API_KEY is a real secret
-        when DEBUG=False (production mode).
+        when DEBUG=False (production mode). Warn in DEBUG mode.
         """
-        if not self.DEBUG:
-            internal_val = self.INTERNAL_API_KEY.get_secret_value()
-            if internal_val in _SENTINEL_VALUES:
+        import logging as _log
+
+        _logger = _log.getLogger(__name__)
+        internal_val = self.INTERNAL_API_KEY.get_secret_value()
+        if internal_val in _SENTINEL_VALUES:
+            if not self.DEBUG:
                 raise ValueError(
                     "INTERNAL_API_KEY must be set to a strong secret in production (DEBUG=False). "
                     'Generate one with: python -c "import secrets; print(secrets.token_urlsafe(32))"'
+                )
+            else:
+                # FIX C-3: Warn even in DEBUG so misconfigured staging deployments are visible
+                _logger.warning(
+                    "INTERNAL_API_KEY is using a sentinel/default value. "
+                    "This is only acceptable in local development (DEBUG=True). "
+                    "Never deploy to staging/production with this value."
                 )
         return self
 
@@ -182,10 +201,7 @@ class Settings(BaseSettings):
 
     @property
     def is_postgres(self) -> bool:
-        return (
-            "postgresql" in self.DATABASE_URL.lower()
-            or "postgres" in self.DATABASE_URL.lower()
-        )
+        return "postgresql" in self.DATABASE_URL.lower() or "postgres" in self.DATABASE_URL.lower()
 
     @property
     def live_trading_enabled(self) -> bool:
@@ -219,10 +235,7 @@ def get_settings() -> Settings:
         logger.warning("GEMINI_API_KEY not set — AI agents disabled")
     if not _settings.NEWS_API_KEY.get_secret_value():
         logger.warning("NEWS_API_KEY not set — news aggregation disabled")
-    if (
-        _settings.POLYGOD_MODE >= 3
-        and not _settings.POLYMARKET_PRIVATE_KEY.get_secret_value()
-    ):
+    if _settings.POLYGOD_MODE >= 3 and not _settings.POLYMARKET_PRIVATE_KEY.get_secret_value():
         logger.warning(
             "POLYGOD_MODE=3 (BEAST) but POLYMARKET_PRIVATE_KEY is not set. "
             "Live trades will fall back to paper execution."

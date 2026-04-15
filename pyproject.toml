@@ -78,6 +78,8 @@ dependencies = [
     "python-telegram-bot>=21.0",
     "asyncpg>=0.29",
     "alembic>=1.13",
+    # ADDED: was used in main.py but missing from deps
+    "structlog>=25.0.0",
 ]
 
 [project.optional-dependencies]

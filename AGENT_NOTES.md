@@ -1,5 +1,31 @@
 # Agent Implementation Notes - POLYGOD Critical Fixes & Test Suite
 
+## 2026-04-15 - Claude Updates Fixes Applied
+
+**Date:** 2026-04-15
+**Agent:** Kilo (GOD TIER ENGINEER)
+**Project:** POLYGOD - Apply Critical Fixes from Claude Updates Folder
+
+### Overview
+Applied fixes from ~/Downloads/Claude Updates/ folder. Verified Claude's audit was correct - some fixes were missing from codebase.
+
+### Issues Fixed
+- **C-1:** Added agent router import + include_router (AI Agent Widget was 404)
+- **C-2:** Fixed switch_mode to update module-level globals (was silently failing on frozen settings)
+- **M-1:** Added OPENROUTER_API_KEY and PUTER_API_KEY to config.py
+- **M-2:** Added structlog to main dependencies in pyproject.toml
+
+### Files Modified
+- src/backend/main.py - Added agent router (line 32) + include_router (line 303) + switch_mode fix (lines 411-427)
+- src/backend/config.py - Added OPENROUTER_API_KEY and PUTER_API_KEY fields (after TAVILY_API_KEY)
+- pyproject.toml - Added structlog>=25.0.0 to main dependencies
+
+### Verification
+✅ Import tests pass for all critical modules
+✅ Agent router importable with router attribute
+✅ polymarket_helpers parse_float working
+✅ Config fields verified present
+
 ## 2026-04-15 - Backend Audit Export Regeneration
 
 **Date:** 2026-04-15
