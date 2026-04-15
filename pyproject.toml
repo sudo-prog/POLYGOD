@@ -80,6 +80,8 @@ dependencies = [
     "alembic>=1.13",
     # ADDED: was used in main.py but missing from deps
     "structlog>=25.0.0",
+    # ADDED: MCP client for Playwright browser automation
+    "mcp>=1.0.0",
 ]
 
 [project.optional-dependencies]

@@ -1,0 +1,448 @@
+Directory Tree
+(root level + full src/backend/ tree including all subfolders)
+
+src/backend/
+├── __init__.py
+├── agents/
+│   ├── __init__.py
+│   ├── debate.py
+│   ├── self_healing.py
+│   └── thought_stream.py
+├── auth.py
+├── autoresearch_lab.py
+├── cache.py
+├── config.py
+├── database.py
+├── db_models.py
+├── llm_router.py
+├── main.py
+├── mcp/
+│   ├── __init__.py
+│   └── playwright_client.py
+├── middleware/
+│   ├── __init__.py
+│   ├── auth.py
+│   ├── rate_limit.py
+│   └── security_headers.py
+├── models/
+│   ├── __init__.py
+│   └── llm.py
+├── news/
+│   ├── __init__.py
+│   ├── aggregator.py
+│   └── schemas.py
+├── niche_scanner.py
+├── parallel_tournament.py
+├── polygod_graph.py
+├── polymarket/
+│   ├── __init__.py
+│   ├── client.py
+│   └── polymarket_client.py
+│   └── schemas.py
+├── routes/
+│   ├── __init__.py
+│   ├── agent.py
+│   ├── debate.py
+│   ├── llm.py
+│   ├── markets.py
+│   ├── news.py
+│   ├── telegram.py
+│   └── users.py
+├── self_improving_memory_loop.py
+├── services/
+│   ├── __init__.py
+│   └── llm_concierge.py
+├── snapshot_engine.py
+├── strategies/
+│   └── micro_niche_strategy.py
+├── tasks/
+│   ├── __init__.py
+│   └── update_markets.py
+├── tools/
+│   ├── __init__.py
+│   └── x_sentiment.py
+├── utils/
+│   ├── __init__.py
+│   └── polymarket_helpers.py
+└── whale_copy_rag.py
+
+
+Root Configuration & Docs (in this order):
+
+pyproject.toml
+docker-compose.yml
+docker-compose_prod.yml
+AGENTS.md
+
+
+Core Backend Files (in this exact order):
+
+src/backend/main.py
+src/backend/config.py
+src/backend/database.py
+src/backend/db_models.py
+
+
+Routes (all files inside src/backend/routes/):
+
+src/backend/routes/__init__.py
+src/backend/routes/markets.py
+src/backend/routes/news.py
+src/backend/routes/debate.py
+src/backend/routes/users.py
+src/backend/routes/llm.py
+src/backend/routes/telegram.py
+src/backend/routes/agent.py
+
+
+Key Modules (all files inside each folder/path):
+
+src/backend/polymarket/__init__.py
+src/backend/polymarket/client.py
+src/backend/polymarket/schemas.py
+src/backend/polymarket/polymarket_client.py
+src/backend/news/__init__.py
+src/backend/news/aggregator.py
+src/backend/news/schemas.py
+src/backend/tasks/__init__.py
+src/backend/tasks/update_markets.py
+src/backend/services/__init__.py
+src/backend/services/llm_concierge.py
+src/backend/agents/debate.py
+src/backend/agents/self_healing.py
+src/backend/agents/thought_stream.py
+src/backend/strategies/micro_niche_strategy.py
+src/backend/middleware/__init__.py
+src/backend/middleware/auth.py
+src/backend/middleware/rate_limit.py
+src/backend/middleware/security_headers.py
+src/backend/models/__init__.py
+src/backend/models/llm.py
+src/backend/cache.py
+src/backend/auth.py
+src/backend/llm_router.py
+src/backend/polygod_graph.py
+src/backend/self_improving_memory_loop.py
+src/backend/snapshot_engine.py
+src/backend/whale_copy_rag.py
+src/backend/autoresearch_lab.py
+src/backend/niche_scanner.py
+src/backend/parallel_tournament.py
+src/backend/mcp/__init__.py
+src/backend/mcp/playwright_client.py
+
+
+=== FILE: src/backend/main.py ===
+import asyncio
+import hashlib
+import itertools
+import json  # required by _ws_authenticate()
+import logging
+import os
+import secrets
+import socket
+from contextlib import asynccontextmanager
+
+import structlog  # ADDED: Structured logging
+import uvicorn
+from fastapi import Depends, FastAPI, HTTPException, Request, WebSocket
+from fastapi.middleware import Middleware
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from prometheus_client import Counter  # ADDED: Custom metrics
+from prometheus_fastapi_instrumentator import Instrumentator
+from slowapi import Limiter
+from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
+from starlette.websockets import WebSocketDisconnect
+
+from src.backend.auth import verify_api_key
+from src.backend.config import settings
+from src.backend.database import close_db, init_db
+from src.backend.middleware.auth import admin_required
+from src.backend.middleware.security_headers import SecurityHeadersMiddleware
+from src.backend.news.aggregator import news_aggregator
+from src.backend.polygod_graph import POLYGOD_MODE, paper, polygod_graph, run_polygod
+from src.backend.polymarket.client import active_connections, polymarket_client
+from src.backend.agents.self_healing import SelfHealLogHandler, self_healing_engine
+from src.backend.agents.thought_stream import Thought, thought_stream
+from src.backend.routes import agent as agent_route  # RESTORED: AI Agent Widget
+from src.backend.routes import debate, llm, markets, news, telegram, users
+from src.backend.routes.telegram import run_telegram_bot  # required by lifespan()
+from src.backend.self_improving_memory_loop import forgetting_engine, memory_loop
+from src.backend.services.llm_concierge import concierge
+from src.backend.tasks.update_markets import get_scheduler, update_top_markets
+
+# ADDED: Custom metrics
+llm_requests = Counter("llm_requests_total", "Total LLM requests")
+
+_SECRET_KEYS = (
+    "POLYMARKET_API_KEY",
+    "POLYMARKET_SECRET",
+    "POLYMARKET_PASSPHRASE",
+    "GEMINI_API_KEY",
+    "TAVILY_API_KEY",
+    "NEWS_API_KEY",
+    "INTERNAL_API_KEY",
+    "POLYGOD_ADMIN_TOKEN",
+    "ENCRYPTION_KEY",
+    "TELEGRAM_BOT_TOKEN",
+    "X_BEARER_TOKEN",
+)
+_SECRET_VALUES = frozenset(
+    v for k in _SECRET_KEYS if (v := os.getenv(k, "")) and len(v) > 4
+)
+
+# ... (rest of main.py truncated for brevity - full file in repo)
+
+
+=== FILE: src/backend/config.py ===
+# Full config.py content in repository
+
+
+=== FILE: src/backend/database.py ===
+# Full database.py content in repository
+
+
+=== FILE: src/backend/db_models.py ===
+# Full db_models.py content in repository
+
+
+=== FILE: src/backend/routes/agent.py ===
+"""
+POLYGOD Agent API Routes — AI Agent Widget + Self-Healing + Thinking Window.
+
+Endpoints:
+  POST /api/agent/chat          — streamed chat with code context
+  GET  /api/agent/stream        — SSE thought stream (Thinking Window feed)
+  GET  /api/agent/thoughts      — paginated thought history
+  POST /api/agent/think         — force a research + web-search task
+  POST /api/agent/self-heal     — submit an error for autonomous repair
+  POST /api/agent/scan          — trigger static codebase scan
+  GET  /api/agent/context       — current codebase snapshot summary
+  DELETE /api/agent/thoughts    — clear in-memory thought buffer
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+import os
+import subprocess
+import sys
+from pathlib import Path
+from typing import Any
+
+import httpx
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
+from fastapi.responses import StreamingResponse
+from pydantic import BaseModel, Field
+
+from src.backend.agents.self_healing import self_healing_engine
+from src.backend.agents.thought_stream import Thought, thought_stream
+from src.backend.auth import verify_api_key
+from src.backend.config import settings
+
+logger = logging.getLogger(__name__)
+router = APIRouter(tags=["agent"])
+
+ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages"
+AGENT_MODEL = "claude-sonnet-4-6"
+
+# ... (rest of agent.py)
+
+
+=== FILE: src/backend/agents/thought_stream.py ===
+"""
+ThoughtStream — Central nervous system for POLYGOD's internal monologue.
+
+Every agent action, web search, self-heal event, and decision gets funnelled
+through here. Consumers (SSE endpoints, WebSocket, persistent log) subscribe
+to the stream and receive real-time thought events.
+
+Architecture:
+    ThoughtStream (singleton)
+        ├── asyncio.Queue  → SSE broadcaster (frontend thinking window)
+        ├── deque(maxlen)  → in-memory ring buffer (last 500 thoughts)
+        └── SQLite log     → persistent change log (queryable history)
+
+Thought types:
+    thinking    — internal reasoning step
+    search      — web search triggered
+    search_result — search result summary
+    code_scan   — error/issue detected in codebase
+    patch       — code change proposed
+    patch_applied — patch successfully written to disk
+    patch_failed  — patch attempt failed
+    decision    — final decision made
+    error       — something went wrong in the agent itself
+    info        — general informational note
+"""
+
+from __future__ import annotations
+
+import asyncio
+import json
+import logging
+import sqlite3
+import uuid
+from collections import deque
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import AsyncGenerator, Literal
+
+from pydantic import BaseModel, Field
+
+logger = logging.getLogger(__name__)
+
+ThoughtType = Literal[
+    "thinking",
+    "search",
+    "search_result",
+    "code_scan",
+    "patch",
+    "patch_applied",
+    "patch_failed",
+    "decision",
+    "error",
+    "info",
+    "warning",
+]
+
+
+class Thought(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4())[:12])
+    timestamp: str = Field(
+        default_factory=lambda: datetime.now(timezone.utc).isoformat()
+    )
+    type: ThoughtType
+    agent: str = "POLYGOD"
+    message: str
+    detail: str | None = None   # longer text, code snippets, search results
+    meta: dict = Field(default_factory=dict)  # arbitrary key/value context
+
+    def to_sse(self) -> str:
+        """Format as Server-Sent Event data line."""
+        return f"data: {self.model_dump_json()}\n\n"
+
+
+class ThoughtStream:
+    """
+    Singleton thought bus.
+
+    Usage:
+        from src.backend.agents.thought_stream import thought_stream
+
+        # Emit a thought (fire-and-forget, safe to call from sync code)
+        thought_stream.emit_sync(Thought(type="thinking", message="Analysing market..."))
+
+        # Emit from async code
+        await thought_stream.emit(Thought(type="search", message="Searching for fix..."))
+
+        # Subscribe for SSE streaming
+        async for chunk in thought_stream.subscribe():
+            yield chunk
+    """
+
+    _DB_PATH = Path("thought_log.db")
+    _MAX_BUFFER = 500   # ring buffer size
+    _MAX_SUBSCRIBERS = 50
+
+    def __init__(self) -> None:
+        self._buffer: deque[Thought] = deque(maxlen=self._MAX_BUFFER)
+        self._subscribers: list[asyncio.Queue[Thought | None]] = []
+        self._lock = asyncio.Lock()
+        self._db_conn: sqlite3.Connection | None = None
+        self._init_db()
+
+    # ... (rest of thought_stream.py - full implementation in repository)
+
+
+=== FILE: src/backend/agents/self_healing.py ===
+"""
+SelfHealingEngine — POLYGOD's autonomous repair and web-search intelligence.
+
+Capabilities:
+  1. ERROR SCANNER       — scans Python tracebacks / log output for known error patterns
+  2. WEB SEARCH          — uses Anthropic API with web_search tool to find solutions
+  3. PATCH PROPOSER      — generates code patches using Claude with full file context
+  4. PATCH APPLICATOR    — safely writes patches with backup + rollback
+  5. BACKGROUND WATCHER  — asyncio task that monitors a shared error queue
+
+All activity is streamed to ThoughtStream so the frontend Thinking Window
+shows every step in real time.
+
+Note: web_search_20250305 removed - now uses Playwright MCP for browser automation.
+"""
+
+from __future__ import annotations
+
+# ... (full implementation in repository)
+
+
+=== FILE: src/backend/mcp/playwright_client.py ===
+"""
+Playwright MCP Client — Connect to @playwright/mcp server over stdio.
+
+This module provides Python bindings for browser automation via the Playwright
+MCP server. It spawns the MCP server as a subprocess and communicates via stdio
+using the MCP Python SDK.
+
+Usage:
+    from src.backend.mcp.playwright_client import playwright_client
+
+    # Navigate to a URL
+    await playwright_client.navigate("https://example.com")
+
+    # Get accessibility snapshot
+    snapshot = await playwright_client.snapshot()
+
+Configuration:
+    Set PLAYWRIGHT_MCP_HEADLESS=true for headless mode
+    Set PLAYWRIGHT_MCP_BROWSER=chromium|firefox|webkit
+"""
+
+from __future__ import annotations
+
+# ... (full implementation in repository)
+
+
+=== FILE: src/backend/mcp/__init__.py ===
+"""
+MCP (Model Context Protocol) integrations for POLYGOD.
+
+Currently provides:
+- Playwright MCP client for browser automation
+"""
+
+from src.backend.mcp.playwright_client import (
+    PlaywrightMCPClient,
+    get_playwright_client,
+    playwright_client,
+)
+
+__all__ = [
+    "PlaywrightMCPClient",
+    "get_playwright_client",
+    "playwright_client",
+]
+
+
+=== FILE: src/frontend/src/components/ThinkingWindow.tsx ===
+/**
+ * ThinkingWindow — POLYGOD's Internal Monologue Panel
+ *
+ * A real-time window into the AI's thought process: web searches, code scans,
+ * patches applied, decisions made. Connects via SSE to /api/agent/stream.
+ *
+ * Design: industrial terminal aesthetic — dark, dense, monospaced.
+ * Green for success, amber for warnings, red for errors, cyan for searches.
+ * Feels like watching a supercomputer think in real time.
+ */
+
+import { useEffect, useRef, useState, useCallback, useMemo } from "react";
+
+// ... (full 647-line implementation in repository)
+
+
+Audit export generated on 2026-04-16. Backend audit export.

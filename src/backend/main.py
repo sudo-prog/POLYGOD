@@ -21,6 +21,8 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 from starlette.websockets import WebSocketDisconnect
 
+from src.backend.agents.self_healing import SelfHealLogHandler, self_healing_engine
+from src.backend.agents.thought_stream import thought_stream
 from src.backend.auth import verify_api_key
 from src.backend.config import settings
 from src.backend.database import close_db, init_db
@@ -231,6 +233,16 @@ async def lifespan(app: FastAPI):
 
     # Start CLOB live whale-trade monitor
     asyncio.create_task(polymarket_client.stream_live_trades())
+
+    # Self-healing background watcher — auto-detects and repairs errors
+    asyncio.create_task(self_healing_engine.run_background_watcher())
+
+    # Wire ERROR/CRITICAL log events directly into the self-heal queue
+    logging.getLogger().addHandler(SelfHealLogHandler())
+
+    await thought_stream.info(
+        "POLYGOD online — self-heal watcher active", agent="POLYGOD"
+    )
 
     def _add_job(func, **kwargs):
         try:
