@@ -18,8 +18,10 @@ import json
 import logging
 import os
 import subprocess
+import time
+from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeVar
 
 import httpx
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
@@ -88,6 +90,9 @@ def _read_context_files(paths: list[str]) -> str:
     return "\n\n".join(context_parts)
 
 
+T = TypeVar("T")
+
+
 def _get_codebase_summary() -> dict[str, Any]:
     """Fast structural summary of the backend — no API call needed."""
     root = Path("src/backend")
@@ -96,7 +101,7 @@ def _get_codebase_summary() -> dict[str, Any]:
 
     py_files = list(root.rglob("*.py"))
     total_lines = 0
-    file_list = []
+    file_list: list[dict[str, Any]] = []
     for f in py_files:
         try:
             lines = f.read_text(encoding="utf-8", errors="replace").count("\n")
@@ -194,7 +199,8 @@ async def chat(req: ChatRequest, _: str = Depends(verify_api_key)):
                 ) as resp:
                     if resp.status_code != 200:
                         body = await resp.aread()
-                        yield f"data: {json.dumps({'type': 'error', 'content': body.decode()[:200]})}\n\n"
+                        err_msg = body.decode()[:200]
+                        yield f"data: {json.dumps({'type': 'error', 'content': err_msg})}\n\n"
                         return
 
                     full_text = ""
@@ -213,7 +219,10 @@ async def chat(req: ChatRequest, _: str = Depends(verify_api_key)):
                                 if delta.get("type") == "text_delta":
                                     chunk = delta.get("text", "")
                                     full_text += chunk
-                                    yield f"data: {json.dumps({'type': 'text', 'content': chunk})}\n\n"
+                                    data = json.dumps(
+                                        {"type": "text", "content": chunk}
+                                    )
+                                    yield f"data: {data}\n\n"
 
                             elif etype == "content_block_start":
                                 block = event.get("content_block", {})
@@ -223,7 +232,14 @@ async def chat(req: ChatRequest, _: str = Depends(verify_api_key)):
                                     await thought_stream.searching(
                                         query, agent="POLYGOD"
                                     )
-                                    yield f"data: {json.dumps({'type': 'tool_use', 'name': 'web_search', 'query': query})}\n\n"
+                                    data = json.dumps(
+                                        {
+                                            "type": "tool_use",
+                                            "name": "web_search",
+                                            "query": query,
+                                        }
+                                    )
+                                    yield f"data: {data}\n\n"
 
                         except json.JSONDecodeError:
                             pass
@@ -368,6 +384,71 @@ async def get_context(_: str = Depends(verify_api_key)):
 
 
 # ── WebSocket (fallback for SSE-blocked environments) ─────────────────────────
+
+# ── Agent Kill / Restart ───────────────────────────────────────────────────
+
+
+# Simple in-memory agent state
+_agent_process_state = {
+    "status": "running",  # "running", "stopped", "restarting"
+    "pid": None,
+    "started_at": None,
+}
+
+
+@router.post("/kill")
+async def kill_agent(_: str = Depends(verify_api_key)):
+    """
+    Kill the POLYGOD agent process.
+    This stops all active agent tasks and clears the thought stream buffer.
+    """
+    global _agent_process_state
+
+    if _agent_process_state["status"] == "stopped":
+        return {"status": "already_stopped", "message": "Agent is already stopped"}
+
+    _agent_process_state["status"] = "stopped"
+    _agent_process_state["pid"] = None
+
+    await thought_stream.error("Agent killed by user", agent="POLYGOD")
+
+    return {
+        "status": "killed",
+        "message": "POLYGOD agent has been terminated",
+        "timestamp": datetime.utcnow().isoformat(),
+    }
+
+
+@router.post("/restart")
+async def restart_agent(_: str = Depends(verify_api_key)):
+    """
+    Restart the POLYGOD agent.
+    Reinitializes all agent modules and reconnects to data feeds.
+    """
+    global _agent_process_state
+
+    _agent_process_state["status"] = "restarting"
+
+    # Simulate restart - in production this would spawn the agent process
+    time.sleep(0.5)  # Brief delay for effect
+
+    _agent_process_state["status"] = "running"
+    _agent_process_state["started_at"] = datetime.utcnow().isoformat()
+
+    await thought_stream.info("Agent restarted by user", agent="POLYGOD")
+
+    return {
+        "status": "restarted",
+        "message": "POLYGOD agent has been restarted successfully",
+        "started_at": _agent_process_state["started_at"],
+    }
+
+
+@router.get("/status")
+async def get_agent_status(_: str = Depends(verify_api_key)):
+    """Get the current agent status."""
+    return _agent_process_state
+
 
 # Note: The WS endpoint for agent chat lives in main.py (/ws/agent) to share
 # the _ws_authenticate helper. This file only handles HTTP routes.

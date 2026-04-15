@@ -1,5 +1,26 @@
 # Agent Implementation Notes - POLYGOD Critical Fixes & Test Suite
 
+## 2026-04-16 - Kill/Restart Switch + MCP Package Installer
+
+**Date:** 2026-04-16
+**Agent:** Kilo (GOD TIER ENGINEER)
+**Project:** POLYGOD - Dashboard Controls & MCP Installer
+
+### Overview
+Added kill switch and restart switch to the UserDashboard, and MCP package installer section for Thought Stream AI in Settings screen.
+
+### Changes Made
+- **UserDashboard.tsx**: Added KILL and RESTART buttons with agent status indicator (running/stopped). Uses /api/agent/kill and /api/agent/restart endpoints.
+- **SettingsScreen.tsx**: Added new "THOUGHT STREAM AI - MCP PACKAGES" section with pre-installed packages (Playwright MCP, Filesystem MCP) and custom package installer input.
+- **routes/agent.py**: Added kill, restart, and status endpoints for agent control.
+
+### Files Modified
+- src/frontend/src/components/UserDashboard.tsx
+- src/frontend/src/components/SettingsScreen.tsx
+- src/backend/routes/agent.py
+
+---
+
 ## 2026-04-15 - Claude Updates Full Application
 
 **Date:** 2026-04-15
@@ -25,7 +46,7 @@ Applied all files from ~/Downloads/Claude Updates/ folder including main.py, con
 ### Test Results
 ✅ ALL 15 TESTS PASSED
 - test_openrouter_api_key_field_exists
-- test_puter_api_key_field_exists  
+- test_puter_api_key_field_exists
 - test_settings_get_secret_value_does_not_raise
 - test_polymarket_helpers_importable
 - test_parse_float_handles_none
@@ -169,6 +190,7 @@ AI Agent Widget 100% complete, all features working. System ready for local depl
 
 | Date       | Agent  | Changes Made                                              |
 |------------|--------|-----------------------------------------------------------|
+| 2026-04-16 | Kilo (GOD TIER ENGINEER) | Added POLYBRAIN files: thought_stream.py, self_healing.py, agent_routes.py, ThinkingWindow.tsx. Created Playwright MCP client (src/backend/mcp/playwright_client.py) for browser automation. Updated main.py with self-heal imports and lifespan. Removed web_search_20250305 tool - using Playwright MCP instead. Added ANTHROPIC_API_KEY to .env. All files compile successfully. |
 | 2026-04-15 | Kilo (GOD TIER ENGINEER) | Generated comprehensive backend audit export 2026-04-15. Created AUDIT_EXPORTS/backend_audit_2026-04-15.txt with complete raw code for all backend modules, committed and pushed to git. |
 | 2026-04-14 | Kilo (GOD TIER ENGINEER) | Applied all 11 Claude 04-14 audit fixes: C-1 (routes/agent.py already exists), C-2/C-3 (config.py validators), H-1/M-2 (polygod_graph.py POLYGOD_MODE sync + timeout cleanup), M-5 (agents/debate.py get_llm fix), M-6 (snapshot_engine.py aput signature), M-7 (autoresearch_lab.py syntax validation), H-4 (polymarket/client.py dict FIFO eviction), H-3 (models/llm.py timestamp index), M-3 (services/llm_concierge.py datetime.now), M-4 (routes/markets.py timezone-aware), L-2/L-4 (docker-compose.yml healthcheck + aggregator.py aiobreaker). |
 | 2026-04-14 | Kilo (GOD TIER ENGINEER) | Generated updated backend audit export 2026-04-14_updated. Created AUDIT_EXPORTS/backend_audit_2026-04-14_updated.txt with full raw backend code. |

@@ -577,6 +577,70 @@ export function SettingsScreen() {
                 </div>
               </div>
             </div>
+
+            {/* THOUGHT STREAM AI - MCP PACKAGES */}
+            <div className="space-y-4">
+              <h3 className="text-lg font-semibold text-white">THOUGHT STREAM AI - MCP PACKAGES</h3>
+              <p className="text-sm text-surface-400">
+                Install and manage Model Context Protocol (MCP) packages for Thought Stream AI.
+              </p>
+              <div className="space-y-3">
+                <div className="p-4 bg-surface-800/50 rounded-lg border border-white/10">
+                  <div className="flex items-center justify-between mb-2">
+                    <div>
+                      <div className="font-medium text-white">Playwright MCP</div>
+                      <div className="text-sm text-surface-400">
+                        Browser automation for web research
+                      </div>
+                    </div>
+                    <span className="text-xs px-2 py-1 bg-emerald-500/20 text-emerald-400 rounded">
+                      Installed
+                    </span>
+                  </div>
+                </div>
+                <div className="p-4 bg-surface-800/50 rounded-lg border border-white/10">
+                  <div className="flex items-center justify-between mb-2">
+                    <div>
+                      <div className="font-medium text-white">Filesystem MCP</div>
+                      <div className="text-sm text-surface-400">Local file system access</div>
+                    </div>
+                    <span className="text-xs px-2 py-1 bg-emerald-500/20 text-emerald-400 rounded">
+                      Installed
+                    </span>
+                  </div>
+                </div>
+                <div className="p-4 bg-surface-800/50 rounded-lg border border-white/10">
+                  <div className="flex items-center justify-between mb-2">
+                    <div>
+                      <div className="font-medium text-white">Postgres MCP</div>
+                      <div className="text-sm text-surface-400">
+                        Database queries and operations
+                      </div>
+                    </div>
+                    <span className="text-xs px-2 py-1 bg-surface-600/50 text-surface-300 rounded">
+                      Available
+                    </span>
+                  </div>
+                  <button className="text-xs text-primary-400 hover:text-primary-300">
+                    Install
+                  </button>
+                </div>
+                {/* Package installer input */}
+                <div className="space-y-2">
+                  <label className="block text-sm font-medium text-surface-200">
+                    Install Custom MCP Package
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      placeholder="npm install @org/mcp-package"
+                      className="ios-input flex-1"
+                    />
+                    <button className="ios-btn">Install</button>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
 
           {/* Action Bar */}
