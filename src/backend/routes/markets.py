@@ -7,7 +7,7 @@ Provides endpoints for fetching top 50 markets, individual market details, and p
 import asyncio
 import json
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -101,12 +101,8 @@ def _extract_position_pnl(position: dict) -> float:
             continue
         return _parse_float(raw)
 
-    realized = _parse_float(
-        position.get("realizedPnl") or position.get("realized_pnl") or 0
-    )
-    unrealized = _parse_float(
-        position.get("unrealizedPnl") or position.get("unrealized_pnl") or 0
-    )
+    realized = _parse_float(position.get("realizedPnl") or position.get("realized_pnl") or 0)
+    unrealized = _parse_float(position.get("unrealizedPnl") or position.get("unrealized_pnl") or 0)
     if realized or unrealized:
         return realized + unrealized
 
@@ -181,9 +177,7 @@ async def get_top_50_markets(
     markets = result.scalars().all()
 
     # Get last update time
-    state_result = await db.execute(
-        select(AppState).where(AppState.key == "markets_last_updated")
-    )
+    state_result = await db.execute(select(AppState).where(AppState.key == "markets_last_updated"))
     state = state_result.scalar_one_or_none()
     last_updated = None
     if state:
@@ -212,9 +206,7 @@ async def get_market_status(db: AsyncSession = Depends(get_db)) -> MarketStatusR
     markets = result.scalars().all()
 
     # Get last update time
-    state_result = await db.execute(
-        select(AppState).where(AppState.key == "markets_last_updated")
-    )
+    state_result = await db.execute(select(AppState).where(AppState.key == "markets_last_updated"))
     state = state_result.scalar_one_or_none()
     last_updated = None
     if state:
@@ -230,9 +222,7 @@ async def get_market_status(db: AsyncSession = Depends(get_db)) -> MarketStatusR
     )
 
 
-async def fetch_price_history_from_clob(
-    token_id: str, interval: str, fidelity: int
-) -> list[dict]:
+async def fetch_price_history_from_clob(token_id: str, interval: str, fidelity: int) -> list[dict]:
     """
     Fetch price history from Polymarket CLOB API.
 
@@ -348,10 +338,12 @@ async def get_price_history(
 
     # No additional filtering needed - CLOB API handles timeframes directly
 
+    from datetime import timezone as _tz
+
     # Convert to PricePoint format
     history = [
         PricePoint(
-            timestamp=datetime.utcfromtimestamp(h["t"]),
+            timestamp=datetime.fromtimestamp(h["t"], tz=_tz.utc),  # FIX M-4: TZ-aware
             yes_percentage=h["p"] * 100,  # Convert 0-1 to percentage
             volume=0.0,  # CLOB doesn't provide volume per point
         )
@@ -406,9 +398,7 @@ class MarketStats(BaseModel):
 
 
 @router.get("/{market_id}/stats")
-async def get_market_stats(
-    market_id: str, db: AsyncSession = Depends(get_db)
-) -> MarketStats:
+async def get_market_stats(market_id: str, db: AsyncSession = Depends(get_db)) -> MarketStats:
     """
     Get comprehensive market statistics and trading signals.
 
@@ -757,9 +747,7 @@ async def get_market(market_id: str, db: AsyncSession = Depends(get_db)) -> Mark
                     try:
                         date_str = api_market.end_date_iso
                         if "T" in date_str:
-                            end_date = datetime.fromisoformat(
-                                date_str.replace("Z", "+00:00")
-                            )
+                            end_date = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
                         else:
                             end_date = datetime.fromisoformat(date_str)
                     except Exception:
@@ -828,9 +816,7 @@ async def get_market(market_id: str, db: AsyncSession = Depends(get_db)) -> Mark
 
     # Always try to fetch fresh data from API for individual market view
     try:
-        api_market = await polymarket_client.get_market_by_slug(
-            market.slug or market_id
-        )
+        api_market = await polymarket_client.get_market_by_slug(market.slug or market_id)
         if api_market:
             # Parse yes percentage
             yes_percentage = 50.0
@@ -862,9 +848,7 @@ async def get_market(market_id: str, db: AsyncSession = Depends(get_db)) -> Mark
             # Commit updates
             await db.commit()
             await db.refresh(market)
-            logger.info(
-                f"Refreshed market data for {market.slug}: {market.yes_percentage}%"
-            )
+            logger.info(f"Refreshed market data for {market.slug}: {market.yes_percentage}%")
 
     except Exception as e:
         logger.warning(f"Failed to refresh market data from API (using cached): {e}")
@@ -944,9 +928,7 @@ async def get_market_trades(
                 trade.get("conditionId"),
                 trade.get("condition_id"),
             ]
-            normalized = [
-                normalize_key(field) for field in trade_fields if field is not None
-            ]
+            normalized = [normalize_key(field) for field in trade_fields if field is not None]
             if normalized:
                 return any(value in market_keys for value in normalized)
             return True
@@ -988,17 +970,17 @@ async def get_market_trades(
                 if not ts_val:
                     continue
 
+                from datetime import timezone as _tz
+
                 trade_time = None
                 if isinstance(ts_val, (int, float)):
                     ts_int = int(ts_val)
                     if ts_int > 10**12:
                         ts_int = ts_int // 1000
-                    trade_time = datetime.utcfromtimestamp(ts_int)
+                    trade_time = datetime.fromtimestamp(ts_int, tz=_tz.utc)
                 else:
                     try:
-                        trade_time = datetime.fromisoformat(
-                            str(ts_val).replace("Z", "+00:00")
-                        )
+                        trade_time = datetime.fromisoformat(str(ts_val).replace("Z", "+00:00"))
                     except ValueError:
                         continue
 
@@ -1048,14 +1030,14 @@ async def get_market_trades(
                 name = trade.get("name") or trade.get("pseudonym") or ""
 
                 raw_id = (
-                    trade.get("transactionHash")
-                    or trade.get("tradeId")
-                    or trade.get("trade_id")
+                    trade.get("transactionHash") or trade.get("tradeId") or trade.get("trade_id")
                 )
                 if raw_id:
                     dedupe_key = str(raw_id)
                 else:
-                    dedupe_key = f"{trade_time.isoformat()}|{address}|{size}|{price}|{side}|{outcome}"
+                    dedupe_key = (
+                        f"{trade_time.isoformat()}|{address}|{size}|{price}|{side}|{outcome}"
+                    )
 
                 if dedupe_key in seen_trade_keys:
                     continue
@@ -1143,23 +1125,17 @@ async def get_market_trades(
                                     if response.status_code == 200:
                                         payload = response.json()
                                         if isinstance(payload, list) and payload:
-                                            value_total = _parse_float(
-                                                payload[0].get("value") or 0
-                                            )
+                                            value_total = _parse_float(payload[0].get("value") or 0)
                                 except Exception:
                                     value_total = 0.0
 
                             positions = positions if isinstance(positions, list) else []
                             closed_positions = (
-                                closed_positions
-                                if isinstance(closed_positions, list)
-                                else []
+                                closed_positions if isinstance(closed_positions, list) else []
                             )
-                            global_pnl, global_roi, total_balance = (
-                                _compute_global_stats(
-                                    positions,
-                                    closed_positions,
-                                )
+                            global_pnl, global_roi, total_balance = _compute_global_stats(
+                                positions,
+                                closed_positions,
                             )
                             if value_total > 0:
                                 total_balance = value_total
@@ -1246,9 +1222,7 @@ async def get_market_holders(market_id: str, db: AsyncSession = Depends(get_db))
                     all_holders.append(h)
 
             # Deduplicate by address for fetching stats, but keep references
-            unique_addresses = {
-                h["proxyWallet"] for h in all_holders if h.get("proxyWallet")
-            }
+            unique_addresses = {h["proxyWallet"] for h in all_holders if h.get("proxyWallet")}
 
             # ── 2. Check cache first ─────────────────────────────────────
             cached_map, uncached_addresses = user_stats_cache.get_many(unique_addresses)
@@ -1302,9 +1276,7 @@ async def get_market_holders(market_id: str, db: AsyncSession = Depends(get_db))
                         params={"user": address, "limit": "500"},
                     )
                     if r.status_code == 200:
-                        closed_positions = (
-                            r.json() if isinstance(r.json(), list) else []
-                        )
+                        closed_positions = r.json() if isinstance(r.json(), list) else []
                 except Exception:
                     pass
 
@@ -1320,9 +1292,7 @@ async def get_market_holders(market_id: str, db: AsyncSession = Depends(get_db))
                 except Exception:
                     pass
 
-                global_pnl, global_roi, _ = _compute_global_stats(
-                    positions, closed_positions
-                )
+                global_pnl, global_roi, _ = _compute_global_stats(positions, closed_positions)
                 total_balance = value_total if value_total > 0 else 0.0
 
                 # Store in cache for future requests
@@ -1385,9 +1355,7 @@ async def get_market_holders(market_id: str, db: AsyncSession = Depends(get_db))
 
                     holder_info = {
                         "address": address,
-                        "name": holder.get("name")
-                        or holder.get("pseudonym")
-                        or "Unknown",
+                        "name": holder.get("name") or holder.get("pseudonym") or "Unknown",
                         "amount": float(holder.get("amount", 0)),
                         "img": holder.get("profileImage"),
                         "market_pnl": market_pnl,

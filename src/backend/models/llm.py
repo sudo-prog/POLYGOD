@@ -15,7 +15,7 @@ import logging
 from datetime import datetime
 
 from cryptography.fernet import Fernet, InvalidToken
-from sqlalchemy import JSON, DateTime, Integer, String, func
+from sqlalchemy import Index, JSON, DateTime, Integer, String, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from src.backend.database import Base
@@ -142,12 +142,18 @@ class UsageLog(Base):
     __tablename__ = "usage_logs"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    timestamp: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    # FIX H-3: index=True enables efficient timestamp range queries in refresh_llm_stats()
+    timestamp: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), index=True)
     provider: Mapped[str] = mapped_column(String(100), nullable=False)
     tokens_used: Mapped[int | None] = mapped_column(Integer, nullable=True)
     latency_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
     agent_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
     market_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+    __table_args__ = (
+        # Composite index for provider+timestamp queries (GROUP BY provider WHERE timestamp >= ...)
+        Index("idx_usage_logs_provider_timestamp", "provider", "timestamp"),
+    )
 
     def to_dict(self) -> dict:
         return {

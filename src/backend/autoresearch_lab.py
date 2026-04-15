@@ -119,9 +119,7 @@ class AutoResearchLab:
             logger.info("Git not available — skipping commit")
             return False
         try:
-            self.repo.index.add(
-                [os.path.relpath(self.strategy_file, self.repo.working_dir)]
-            )
+            self.repo.index.add([os.path.relpath(self.strategy_file, self.repo.working_dir)])
             self.repo.index.commit(f"AutoResearch mutation: {mutation_summary[:80]}")
             logger.info(f"Git commit: {mutation_summary[:80]}")
             return True
@@ -203,9 +201,7 @@ Propose your mutation:"""
             idx = current_code.index(mutation_marker)
             # Find the end of the marker line
             newline_idx = (
-                current_code.index("\n", idx)
-                if "\n" in current_code[idx:]
-                else len(current_code)
+                current_code.index("\n", idx) if "\n" in current_code[idx:] else len(current_code)
             )
             header = current_code[: newline_idx + 1]
             new_code = header + "\n" + mutation_clean
@@ -244,7 +240,25 @@ Propose your mutation:"""
 
         new_code = self._apply_mutation(current_code, mutation)
 
-        # Step 3: Write and commit
+        # FIX M-7: Validate Python syntax BEFORE writing to disk or committing.
+        import ast as _ast
+
+        try:
+            _ast.parse(new_code)
+        except SyntaxError as syntax_err:
+            logger.error(
+                "AutoResearchLab: mutation produced invalid Python — discarding. SyntaxError: %s",
+                syntax_err,
+            )
+            # Can't call _mem0_add here as self doesn't have access to memory_loop directly
+            # Log the discard event
+            logger.warning(
+                f"Mutation DISCARDED (SyntaxError): {mutation[:100] if mutation else 'unknown'}"
+            )
+            state["evolution_status"] = "mutation_syntax_error"
+            return state
+
+        # Step 3: Write and commit (only reached if syntax is valid)
         self._write_strategy(new_code)
         mutation_summary = mutation[:100] if mutation else "unknown"
         committed = self._commit_mutation(mutation_summary)
@@ -267,17 +281,13 @@ Propose your mutation:"""
         final_decision = state.get("final_decision", {})
         tournament_best_pnl = final_decision.get("tournament_best_pnl", 0)
         evolution_best = state.get("evolution_best", {})
-        sharpe = evolution_best.get(
-            "score", 0
-        )  # Using tournament score as proxy for sharpe
+        sharpe = evolution_best.get("score", 0)  # Using tournament score as proxy for sharpe
 
         # Also check decision dict for pnl
         pnl = tournament_best_pnl or final_decision.get("pnl", 0)
 
         logger.info(f"Darwinian decision: sharpe={sharpe:.3f}, pnl={pnl:.2f}")
-        logger.info(
-            f"Thresholds: sharpe > {self.SHARPE_THRESHOLD}, pnl > {self.PNL_THRESHOLD}"
-        )
+        logger.info(f"Thresholds: sharpe > {self.SHARPE_THRESHOLD}, pnl > {self.PNL_THRESHOLD}")
 
         if sharpe > self.SHARPE_THRESHOLD and pnl > self.PNL_THRESHOLD:
             # Winner — keep mutation

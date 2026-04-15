@@ -201,7 +201,10 @@ class Settings(BaseSettings):
 
     @property
     def is_postgres(self) -> bool:
-        return "postgresql" in self.DATABASE_URL.lower() or "postgres" in self.DATABASE_URL.lower()
+        return (
+            "postgresql" in self.DATABASE_URL.lower()
+            or "postgres" in self.DATABASE_URL.lower()
+        )
 
     @property
     def live_trading_enabled(self) -> bool:
@@ -235,7 +238,10 @@ def get_settings() -> Settings:
         logger.warning("GEMINI_API_KEY not set — AI agents disabled")
     if not _settings.NEWS_API_KEY.get_secret_value():
         logger.warning("NEWS_API_KEY not set — news aggregation disabled")
-    if _settings.POLYGOD_MODE >= 3 and not _settings.POLYMARKET_PRIVATE_KEY.get_secret_value():
+    if (
+        _settings.POLYGOD_MODE >= 3
+        and not _settings.POLYMARKET_PRIVATE_KEY.get_secret_value()
+    ):
         logger.warning(
             "POLYGOD_MODE=3 (BEAST) but POLYMARKET_PRIVATE_KEY is not set. "
             "Live trades will fall back to paper execution."

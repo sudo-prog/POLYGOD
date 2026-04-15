@@ -12,7 +12,7 @@ Changes vs previous version:
 import asyncio
 import json
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone as _tz
 from typing import Any, Dict, List, Optional
 
 import httpx
@@ -101,12 +101,8 @@ def _extract_position_pnl(position: dict) -> float:
         if raw is None:
             continue
         return _parse_float(raw)
-    realized = _parse_float(
-        position.get("realizedPnl") or position.get("realized_pnl") or 0
-    )
-    unrealized = _parse_float(
-        position.get("unrealizedPnl") or position.get("unrealized_pnl") or 0
-    )
+    realized = _parse_float(position.get("realizedPnl") or position.get("realized_pnl") or 0)
+    unrealized = _parse_float(position.get("unrealizedPnl") or position.get("unrealized_pnl") or 0)
     if realized or unrealized:
         return realized + unrealized
     return 0.0
@@ -189,20 +185,15 @@ async def _fetch_top_traders(
                             holders.append(
                                 {
                                     "address": address,
-                                    "name": holder.get("name")
-                                    or holder.get("pseudonym"),
+                                    "name": holder.get("name") or holder.get("pseudonym"),
                                     "profile_image": holder.get("profileImage"),
-                                    "position_amount": _parse_float(
-                                        holder.get("amount") or 0
-                                    ),
+                                    "position_amount": _parse_float(holder.get("amount") or 0),
                                     "outcome_index": holder.get("outcomeIndex"),
                                     "source": "holders",
                                 }
                             )
                     if holders:
-                        holders.sort(
-                            key=lambda x: x.get("position_amount", 0), reverse=True
-                        )
+                        holders.sort(key=lambda x: x.get("position_amount", 0), reverse=True)
                         top_holders = holders[: max(1, top_n)]
                         async with httpx.AsyncClient(timeout=15.0) as client2:
                             semaphore = asyncio.Semaphore(8)
@@ -245,16 +236,12 @@ async def _fetch_top_traders(
                                                 )
                                     except Exception:
                                         pass
-                                positions = (
-                                    positions if isinstance(positions, list) else []
-                                )
+                                positions = positions if isinstance(positions, list) else []
                                 closed_positions = (
-                                    closed_positions
-                                    if isinstance(closed_positions, list)
-                                    else []
+                                    closed_positions if isinstance(closed_positions, list) else []
                                 )
-                                global_pnl, global_roi, total_balance = (
-                                    _compute_global_stats(positions, closed_positions)
+                                global_pnl, global_roi, total_balance = _compute_global_stats(
+                                    positions, closed_positions
                                 )
                                 if value_total > 0:
                                     total_balance = value_total
@@ -264,14 +251,11 @@ async def _fetch_top_traders(
                                 *[enrich(h["address"]) for h in top_holders]
                             )
                             stats_map = {
-                                addr: (pnl, roi, bal)
-                                for addr, pnl, roi, bal in stats_results
+                                addr: (pnl, roi, bal) for addr, pnl, roi, bal in stats_results
                             }
 
                         for holder in top_holders:
-                            pnl, roi, bal = stats_map.get(
-                                holder["address"], (0.0, 0.0, 0.0)
-                            )
+                            pnl, roi, bal = stats_map.get(holder["address"], (0.0, 0.0, 0.0))
                             holder["global_pnl"] = pnl
                             holder["global_roi"] = roi
                             holder["total_balance"] = bal
@@ -313,9 +297,7 @@ async def _fetch_top_traders(
             trade.get("marketId"),
             trade.get("conditionId"),
         ]
-        normalized = [
-            str(v).strip().lower() for v in fields if v is not None and str(v).strip()
-        ]
+        normalized = [str(v).strip().lower() for v in fields if v is not None and str(v).strip()]
         return bool(normalized) and any(v in market_keys for v in normalized)
 
     aggregates: dict[str, dict[str, Any]] = {}
@@ -332,7 +314,7 @@ async def _fetch_top_traders(
             ts_int = int(ts_val)
             if ts_int > 10**12:
                 ts_int //= 1000
-            trade_time = datetime.utcfromtimestamp(ts_int)
+            trade_time = datetime.fromtimestamp(ts_int, tz=_tz.utc)
         else:
             try:
                 trade_time = datetime.fromisoformat(str(ts_val).replace("Z", "+00:00"))
@@ -356,9 +338,7 @@ async def _fetch_top_traders(
         volume = _parse_trade_value(trade, size, price)
         if volume <= 0:
             continue
-        address = (
-            trade.get("proxyWallet") or trade.get("wallet") or trade.get("address")
-        )
+        address = trade.get("proxyWallet") or trade.get("wallet") or trade.get("address")
         if not address:
             continue
         name = trade.get("name") or trade.get("pseudonym")
@@ -388,9 +368,7 @@ async def _fetch_top_traders(
     if not aggregates:
         return []
 
-    traders = sorted(
-        aggregates.values(), key=lambda x: x.get("total_volume", 0), reverse=True
-    )
+    traders = sorted(aggregates.values(), key=lambda x: x.get("total_volume", 0), reverse=True)
     top_traders = traders[:top_n]
 
     async with httpx.AsyncClient(timeout=15.0) as client:
@@ -429,9 +407,7 @@ async def _fetch_top_traders(
                 except Exception:
                     pass
             positions = positions if isinstance(positions, list) else []
-            closed_positions = (
-                closed_positions if isinstance(closed_positions, list) else []
-            )
+            closed_positions = closed_positions if isinstance(closed_positions, list) else []
             global_pnl, global_roi, total_balance = _compute_global_stats(
                 positions, closed_positions
             )
@@ -439,18 +415,14 @@ async def _fetch_top_traders(
                 total_balance = value_total
             return address, global_pnl, global_roi, total_balance
 
-        stats_results = await asyncio.gather(
-            *[fetch_user_stats(t["address"]) for t in top_traders]
-        )
+        stats_results = await asyncio.gather(*[fetch_user_stats(t["address"]) for t in top_traders])
         stats_map = {addr: (pnl, roi, bal) for addr, pnl, roi, bal in stats_results}
 
     for trader in top_traders:
         bull = trader.get("bullish_volume", 0.0)
         bear = trader.get("bearish_volume", 0.0)
         trader["bias"] = (
-            "bullish"
-            if bull > bear * 1.1
-            else "bearish" if bear > bull * 1.1 else "mixed"
+            "bullish" if bull > bear * 1.1 else "bearish" if bear > bull * 1.1 else "mixed"
         )
         pnl, roi, bal = stats_map.get(trader["address"], (0.0, 0.0, 0.0))
         trader["global_pnl"] = pnl
@@ -491,9 +463,7 @@ async def _prepare_initial_state(market: Market) -> DebateState:
             token_ids = json.loads(market.clob_token_ids)
             if token_ids:
                 yes_token_id = token_ids[0]
-                history_24h = await fetch_price_history_from_clob(
-                    yes_token_id, "1d", 15
-                )
+                history_24h = await fetch_price_history_from_clob(yes_token_id, "1d", 15)
                 if history_24h:
                     price_history_24h = [h["p"] * 100 for h in history_24h]
                 history_7d = await fetch_price_history_from_clob(yes_token_id, "7d", 60)
@@ -581,9 +551,7 @@ async def debate_stream(
 
     async def event_generator():
         try:
-            async for msg in run_debate_graph_stream(
-                market_id, agent_config, initial_state
-            ):
+            async for msg in run_debate_graph_stream(market_id, agent_config, initial_state):
                 yield f"data: {json.dumps(msg)}\n\n"
         except asyncio.TimeoutError:
             yield 'data: {"type":"error","content":"timeout"}\n\n'

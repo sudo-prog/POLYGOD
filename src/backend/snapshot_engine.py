@@ -57,9 +57,7 @@ class SnapshotEngine:
         disabled rather than crashing the whole process.
         """
         if not _GIT_AVAILABLE:
-            logger.warning(
-                "SnapshotEngine: gitpython not installed — git features disabled"
-            )
+            logger.warning("SnapshotEngine: gitpython not installed — git features disabled")
             return None
         try:
             repo = _git.Repo(".")
@@ -72,9 +70,7 @@ class SnapshotEngine:
             )
             return None
         except _git.NoSuchPathError:
-            logger.warning(
-                "SnapshotEngine: git repo path not found — git features disabled"
-            )
+            logger.warning("SnapshotEngine: git repo path not found — git features disabled")
             return None
         except Exception as exc:  # pragma: no cover
             logger.warning("SnapshotEngine: unexpected git init error: %s", exc)
@@ -99,26 +95,20 @@ class SnapshotEngine:
             # Keep the connection open — SqliteSaver owns it from here.
             conn = sqlite3.connect("checkpoints.db", check_same_thread=False)
             self.checkpointer = SqliteSaver(conn)
-            logger.info(
-                "SnapshotEngine: SqliteSaver checkpointer initialised (checkpoints.db)"
-            )
+            logger.info("SnapshotEngine: SqliteSaver checkpointer initialised (checkpoints.db)")
         except Exception as e:
             logger.warning("SnapshotEngine: SqliteSaver not available: %s", e)
             try:
                 from langgraph.checkpoint.memory import MemorySaver
 
                 self.checkpointer = MemorySaver()
-                logger.info(
-                    "SnapshotEngine: MemorySaver fallback initialised (in-memory only)"
-                )
+                logger.info("SnapshotEngine: MemorySaver fallback initialised (in-memory only)")
             except Exception as e2:
                 logger.error("SnapshotEngine: no checkpointer available: %s", e2)
 
     # ── Public API ──────────────────────────────────────────────────────────
 
-    async def take_snapshot(
-        self, state: dict[str, Any], label: str = "auto"
-    ) -> dict[str, Any]:
+    async def take_snapshot(self, state: dict[str, Any], label: str = "auto") -> dict[str, Any]:
         """
         Take a full code + state snapshot for rollback / fine-tuning.
 
@@ -133,8 +123,7 @@ class SnapshotEngine:
         if self.repo is not None:
             try:
                 commit_msg = (
-                    f"SNAPSHOT {label} - {timestamp.isoformat()} "
-                    f"- Confidence {confidence}%"
+                    f"SNAPSHOT {label} - {timestamp.isoformat()} - Confidence {confidence}%"
                 )
                 self.repo.index.add(["src/backend/"])
                 if self.repo.index.diff("HEAD"):
@@ -143,9 +132,7 @@ class SnapshotEngine:
                     logger.info("SnapshotEngine: git snapshot created: %s", commit_sha)
                 else:
                     commit_sha = self.repo.head.commit.hexsha
-                    logger.info(
-                        "SnapshotEngine: no changes — using HEAD %s", commit_sha
-                    )
+                    logger.info("SnapshotEngine: no changes — using HEAD %s", commit_sha)
             except Exception as exc:
                 logger.warning("SnapshotEngine: git snapshot failed: %s", exc)
 
@@ -154,8 +141,15 @@ class SnapshotEngine:
         if self.checkpointer is not None:
             try:
                 thread_id = f"snapshot-{commit_sha}"
-                config = {"configurable": {"thread_id": thread_id}}
-                checkpoint_id = await self.checkpointer.aput(config, state)
+                lc_config = {"configurable": {"thread_id": thread_id}}
+                # SqliteSaver.aput signature: (config, checkpoint, metadata, new_versions)
+                # We store the state dict as the checkpoint value with empty metadata.
+                checkpoint_id = await self.checkpointer.aput(
+                    lc_config,
+                    {"v": 1, "ts": timestamp.isoformat(), "channel_values": state},
+                    {"source": "snapshot", "label": label},
+                    {},
+                )
                 logger.info("SnapshotEngine: state checkpoint saved: %s", checkpoint_id)
             except Exception as exc:
                 logger.warning("SnapshotEngine: checkpoint save failed: %s", exc)

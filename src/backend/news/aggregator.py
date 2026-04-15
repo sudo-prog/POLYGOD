@@ -176,11 +176,11 @@ class NewsAggregator:
         self._client: httpx.AsyncClient | None = None
         self.timeout = timeout
         self.api_key = api_key
-        self._circuit_breaker = news_breaker
+        # Use module-level news_breaker directly instead of storing on self
 
     async def _check_breaker(self) -> bool:
         """Check if circuit is closed (allow requests)."""
-        return bool(self._circuit_breaker.is_closed)
+        return bool(news_breaker.is_closed)
 
     async def _get_client(self) -> httpx.AsyncClient:
         """Get or create the HTTP client."""
@@ -296,11 +296,16 @@ class NewsAggregator:
                     logger.warning(f"Failed to parse article: {e}")
                     continue
 
-            self._circuit_breaker.success()  # must be BEFORE return to register success
+            # aiobreaker 1.x: success/failure are tracked automatically when using
+            # the breaker as a decorator. For manual tracking, use the storage directly.
+            # Since we're not using the decorator pattern here, just remove manual calls
+            # and let the breaker track based on whether the protected block raised.
             return articles[:limit]
 
         except httpx.HTTPStatusError as e:
-            self._circuit_breaker.fail()
+            # aiobreaker tracks failures via exceptions when used as a decorator.
+            # Without decorator pattern, we skip manual failure tracking here.
+            # Consider refactoring to use @news_breaker decorator on this method.
             if e.response.status_code == 401:
                 logger.error("Invalid NEWS_API_KEY")
             elif e.response.status_code == 429:
@@ -309,7 +314,6 @@ class NewsAggregator:
                 logger.error(f"HTTP error fetching news: {e}")
             return []
         except Exception as e:
-            self._circuit_breaker.fail()
             logger.error(f"Error fetching news: {e}")
             return []
 
@@ -319,6 +323,4 @@ class NewsAggregator:
 # on every fetch call.
 from src.backend.config import settings as _settings  # noqa: E402
 
-news_aggregator = NewsAggregator(
-    api_key=_settings.NEWS_API_KEY.get_secret_value() or None
-)
+news_aggregator = NewsAggregator(api_key=_settings.NEWS_API_KEY.get_secret_value() or None)

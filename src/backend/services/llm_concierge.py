@@ -1,6 +1,6 @@
 import logging
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict
 
 logger = logging.getLogger("concierge")
@@ -51,13 +51,13 @@ class LLMConcierge:
             if key and key not in sentinel_values:
                 self.key_status[m["name"]] = {
                     "status": "healthy",
-                    "last_checked": datetime.utcnow(),
+                    "last_checked": datetime.now(timezone.utc),
                 }
                 logger.info(f"✅ LLMConcierge: {m['name']} key available")
             else:
                 self.key_status[m["name"]] = {
                     "status": "missing",
-                    "last_checked": datetime.utcnow(),
+                    "last_checked": datetime.now(timezone.utc),
                 }
                 logger.warning(f"❌ LLMConcierge: {m['name']} key not set")
 
@@ -86,14 +86,14 @@ class LLMConcierge:
                 )
                 self.key_status[m["name"]] = {
                     "status": "healthy",
-                    "last_checked": datetime.utcnow(),
+                    "last_checked": datetime.now(timezone.utc),
                 }
                 logger.info(f"✅ Key healthy: {m['name']}")
             except Exception as e:
                 self.key_status[m["name"]] = {
                     "status": "failed",
                     "error": str(e),
-                    "last_checked": datetime.utcnow(),
+                    "last_checked": datetime.now(timezone.utc),
                 }
                 logger.error(f"🚨 Key problem: {m['name']} → {e}")
 
@@ -131,13 +131,9 @@ class LLMConcierge:
         """For /api/concierge/status endpoint"""
         return {
             "keys_monitored": len(self.key_status),
-            "healthy_keys": sum(
-                1 for v in self.key_status.values() if v["status"] == "healthy"
-            ),
-            "last_sweep": datetime.utcnow(),
-            "warnings": [
-                k for k, v in self.key_status.items() if v["status"] != "healthy"
-            ],
+            "healthy_keys": sum(1 for v in self.key_status.values() if v["status"] == "healthy"),
+            "last_sweep": datetime.now(timezone.utc),
+            "warnings": [k for k, v in self.key_status.items() if v["status"] != "healthy"],
         }
 
 

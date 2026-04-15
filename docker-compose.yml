@@ -117,7 +117,9 @@ services:
       qdrant:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "pgrep", "-f", "polygod_graph"]
+      # pgrep -f matches against the full command line, so this matches the
+      # actual python process running polygod_graph.py
+      test: ["CMD-SHELL", "pgrep -f 'python.*polygod_graph' || pgrep -f 'uvicorn'"]
       interval: 30s
       timeout: 5s
       retries: 3

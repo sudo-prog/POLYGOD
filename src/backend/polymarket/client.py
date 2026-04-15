@@ -225,11 +225,7 @@ class PolymarketClient:
         if not end_date_iso:
             return None
         try:
-            date_str = (
-                end_date_iso.replace("Z", "+00:00")
-                if "T" in end_date_iso
-                else end_date_iso
-            )
+            date_str = end_date_iso.replace("Z", "+00:00") if "T" in end_date_iso else end_date_iso
             return datetime.fromisoformat(date_str)
         except ValueError:
             return None
@@ -256,18 +252,14 @@ class PolymarketClient:
             "volume_24h": v24,
             "volume_7d": v7d,
             "liquidity": liq,
-            "yes_percentage": round(
-                self._parse_yes_percentage(market.outcome_prices), 2
-            ),
+            "yes_percentage": round(self._parse_yes_percentage(market.outcome_prices), 2),
             "is_active": market.active and not market.closed,
             "end_date": self._parse_end_date(market.end_date_iso),
             "image_url": market.image or market.icon,
             "clob_token_ids": market.clob_token_ids,
         }
 
-    async def _fetch_all_active_markets(
-        self, target_count: int
-    ) -> list[MarketResponse]:
+    async def _fetch_all_active_markets(self, target_count: int) -> list[MarketResponse]:
         all_markets: list[MarketResponse] = []
         offset = 0
         fetch_limit = 100
@@ -295,9 +287,7 @@ class PolymarketClient:
     async def get_top_markets_by_volume(self, limit: int = 100) -> list[dict]:
         all_markets = await self._fetch_all_active_markets(limit)
         processed = [
-            self._transform_market_to_dict(m)
-            for m in all_markets
-            if self._is_market_active(m)
+            self._transform_market_to_dict(m) for m in all_markets if self._is_market_active(m)
         ]
         processed.sort(key=lambda x: (x["volume_7d"], x["volume_24h"]), reverse=True)
         return processed[:limit]
@@ -477,9 +467,7 @@ class PolymarketClient:
             }
 
         # ── Resolve token ID ──────────────────────────────────────────────────
-        token_id: str | None = order.get(
-            "token_id"
-        ) or await self.get_token_id_for_market(
+        token_id: str | None = order.get("token_id") or await self.get_token_id_for_market(
             market_id,
             side,  # type: ignore[arg-type]
         )
@@ -522,19 +510,13 @@ class PolymarketClient:
                     amount=size,  # USD amount to spend
                 )
                 # create_market_order is synchronous in py_clob_client
-                signed_order = await asyncio.to_thread(
-                    clob.create_market_order, order_args
-                )
-                resp = await asyncio.to_thread(
-                    clob.post_order, signed_order, OrderType.FOK
-                )
+                signed_order = await asyncio.to_thread(clob.create_market_order, order_args)
+                resp = await asyncio.to_thread(clob.post_order, signed_order, OrderType.FOK)
             else:
                 if limit_price is None:
                     raise ValueError("limit_price is required for LIMIT orders")
                 if not (0.0 < limit_price < 1.0):
-                    raise ValueError(
-                        f"limit_price must be between 0 and 1, got {limit_price}"
-                    )
+                    raise ValueError(f"limit_price must be between 0 and 1, got {limit_price}")
 
                 logger.info(
                     "Placing LIMIT order: %s $%.2f @ %.4f on market=%s token=%s",
@@ -550,12 +532,8 @@ class PolymarketClient:
                     size=size,
                     side=side,
                 )
-                signed_order = await asyncio.to_thread(
-                    clob.create_limit_order, order_args
-                )
-                resp = await asyncio.to_thread(
-                    clob.post_order, signed_order, OrderType.GTC
-                )
+                signed_order = await asyncio.to_thread(clob.create_limit_order, order_args)
+                resp = await asyncio.to_thread(clob.post_order, signed_order, OrderType.GTC)
 
             # ── Parse response ────────────────────────────────────────────────
             # py_clob_client returns a dict with keys: orderId, status, ...
@@ -719,11 +697,7 @@ class PolymarketClient:
             resp.raise_for_status()
             fills: list[dict] = list(resp.json())
             # Whale filter: only fills with notional > $100
-            return [
-                f
-                for f in fills
-                if float(f.get("size", 0)) * float(f.get("price", 0)) > 100
-            ]
+            return [f for f in fills if float(f.get("size", 0)) * float(f.get("price", 0)) > 100]
         except Exception as exc:
             logger.error("Failed to fetch CLOB fills: %s", exc)
             return []
@@ -736,7 +710,9 @@ class PolymarketClient:
         Start this in the FastAPI lifespan with asyncio.create_task().
         """
         logger.info("CLOB live trade stream started (5s poll)")
-        seen_fill_ids: set[str] = set()
+        # Use dict for insertion-order eviction (Python 3.7+ dicts are ordered)
+        # Keys are fill_ids, values are None. When over 1000, pop the oldest.
+        seen_fill_ids: dict[str, None] = {}
 
         while True:
             try:
@@ -753,10 +729,12 @@ class PolymarketClient:
                             )
                             if not fill_id or fill_id in seen_fill_ids:
                                 continue
-                            seen_fill_ids.add(fill_id)
+                            seen_fill_ids[fill_id] = None
                             # Keep seen_fill_ids bounded (last 1000)
+                            # Evict oldest entry when over 1000 (FIFO, not arbitrary)
                             if len(seen_fill_ids) > 1000:
-                                seen_fill_ids.pop()
+                                oldest = next(iter(seen_fill_ids))
+                                del seen_fill_ids[oldest]
 
                             trade = Trade(
                                 fill_id=fill_id,
@@ -764,12 +742,8 @@ class PolymarketClient:
                                 size=float(fill.get("size", 0)),
                                 price=float(fill.get("price", 0)),
                                 side=str(fill.get("side", "unknown")),
-                                maker_fee=float(
-                                    fill.get("makerFee", fill.get("maker_fee", 0))
-                                ),
-                                taker_fee=float(
-                                    fill.get("takerFee", fill.get("taker_fee", 0))
-                                ),
+                                maker_fee=float(fill.get("makerFee", fill.get("maker_fee", 0))),
+                                taker_fee=float(fill.get("takerFee", fill.get("taker_fee", 0))),
                             )
                             db.add(trade)
 
@@ -777,9 +751,7 @@ class PolymarketClient:
 
                     # Broadcast each new trade to WS clients
                     for fill in fills:
-                        fill_id = str(
-                            fill.get("transactionHash") or fill.get("id") or ""
-                        )
+                        fill_id = str(fill.get("transactionHash") or fill.get("id") or "")
                         if fill_id in seen_fill_ids:
                             trade_dict = {
                                 "fill_id": fill_id,
@@ -788,8 +760,7 @@ class PolymarketClient:
                                 "price": float(fill.get("price", 0)),
                                 "side": fill.get("side", "unknown"),
                                 "value_usd": round(
-                                    float(fill.get("size", 0))
-                                    * float(fill.get("price", 0)),
+                                    float(fill.get("size", 0)) * float(fill.get("price", 0)),
                                     2,
                                 ),
                             }
