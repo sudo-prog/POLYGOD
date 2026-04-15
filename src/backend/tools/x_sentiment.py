@@ -1,151 +1,132 @@
-from typing import Dict
+"""
+X (Twitter) Sentiment Tool — real-time tweet sentiment for Polymarket markets.
 
-import aiohttp
+Uses the X API v2 bearer token to fetch recent tweets and score sentiment
+against a market question. Integrated into the Niche Scanner for tweet-count
+markets and the Debate Floor generalist agent.
+
+Requires: X_BEARER_TOKEN in .env
+"""
+
+from __future__ import annotations
+
+import logging
+from dataclasses import dataclass
+
+import httpx
 
 from src.backend.config import settings
 
+logger = logging.getLogger(__name__)
 
-async def get_x_sentiment(market_slug: str) -> Dict:
+X_SEARCH_URL = "https://api.twitter.com/2/tweets/search/recent"
+
+
+@dataclass
+class SentimentResult:
+    query: str
+    tweet_count: int
+    positive: int
+    negative: int
+    neutral: int
+    score: float  # -1.0 (bearish) → +1.0 (bullish)
+    sample_tweets: list[str]
+
+
+async def get_x_sentiment(query: str, max_results: int = 100) -> SentimentResult:
     """
-    Fetch X sentiment data for a given market slug.
+    Fetch recent tweets matching `query` and return a simple sentiment score.
 
-    Args:
-        market_slug: The market identifier to search for
+    Sentiment is computed via keyword matching (fast, no LLM cost):
+    - Positive keywords: "yes", "win", "bullish", "up", "long", "call"
+    - Negative keywords: "no", "lose", "bearish", "down", "short", "put"
 
-    Returns:
-        Dictionary containing bull_score, top_posts, and whale_mentions
+    Falls back to a neutral zero-score result if the API key is not configured
+    or the request fails — callers must handle this gracefully.
     """
-    if not hasattr(settings, "X_BEARER_TOKEN") or not settings.X_BEARER_TOKEN:
-        return {
-            "bull_score": 0.5,
-            "top_posts": [],
-            "whale_mentions": [],
-            "error": "X_BEARER_TOKEN not configured",
-        }
+    bearer = settings.X_BEARER_TOKEN.get_secret_value()
+    if not bearer:
+        logger.debug("X_BEARER_TOKEN not set — skipping sentiment fetch")
+        return SentimentResult(
+            query=query,
+            tweet_count=0,
+            positive=0,
+            negative=0,
+            neutral=0,
+            score=0.0,
+            sample_tweets=[],
+        )
 
-    async with aiohttp.ClientSession() as session:
-        try:
-            # Search for posts related to the market
-            search_url = "https://api.x.com/2/tweets/search/recent"
-            search_params = {
-                "query": f"{market_slug} OR #{market_slug.replace('-', '')}",
-                "max_results": 10,
-                "tweet.fields": "public_metrics,created_at,text,author_id",
-            }
+    _positive_words = frozenset(
+        ["yes", "win", "bullish", "up", "long", "buy", "true", "confirm", "pass", "approve"]
+    )
+    _negative_words = frozenset(
+        ["no", "lose", "bearish", "down", "short", "sell", "false", "deny", "fail", "reject"]
+    )
 
-            async with session.get(
-                search_url,
-                headers={"Authorization": f"Bearer {settings.X_BEARER_TOKEN}"},
-                params=search_params,
-            ) as response:
-                if response.status != 200:
-                    return {
-                        "bull_score": 0.5,
-                        "top_posts": [],
-                        "whale_mentions": [],
-                        "error": f"Search API error: {response.status}",
-                    }
-                search_results = await response.json()
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(
+                X_SEARCH_URL,
+                headers={"Authorization": f"Bearer {bearer}"},
+                params={
+                    "query": f"{query} -is:retweet lang:en",
+                    "max_results": min(max_results, 100),
+                    "tweet.fields": "text",
+                },
+            )
+            resp.raise_for_status()
+            data = resp.json()
 
-            # Get user details for author information
-            if author_ids := [
-                tweet["author_id"] for tweet in search_results.get("data", [])
-            ]:
-                users_url = "https://api.x.com/2/users"
-                users_params = {
-                    "ids": ",".join(author_ids),
-                    "user.fields": "public_metrics,verified,created_at",
-                }
+        tweets = data.get("data", [])
+        if not tweets:
+            return SentimentResult(
+                query=query,
+                tweet_count=0,
+                positive=0,
+                negative=0,
+                neutral=0,
+                score=0.0,
+                sample_tweets=[],
+            )
 
-                async with session.get(
-                    users_url,
-                    headers={"Authorization": f"Bearer {settings.X_BEARER_TOKEN}"},
-                    params=users_params,
-                ) as response:
-                    if response.status == 200:
-                        users_results = await response.json()
-                        users_dict = {
-                            user["id"]: user for user in users_results.get("data", [])
-                        }
-                    else:
-                        users_dict = {}
+        pos = neg = neu = 0
+        samples: list[str] = []
+        for t in tweets:
+            text = t.get("text", "").lower()
+            words = set(text.split())
+            has_pos = bool(words & _positive_words)
+            has_neg = bool(words & _negative_words)
+            if has_pos and not has_neg:
+                pos += 1
+            elif has_neg and not has_pos:
+                neg += 1
             else:
-                users_dict = {}
+                neu += 1
+            if len(samples) < 5:
+                samples.append(t.get("text", "")[:120])
 
-            # Process tweets and calculate sentiment
-            posts = []
-            total_sentiment = 0.0
-            valid_posts = 0
+        total = pos + neg + neu
+        score = ((pos - neg) / total) if total > 0 else 0.0
 
-            for tweet in search_results.get("data", []):
-                author = users_dict.get(tweet["author_id"], {})
-                metrics = tweet.get("public_metrics", {})
-                likes = metrics.get("like_count", 0)
-                replies = metrics.get("reply_count", 0)
-                retweets = metrics.get("retweet_count", 0)
-                engagement = likes + replies + retweets
+        return SentimentResult(
+            query=query,
+            tweet_count=total,
+            positive=pos,
+            negative=neg,
+            neutral=neu,
+            score=round(score, 3),
+            sample_tweets=samples,
+        )
 
-                # Simple sentiment scoring (positive/negative keywords)
-                text = tweet.get("text", "").lower()
-                positive_keywords = ["bullish", "moon", "buy", "strong", "up"]
-                negative_keywords = ["bearish", "sell", "down", "weak", "dump"]
-
-                sentiment_score = 0.0
-                for word in positive_keywords:
-                    if word in text:
-                        sentiment_score += 0.2
-                for word in negative_keywords:
-                    if word in text:
-                        sentiment_score -= 0.2
-
-                # Normalize sentiment between -1 and 1
-                sentiment_score = max(-1, min(1, sentiment_score))
-
-                posts.append(
-                    {
-                        "text": tweet["text"],
-                        "created_at": tweet["created_at"],
-                        "author": author.get("username", ""),
-                        "verified": author.get("verified", False),
-                        "engagement": engagement,
-                        "sentiment": sentiment_score,
-                    }
-                )
-
-                if sentiment_score != 0:
-                    total_sentiment += sentiment_score
-                    valid_posts += 1
-
-            # Calculate average bull score
-            bull_score = 0.5
-            if valid_posts > 0:
-                avg_sentiment = total_sentiment / valid_posts
-                # Convert -1 to 1 range to 0 to 1 range
-                bull_score = (avg_sentiment + 1) / 2
-
-            # Identify whale mentions (high engagement posts)
-            whale_mentions = [
-                {
-                    "text": post["text"],
-                    "author": post["author"],
-                    "verified": post["verified"],
-                    "engagement": post["engagement"],
-                    "sentiment": post["sentiment"],
-                }
-                for post in posts
-                if post["engagement"] > 100  # Threshold for whale activity
-            ]
-
-            return {
-                "bull_score": round(bull_score, 3),
-                "top_posts": posts[:5],  # Return top 5 posts
-                "whale_mentions": whale_mentions[:3],  # Return top 3 whale mentions
-            }
-
-        except Exception as e:
-            return {
-                "bull_score": 0.5,
-                "top_posts": [],
-                "whale_mentions": [],
-                "error": str(e),
-            }
+    except Exception as exc:
+        logger.warning("X sentiment fetch failed for %r: %s", query, exc)
+        return SentimentResult(
+            query=query,
+            tweet_count=0,
+            positive=0,
+            negative=0,
+            neutral=0,
+            score=0.0,
+            sample_tweets=[],
+        )
