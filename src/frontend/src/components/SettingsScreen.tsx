@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { X } from 'lucide-react';
 import { useEditModeStore } from '../stores/editModeStore';
+import { SystemStatusPanel } from './SystemStatusPanel';
 
 interface ThemePreset {
   name: string;
@@ -640,6 +641,12 @@ export function SettingsScreen() {
                   </div>
                 </div>
               </div>
+            </div>
+
+            {/* SYSTEM STATUS */}
+            <div className="space-y-4">
+              <h3 className="text-lg font-semibold text-white">SYSTEM STATUS</h3>
+              <SystemStatusPanel />
             </div>
           </div>
 

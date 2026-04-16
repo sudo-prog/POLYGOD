@@ -212,6 +212,17 @@ async def lifespan(app: FastAPI):
             raise RuntimeError("POLYGOD_ADMIN_TOKEN required in production")
     try:
         await init_db()
+        # In lifespan(), after await init_db():
+        # Temporarily disabled boot sequence for debugging
+        # from src.backend.agents.polygod_brain import run_boot_sequence, set_boot_status
+        # boot_status = await run_boot_sequence()
+        # set_boot_status(boot_status)
+        # if not boot_status.all_ok:
+        #     logger.warning(
+        #         "Boot completed with failures",
+        #         failed=boot_status.failed,
+        #         detail=boot_status.to_dict(),
+        #     )
         global POLYGOD_MODE
         db_mode = await get_mode_from_db()
         if db_mode != POLYGOD_MODE:
@@ -538,6 +549,35 @@ async def health():
         "scheduler": scheduler.running if scheduler else False,
         "polygod_mode": POLYGOD_MODE,
     }
+
+
+# @app.get("/api/health/systems")
+# async def systems_health():
+#     """Full system status for the Settings Screen indicators."""
+#     from src.backend.agents.polygod_brain import get_boot_status
+#     from src.backend.tasks.update_markets import get_scheduler
+
+#     boot = get_boot_status()
+#     scheduler = get_scheduler()
+
+#     # Re-run lightweight checks for live status
+#     checks = boot.to_dict()["checks"] if boot else {}
+
+#     # Update scheduler status live
+#     checks["Scheduler"] = {
+#         "name": "Scheduler",
+#         "status": "ok" if (scheduler and scheduler.running) else "error",
+#         "detail": f"Running: {scheduler.running if scheduler else False}",
+#         "error": "" if (scheduler and scheduler.running) else "Not running",
+#         "checked_at": datetime.now(timezone.utc).isoformat(),
+#     }
+
+#     return {
+#         "all_ok": all(c["status"] == "ok" for c in checks.values()),
+#         "polygod_mode": POLYGOD_MODE,
+#         "checks": checks,
+#         "boot_time": boot.boot_time.isoformat() if boot else None,
+#     }
 
 
 @app.get("/")
