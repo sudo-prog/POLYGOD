@@ -29,7 +29,7 @@ from src.backend.database import close_db, init_db
 from src.backend.middleware.auth import admin_required
 from src.backend.middleware.security_headers import SecurityHeadersMiddleware
 from src.backend.news.aggregator import news_aggregator
-from src.backend.polygod_graph import POLYGOD_MODE, paper, polygod_graph, run_polygod
+from src.backend.polygod_graph import paper, polygod_graph, run_polygod
 from src.backend.polymarket.client import active_connections, polymarket_client
 from src.backend.routes import agent as agent_route  # RESTORED: AI Agent Widget
 from src.backend.routes import debate, llm, markets, news, telegram, users
@@ -241,6 +241,28 @@ async def lifespan(app: FastAPI):
         scheduler.start()
     except Exception as exc:
         logger.error("Scheduler start failed", error=str(exc))
+
+    # Background watchdog — auto-adjust resources every 60s
+    async def _resource_watchdog():
+        """Background task: auto-adjust resources every 60s."""
+        from src.backend.agents.system_admin import (
+            adjust_concurrency_based_on_load,
+            emergency_stop_if_overheating,
+        )
+
+        while True:
+            try:
+                await asyncio.sleep(60)
+                adjust_concurrency_based_on_load()
+                msg = await emergency_stop_if_overheating()
+                if msg != "System healthy":
+                    logger.critical("Watchdog: %s", msg)
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error("Watchdog error: %s", e)
+
+    asyncio.create_task(_resource_watchdog())
 
     # Start CLOB live whale-trade monitor
     asyncio.create_task(polymarket_client.stream_live_trades())

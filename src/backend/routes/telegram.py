@@ -638,6 +638,121 @@ async def cmd_real_mode(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
+async def cmd_sysinfo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Full system resource report."""
+    from src.backend.agents.system_admin import (
+        get_docker_stats,
+        get_gpu_utilization,
+        get_system_load,
+    )
+
+    sys = get_system_load()
+    gpu = get_gpu_utilization()
+    docker = get_docker_stats()
+
+    if "error" in sys:
+        await update.message.reply_text(f"❌ {sys['error']}")
+        return
+
+    warnings = sys.get("warnings", [])
+    warn_str = "\n".join(f"⚠️ {w}" for w in warnings) if warnings else "✅ All clear"
+
+    gpu_str = ""
+    if gpu.get("available"):
+        gpu_str = (
+            f"\n\n*GPU: {gpu['name']}*\n"
+            f"Utilization: {gpu['gpu_pct']}%\n"
+            f"VRAM: {gpu['vram_used_mb']}/{gpu['vram_total_mb']} MB\n"
+            f"Temp: {gpu['temp_c']}°C"
+        )
+
+    # Top 3 containers by memory
+    containers = ""
+    if docker and not docker[0].get("error"):
+        top = sorted(
+            docker, key=lambda x: x.get("MemPerc", "0%").rstrip("%"), reverse=True
+        )[:3]
+        containers = "\n\n*Containers:*\n" + "\n".join(
+            f"• {c.get('Name', '?')}: CPU {c.get('CPUPerc', '?')} MEM {c.get('MemPerc', '?')}"
+            for c in top
+        )
+
+    await update.message.reply_text(
+        f"🖥 *System Status*\n\n"
+        f"CPU: *{sys['cpu_pct']:.0f}%*\n"
+        f"RAM: *{sys['ram_used_gb']}/{sys['ram_total_gb']} GB ({sys['ram_pct']:.0f}%)*\n"
+        f"Swap: {sys['swap_pct']:.0f}% | Disk: {sys['disk_pct']:.0f}%\n\n"
+        f"{warn_str}"
+        f"{gpu_str}"
+        f"{containers}",
+        parse_mode="Markdown",
+    )
+
+
+async def cmd_stop_tournament(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Stop running tournament simulations."""
+    from src.backend.agents.system_admin import stop_parallel_tournament
+
+    msg = stop_parallel_tournament()
+    await update.message.reply_text(f"🛑 {msg}")
+
+
+async def cmd_disable_autoresearch(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Disable auto-evolution."""
+    from src.backend.agents.system_admin import disable_autoresearch
+
+    msg = disable_autoresearch()
+    await update.message.reply_text(f"🧬 {msg}")
+
+
+async def cmd_emergency_stop(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Nuclear option."""
+    await update.message.reply_text(
+        "☢️ *EMERGENCY STOP* — halting all background tasks..."
+    )
+    from src.backend.agents.system_admin import emergency_stop_everything
+
+    results = emergency_stop_everything()
+    lines = [f"• {k}: {v}" for k, v in results.items()]
+    await update.message.reply_text(
+        "☢️ *Emergency stop complete:*\n" + "\n".join(lines), parse_mode="Markdown"
+    )
+
+
+async def cmd_set_variants(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Set max parallel tournament variants."""
+    if not context.args:
+        await update.message.reply_text(
+            "Usage: /variants <number>\nExample: /variants 20"
+        )
+        return
+    try:
+        n = int(context.args[0])
+    except ValueError:
+        await update.message.reply_text("❌ Must be a number")
+        return
+    from src.backend.agents.system_admin import set_max_parallel_variants
+
+    msg = set_max_parallel_variants(n)
+    await update.message.reply_text(f"⚙️ {msg}")
+
+
+async def cmd_throttle_llm(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Set LLM rate limit."""
+    if not context.args:
+        await update.message.reply_text("Usage: /throttle <rpm>\nExample: /throttle 20")
+        return
+    try:
+        rpm = int(context.args[0])
+    except ValueError:
+        await update.message.reply_text("❌ Must be a number")
+        return
+    from src.backend.agents.system_admin import set_llm_rate_limit
+
+    msg = set_llm_rate_limit(rpm)
+    await update.message.reply_text(f"⚙️ {msg}")
+
+
 # ── Registration ──────────────────────────────────────────────────────────────
 
 
@@ -657,6 +772,12 @@ def build_telegram_app() -> Application:
         ("mode", cmd_switch_mode),
         ("real", cmd_real_mode),
         ("kill", cmd_kill_switch),
+        ("sysinfo", cmd_sysinfo),
+        ("stoptournament", cmd_stop_tournament),
+        ("noevolve", cmd_disable_autoresearch),
+        ("estop", cmd_emergency_stop),
+        ("variants", cmd_set_variants),
+        ("throttle", cmd_throttle_llm),
         # Trading
         ("run", cmd_run),
         ("debate", cmd_run),  # alias for now
