@@ -289,6 +289,12 @@ async def generate_situational_digest() -> str:
         f"_Generated: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}_"
     )
 
+    # Command reminders
+    lines.append("\n*Commands:*")
+    lines.append("• `/autodog on`    # Enable daily digests")
+    lines.append("• `/autodog off`   # Disable daily digests")
+    lines.append("• `/report`        # Get instant report now")
+
     return "\n".join(lines)
 
 
