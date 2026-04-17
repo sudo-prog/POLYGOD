@@ -2,13 +2,15 @@
 POLYGOD Telegram Command Surface — Your primary control interface.
 
 Commands:
-  SYSTEM CONTROL
-  /start      — Status overview + command list
-  /mode <0-3> — Switch operating mode
-  /status     — Full system health check
-  /boot       — Re-run boot sequence
-  /real       — Enable live trading (mode 3)
-  /kill       — Emergency kill switch
+   SYSTEM CONTROL
+   /start      — Status overview + command list
+   /mode <0-3> — Switch operating mode
+   /status     — Full system health check
+   /boot       — Re-run boot sequence
+   /real       — Enable live trading (mode 3)
+   /kill       — Emergency kill switch
+   /autodog <on|off> — Control daily digest
+   /report     — Instant situational report
 
   INTELLIGENCE
   /run <market_id>  — Run full POLYGOD analysis
@@ -99,7 +101,9 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"/status — Full system health\n"
         f"/mode <0-3> — Switch mode\n"
         f"/boot — Re-run boot sequence\n"
-        f"/kill — Emergency stop\n\n"
+        f"/kill — Emergency stop\n"
+        f"/autodog <on|off> — Daily digest control\n"
+        f"/report — Instant situation report\n\n"
         f"*TRADING*\n"
         f"/run <market\\_id> — Full analysis\n"
         f"/debate <market\\_id> — Debate only\n"
@@ -753,6 +757,44 @@ async def cmd_throttle_llm(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"⚙️ {msg}")
 
 
+async def cmd_autodog_toggle(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Enable/disable AutoDog daily digest."""
+    if not context.args:
+        await update.message.reply_text(
+            "Usage: /autodog <on|off>\nExample: /autodog off"
+        )
+        return
+
+    action = context.args[0].lower()
+    if action not in ["on", "off"]:
+        await update.message.reply_text("❌ Use 'on' or 'off'")
+        return
+
+    import src.backend.main as m
+
+    m.AUTODOG_ENABLED = action == "on"
+    status = "ENABLED 🐕" if m.AUTODOG_ENABLED else "DISABLED 😴"
+    await update.message.reply_text(
+        f"🐕 *AutoDog {status}*\n"
+        f"Daily digest at 9am AEST: {'Active' if m.AUTODOG_ENABLED else 'Inactive'}"
+    )
+
+
+async def cmd_autodog_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Generate instant situational awareness report."""
+    await update.message.reply_text(
+        "📊 *Generating AutoDog Report...*", parse_mode="Markdown"
+    )
+
+    try:
+        from src.backend.main import generate_situational_digest
+
+        digest = await generate_situational_digest()
+        await _send_long(update, f"🐕 *AutoDog Instant Report*\n\n{digest}")
+    except Exception as e:
+        await update.message.reply_text(f"❌ Report failed: {e}")
+
+
 # ── Registration ──────────────────────────────────────────────────────────────
 
 
@@ -792,6 +834,9 @@ def build_telegram_app() -> Application:
         ("skill", cmd_skill),
         ("ask", cmd_ask),
         ("fix", cmd_fix),
+        # AutoDog
+        ("autodog", cmd_autodog_toggle),
+        ("report", cmd_autodog_report),
         # Snapshots
         ("snapshot", cmd_snapshot),
         ("rollback", cmd_rollback),

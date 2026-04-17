@@ -118,6 +118,7 @@ _WHALE_ALERTS = [
 _whale_cycle = itertools.cycle(_WHALE_ALERTS)
 
 POLYGOD_MODE = settings.POLYGOD_MODE
+AUTODOG_ENABLED = True  # Controls daily digest auto-reporting
 
 
 async def get_mode_from_db():
@@ -195,6 +196,102 @@ async def daily_pnl_report():
         logger.warning("Market data fetch failed", error=str(exc))
 
 
+async def generate_situational_digest() -> str:
+    """Generate comprehensive situational awareness digest."""
+    from datetime import datetime, timedelta, timezone
+
+    from sqlalchemy import func, select
+
+    from src.backend.agents.system_admin import get_system_load
+    from src.backend.database import async_session_factory
+    from src.backend.db_models import Trade
+
+    lines = ["🌅 *DAILY SITUATIONAL AWARENESS DIGEST*\n"]
+
+    # System load
+    try:
+        sys_load = get_system_load()
+        lines.append("🖥️ *System Load:*")
+        lines.append(f"• CPU: {sys_load.get('cpu_pct', 0):.1f}%")
+        lines.append(
+            f"• RAM: {sys_load.get('ram_used_gb', 0):.1f}/"
+            f"{sys_load.get('ram_total_gb', 0):.1f} GB "
+            f"({sys_load.get('ram_pct', 0):.1f}%)"
+        )
+        if sys_load.get("warnings"):
+            lines.append(f"• ⚠️ Warnings: {', '.join(sys_load['warnings'][:2])}")
+        lines.append("")
+    except Exception as e:
+        lines.append(f"🖥️ *System Load:* Error - {e}\n")
+
+    # Trades since yesterday
+    try:
+        yesterday = datetime.now(timezone.utc) - timedelta(days=1)
+        async with async_session_factory() as db:
+            result = await db.execute(
+                select(func.count(Trade.id), func.sum(Trade.size_usd)).where(
+                    Trade.created_at >= yesterday
+                )
+            )
+            trade_count, total_volume = result.first()
+            trade_count = trade_count or 0
+            total_volume = total_volume or 0.0
+
+        lines.append("📊 *Trading Activity (24h):*")
+        lines.append(f"• Trades: {trade_count}")
+        lines.append(f"• Volume: ${total_volume:,.2f}")
+        lines.append("")
+    except Exception as e:
+        lines.append(f"📊 *Trading Activity:* Error - {e}\n")
+
+    # Current mode
+    mode_labels = {0: "OBSERVE 👁", 1: "PAPER 📄", 2: "LOW ⚡", 3: "BEAST 🔥"}
+    current_mode = mode_labels.get(POLYGOD_MODE, f"UNKNOWN ({POLYGOD_MODE})")
+    lines.append(f"🎛️ *Current Mode:* {current_mode}\n")
+
+    # AutoResearch mutations (if available)
+    try:
+        # Check Mem0 for recent evolution events
+        from src.backend.polygod_graph import mem0_search
+
+        evolution_events = mem0_search("EVOLUTION", user_id="polygod")
+        if evolution_events:
+            lines.append("🧬 *Recent Evolution:*")
+            for event in evolution_events.split("|")[:3]:
+                if "mutation kept" in event.lower():
+                    lines.append(f"• {event[:100]}...")
+            lines.append("")
+        else:
+            lines.append("🧬 *Evolution:* No recent mutations\n")
+    except Exception as e:
+        lines.append(f"🧬 *Evolution:* Error - {e}\n")
+
+    # Top market opportunities
+    try:
+        from src.backend.niche_scanner import scanner
+
+        opportunities = await scanner.scan_niches(POLYGOD_MODE)
+        if opportunities:
+            lines.append("🎯 *Top Market Opportunities:*")
+            for opp in opportunities[:3]:
+                market = opp.get("market_title", opp.get("market_id", "Unknown"))[:30]
+                edge = opp.get("edge", 0)
+                kelly = opp.get("kelly_size", 0)
+                lines.append(f"• {market} | Edge: {edge:.1%} | Kelly: {kelly:.1%}")
+            lines.append("")
+        else:
+            lines.append("🎯 *Market Opportunities:* None detected\n")
+    except Exception as e:
+        lines.append(f"🎯 *Market Opportunities:* Error - {e}\n")
+
+    # Timestamp
+    lines.append(
+        f"_Generated: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}_"
+    )
+
+    return "\n".join(lines)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info(
@@ -264,6 +361,23 @@ async def lifespan(app: FastAPI):
 
     asyncio.create_task(_resource_watchdog())
 
+    # Background daily digest — situational awareness at 9am AEST
+    async def _daily_digest():
+        """Generate and send daily situational awareness digest to Telegram."""
+        if not AUTODOG_ENABLED:
+            logger.info("AutoDog disabled — skipping daily digest")
+            return
+
+        try:
+            digest = await generate_situational_digest()
+            if digest and settings.TELEGRAM_CHAT_ID.get_secret_value():
+                from src.backend.skills.alert_rules import send_alert
+
+                await send_alert(digest, priority="low")
+                logger.info("Daily digest sent to Telegram")
+        except Exception as e:
+            logger.error("Daily digest failed: %s", e)
+
     # Start CLOB live whale-trade monitor
     asyncio.create_task(polymarket_client.stream_live_trades())
 
@@ -303,6 +417,9 @@ async def lifespan(app: FastAPI):
         minute=30,
     )
     _add_job(forgetting_engine.prune, trigger=IntervalTrigger(hours=6))
+    _add_job(
+        _daily_digest, trigger="cron", hour=9, minute=0, timezone="Australia/Sydney"
+    )
     if settings.POLYGOD_MODE >= 1:
         logger.info("Swarm mode enabled", mode=settings.POLYGOD_MODE)
     telegram_task = None
