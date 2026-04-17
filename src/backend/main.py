@@ -696,33 +696,35 @@ async def health():
     }
 
 
-# @app.get("/api/health/systems")
-# async def systems_health():
-#     """Full system status for the Settings Screen indicators."""
-#     from src.backend.agents.polygod_brain import get_boot_status
-#     from src.backend.tasks.update_markets import get_scheduler
+@app.get("/api/health/systems")
+async def systems_health():
+    """Full system status for the Settings Screen indicators."""
+    from datetime import datetime, timezone
 
-#     boot = get_boot_status()
-#     scheduler = get_scheduler()
+    from src.backend.agents.polygod_brain import get_boot_status
+    from src.backend.tasks.update_markets import get_scheduler
 
-#     # Re-run lightweight checks for live status
-#     checks = boot.to_dict()["checks"] if boot else {}
+    boot = get_boot_status()
+    scheduler = get_scheduler()
 
-#     # Update scheduler status live
-#     checks["Scheduler"] = {
-#         "name": "Scheduler",
-#         "status": "ok" if (scheduler and scheduler.running) else "error",
-#         "detail": f"Running: {scheduler.running if scheduler else False}",
-#         "error": "" if (scheduler and scheduler.running) else "Not running",
-#         "checked_at": datetime.now(timezone.utc).isoformat(),
-#     }
+    # Re-run lightweight checks for live status
+    checks = boot.to_dict()["checks"] if boot else {}
 
-#     return {
-#         "all_ok": all(c["status"] == "ok" for c in checks.values()),
-#         "polygod_mode": POLYGOD_MODE,
-#         "checks": checks,
-#         "boot_time": boot.boot_time.isoformat() if boot else None,
-#     }
+    # Update scheduler status live
+    checks["Scheduler"] = {
+        "name": "Scheduler",
+        "status": "ok" if (scheduler and scheduler.running) else "error",
+        "detail": f"Running: {scheduler.running if scheduler else False}",
+        "error": "" if (scheduler and scheduler.running) else "Not running",
+        "checked_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+    return {
+        "all_ok": all(c["status"] == "ok" for c in checks.values()),
+        "polygod_mode": POLYGOD_MODE,
+        "checks": checks,
+        "boot_time": boot.boot_time.isoformat() if boot else None,
+    }
 
 
 @app.get("/")
