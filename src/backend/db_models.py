@@ -26,13 +26,17 @@ class Market(Base):
     liquidity: Mapped[float] = mapped_column(Float, default=0.0)
     yes_percentage: Mapped[float] = mapped_column(Float, default=50.0)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
-    end_date: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    end_date: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     image_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     clob_token_ids: Mapped[str | None] = mapped_column(Text, nullable=True)
     last_updated: Mapped[datetime] = mapped_column(
-        DateTime, server_default=func.now(), onupdate=func.now()
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
-    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
 
     __table_args__ = (
         Index("idx_markets_volume_7d", "volume_7d"),
@@ -70,7 +74,9 @@ class PriceHistory(Base):
     market_id: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     yes_percentage: Mapped[float] = mapped_column(Float, nullable=False)
     volume: Mapped[float] = mapped_column(Float, default=0.0)
-    timestamp: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    timestamp: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
 
     __table_args__ = (Index("idx_price_history_market_time", "market_id", "timestamp"),)
 
@@ -98,9 +104,13 @@ class NewsArticle(Base):
     source: Mapped[str] = mapped_column(String(255), nullable=True)
     author: Mapped[str | None] = mapped_column(String(255), nullable=True)
     image_url: Mapped[str | None] = mapped_column(Text, nullable=True)
-    published_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    published_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     sentiment_score: Mapped[float | None] = mapped_column(Float, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
 
     __table_args__ = (
         Index("idx_news_market_id", "market_id"),
@@ -134,7 +144,7 @@ class AppState(Base):
     key: Mapped[str] = mapped_column(String(100), primary_key=True)
     value: Mapped[str] = mapped_column(Text, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime, server_default=func.now(), onupdate=func.now()
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
 
 
@@ -153,7 +163,7 @@ class Trade(Base):
     maker_fee: Mapped[float] = mapped_column(Float, default=0.0)
     taker_fee: Mapped[float] = mapped_column(Float, default=0.0)
     timestamp: Mapped[datetime] = mapped_column(
-        DateTime, server_default=func.now(), index=True
+        DateTime(timezone=True), server_default=func.now(), index=True
     )
 
     __table_args__ = (

@@ -1,12 +1,38 @@
-"""Telegram Bot command surface for POLYGOD — God-Tier Swarm Controls.
+"""
+POLYGOD Telegram Command Surface — Your primary control interface.
 
-Provides real-time Telegram commands to control the POLYGOD swarm:
-- /start: Bot online confirmation
-- /mode <0-3>: Switch POLYGOD mode (OBSERVE/PAPER/LOW/BEAST)
-- /real: Paper-to-real switch (enable LIVE trading)
-- /scan: Trigger niche scanner for micro-opportunities
-- /beast <market_id>: Execute full BEAST MODE pipeline
-- /kill: Graceful kill switch (save checkpoints, pause swarm)
+Commands:
+  SYSTEM CONTROL
+  /start      — Status overview + command list
+  /mode <0-3> — Switch operating mode
+  /status     — Full system health check
+  /boot       — Re-run boot sequence
+  /real       — Enable live trading (mode 3)
+  /kill       — Emergency kill switch
+
+  INTELLIGENCE
+  /run <market_id>  — Run full POLYGOD analysis
+  /debate <market_id> — Run debate floor only
+  /scan       — Scan micro-niches
+  /whale <market_id> — Show whale activity
+
+  MEMORY
+  /remember <text>  — Store to Mem0
+  /recall <query>   — Search Mem0
+  /palace <query>   — Search MemPalace
+
+  SKILLS
+  /skill <name>     — Load and display a skill
+  /skills           — List all available skills
+
+  AGENT
+  /ask <question>   — Ask the AI agent anything
+  /fix <error>      — Auto-fix an error
+
+  SNAPSHOTS
+  /snapshot   — Take full code+state snapshot
+  /rollback <sha> — Rollback to snapshot
+  /snapshots  — List recent snapshots
 """
 
 import asyncio
@@ -19,332 +45,656 @@ from telegram.ext import Application, CommandHandler, ContextTypes
 from src.backend.config import settings
 
 logger = logging.getLogger(__name__)
-
 router = APIRouter(tags=["Telegram Controls"])
-
-# Telegram Application (built lazily when bot token is available)
 app_telegram: Application | None = None
 
 
-# ─── Command Handlers ────────────────────────────────────────────────────────
+# ── Helpers ──────────────────────────────────────────────────────────────────
+
+
+def _truncate(text: str, max_len: int = 3500) -> str:
+    """Telegram max message is 4096 chars."""
+    return text[:max_len] + "\n...(truncated)" if len(text) > max_len else text
+
+
+async def _send_long(update: Update, text: str) -> None:
+    """Send text, splitting into multiple messages if needed."""
+    chunks = [text[i : i + 3800] for i in range(0, len(text), 3800)]
+    for chunk in chunks:
+        await update.message.reply_text(chunk, parse_mode="Markdown")
+        if len(chunks) > 1:
+            await asyncio.sleep(0.3)
+
+
+# ── System Commands ───────────────────────────────────────────────────────────
 
 
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Welcome message and command list."""
+    """Welcome + current status."""
+    from src.backend.agents.polygod_brain import get_boot_status
+
+    boot = get_boot_status()
+
+    mode_labels = {0: "OBSERVE 👁", 1: "PAPER 📄", 2: "LOW ⚡", 3: "BEAST 🔥"}
+
+    if boot:
+        failed = boot.failed
+        status_line = (
+            "✅ All systems operational"
+            if boot.all_ok
+            else f"⚠️ Issues: {', '.join(failed)}"
+        )
+    else:
+        status_line = "⚙️ Boot status unknown — run /boot"
+
+    from src.backend.main import POLYGOD_MODE
+
+    mode_str = mode_labels.get(POLYGOD_MODE, "UNKNOWN")
+
     await update.message.reply_text(
-        "🚀 *POLYGOD God-Tier Swarm Online!*\n\n"
-        "Available commands:\n"
-        "/mode <0-3> — Switch POLYGOD mode\n"
-        "/real — Paper-to-real switch (LIVE trading)\n"
-        "/scan — Scan micro-niches for opportunities\n"
-        "/beast <market_id> — Execute BEAST MODE\n"
-        "/snapshot — Take full code+state snapshot\n"
-        "/rollback <sha> — Rollback to snapshot\n"
-        "/snapshots — List recent snapshots\n"
-        "/kill — Graceful shutdown (save checkpoints)\n\n"
-        "_Let the money printer go brrrr_ 💰",
+        f"🔱 *POLYGOD GOD-TIER SWARM*\n\n"
+        f"Status: {status_line}\n"
+        f"Mode: *{mode_str}*\n\n"
+        f"*SYSTEM*\n"
+        f"/status — Full system health\n"
+        f"/mode <0-3> — Switch mode\n"
+        f"/boot — Re-run boot sequence\n"
+        f"/kill — Emergency stop\n\n"
+        f"*TRADING*\n"
+        f"/run <market\\_id> — Full analysis\n"
+        f"/debate <market\\_id> — Debate only\n"
+        f"/scan — Scan niches\n"
+        f"/whale <market\\_id> — Whale activity\n\n"
+        f"*MEMORY*\n"
+        f"/remember <text> — Store memory\n"
+        f"/recall <query> — Search Mem0\n"
+        f"/palace <query> — Search MemPalace\n\n"
+        f"*SKILLS & AGENT*\n"
+        f"/skills — List skills\n"
+        f"/skill <name> — Load skill\n"
+        f"/ask <question> — Ask AI agent\n"
+        f"/fix <error> — Auto-fix error\n\n"
+        f"*SNAPSHOTS*\n"
+        f"/snapshot — Take snapshot\n"
+        f"/snapshots — List snapshots\n"
+        f"/rollback <sha> — Rollback",
         parse_mode="Markdown",
     )
 
 
+async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Full system health check."""
+    await update.message.reply_text(
+        "🔍 Running system checks...", parse_mode="Markdown"
+    )
+
+    from src.backend.agents.polygod_brain import run_boot_sequence, set_boot_status
+
+    boot = await run_boot_sequence()
+    set_boot_status(boot)
+
+    lines = ["🔱 *POLYGOD SYSTEM STATUS*\n"]
+    for name, check in boot.checks.items():
+        icon = "✅" if check["status"] == "ok" else "❌"
+        detail = check.get("detail") or check.get("error") or ""
+        lines.append(f"{icon} *{name}*: {detail}")
+
+    lines.append(f"\n_Boot time: {boot.boot_time.strftime('%H:%M:%S UTC')}_")
+
+    await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
+
+
+async def cmd_boot(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Re-run boot sequence."""
+    await update.message.reply_text(
+        "🔄 *Re-running boot sequence...*", parse_mode="Markdown"
+    )
+    from src.backend.agents.polygod_brain import run_boot_sequence, set_boot_status
+
+    boot = await run_boot_sequence()
+    set_boot_status(boot)
+
+    if boot.all_ok:
+        await update.message.reply_text(
+            "✅ *Boot complete — all systems operational*", parse_mode="Markdown"
+        )
+    else:
+        await update.message.reply_text(
+            "⚠️ *Boot complete with failures:*\n"
+            + "\n".join(f"❌ {f}" for f in boot.failed),
+            parse_mode="Markdown",
+        )
+
+
 async def cmd_switch_mode(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Switch POLYGOD operating mode (0=OBSERVE, 1=PAPER, 2=LOW, 3=BEAST)."""
+    """Switch POLYGOD mode."""
     if not context.args:
         await update.message.reply_text(
-            "Usage: /mode <0|1|2|3>\n0=OBSERVE, 1=PAPER, 2=LOW, 3=BEAST"
+            "Usage: /mode <0|1|2|3>\n0=OBSERVE 1=PAPER 2=LOW 3=BEAST"
         )
         return
-
     try:
         new_mode = int(context.args[0])
         if new_mode not in {0, 1, 2, 3}:
-            raise ValueError("Mode must be 0-3")
-    except (ValueError, IndexError):
+            raise ValueError
+    except ValueError:
         await update.message.reply_text("❌ Invalid mode. Use 0, 1, 2, or 3.")
         return
 
-    # Update global mode
-
-    # Mutate the module-level mode variable
+    import src.backend.main as main_module
     import src.backend.polygod_graph as pg
 
     old_mode = pg.POLYGOD_MODE
     pg.POLYGOD_MODE = new_mode
+    main_module.POLYGOD_MODE = new_mode
 
-    mode_labels = {0: "OBSERVE", 1: "PAPER", 2: "LOW", 3: "BEAST"}
+    # Persist to DB
+    try:
+        from src.backend.main import set_mode_in_db
+
+        await set_mode_in_db(new_mode)
+    except Exception:
+        pass
+
+    labels = {0: "OBSERVE 👁", 1: "PAPER 📄", 2: "LOW ⚡", 3: "BEAST 🔥"}
     await update.message.reply_text(
-        f"🔄 *MODE SWITCHED*\n"
-        f"From: {old_mode} ({mode_labels.get(old_mode, 'UNKNOWN')})\n"
-        f"To: {new_mode} ({mode_labels.get(new_mode, 'UNKNOWN')})",
+        f"🔄 *Mode switched*\n{labels.get(old_mode)} → *{labels.get(new_mode)}*",
         parse_mode="Markdown",
     )
-    logger.info(f"Telegram: POLYGOD mode switched from {old_mode} to {new_mode}")
 
 
-async def cmd_scan_niches(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Trigger niche scanner for micro-opportunity detection."""
-    await update.message.reply_text(
-        "📡 *Scanning micro-niches...* please wait.", parse_mode="Markdown"
-    )
-
-    try:
-        from src.backend.niche_scanner import scanner
-
-        opportunities = await scanner.scan_niches(settings.POLYGOD_MODE)
-        count = len(opportunities)
-
-        if opportunities:
-            # Show first 3 opportunities
-            opps_text = "\n".join(
-                [
-                    f"• {opp.get('market_id', 'N/A')} — edge: {opp.get('edge', 0):.2f}%"
-                    for opp in opportunities[:3]
-                ]
-            )
-            if count > 3:
-                opps_text += f"\n... and {count - 3} more"
-        else:
-            opps_text = "No opportunities found in current market conditions."
-
-        await update.message.reply_text(
-            f"📡 *Scan Complete!*\n\nFound: *{count}* micro-niche opportunities\n\n{opps_text}",
-            parse_mode="Markdown",
-        )
-    except Exception as e:
-        logger.error(f"Telegram scan failed: {e}")
-        await update.message.reply_text(f"❌ Scan failed: {e}")
+# ── Trading Commands ──────────────────────────────────────────────────────────
 
 
-async def cmd_beast_mode(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Execute full BEAST MODE pipeline on a market."""
-    # Verify mode is BEAST (3)
-    if settings.POLYGOD_MODE < 3:
-        await update.message.reply_text(
-            "❌ *BEAST MODE requires MODE=3!*\nUse /mode 3 first to enable live execution.",
-            parse_mode="Markdown",
-        )
+async def cmd_run(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Run full POLYGOD analysis on a market."""
+    if not context.args:
+        await update.message.reply_text("Usage: /run <market_id>")
         return
 
-    # Get market_id from args (default to weather-nyc for testing)
-    market_id = context.args[0] if context.args else "weather-nyc"
+    market_id = context.args[0]
+    import src.backend.main as m
+
+    mode = m.POLYGOD_MODE
 
     await update.message.reply_text(
-        f"💥 *BEAST MODE ACTIVATED!*\n\n"
-        f"Market: `{market_id}`\n"
-        f"Running full POLYGOD pipeline...\n"
-        f"_This may take a minute_ ⏳",
+        f"🔱 *Running POLYGOD on:* `{market_id}`\nMode: {mode} | This may take 60-120s...",
         parse_mode="Markdown",
     )
 
     try:
         from src.backend.polygod_graph import run_polygod
 
-        result = await run_polygod(market_id=market_id, mode=3, question="")
+        result = await run_polygod(market_id=market_id, mode=mode)
 
-        verdict = result.get("debate_verdict", "No verdict")
+        verdict = result.get("verdict", "No verdict")[:500]
+        pnl = result.get("paper_pnl", 0)
         confidence = result.get("confidence", 0)
-        paper_pnl = result.get("paper_pnl", 0)
-        risk_status = result.get("risk_status", "unknown")
+        risk = result.get("risk_status", "unknown")
 
         await update.message.reply_text(
-            f"💥 *BEAST MODE COMPLETE!*\n\n"
+            f"✅ *POLYGOD RUN COMPLETE*\n\n"
             f"Market: `{market_id}`\n"
-            f"Verdict: *{verdict}*\n"
-            f"Confidence: *{confidence}%*\n"
-            f"Paper PnL: *${paper_pnl:.2f}*\n"
-            f"Risk Status: *{risk_status}*",
+            f"Confidence: *{confidence:.0f}%*\n"
+            f"Risk Gate: *{risk.upper()}*\n"
+            f"Paper PnL: *${pnl:.2f}*\n\n"
+            f"*Verdict:*\n{verdict}",
             parse_mode="Markdown",
         )
     except Exception as e:
-        logger.error(f"Beast mode execution failed: {e}")
-        await update.message.reply_text(f"❌ BEAST MODE failed: {e}")
+        await update.message.reply_text(f"❌ Run failed: {str(e)[:500]}")
 
 
-async def cmd_real_mode(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Paper-to-real switch — enable LIVE trading (mode 3)."""
-    # Mutate the module-level mode variable
-    import src.backend.polygod_graph as pg
+async def cmd_whale(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show whale activity for a market."""
+    if not context.args:
+        await update.message.reply_text("Usage: /whale <market_id>")
+        return
 
-    old_mode = pg.POLYGOD_MODE
-    pg.POLYGOD_MODE = 3
-
-    # Also update settings
-    settings.POLYGOD_MODE = 3
-
+    market_id = context.args[0]
     await update.message.reply_text(
-        "🚀 *PAPER-TO-REAL SWITCH ACTIVATED*\n\n"
-        "💰 *LIVE TRADING ENABLED*\n\n"
-        "Safety guards active:\n"
-        "• Min liquidity: $5,000\n"
-        "• Min confidence: 90%\n"
-        "• Kelly-optimized sizing\n\n"
-        f"Previous mode: {old_mode}\n"
-        "Current mode: 3 (BEAST/LIVE)\n\n"
-        "_Use /beast <market_id> to execute live trades_",
-        parse_mode="Markdown",
-    )
-    logger.info(
-        f"Telegram: PAPER-TO-REAL activated — mode switched from {old_mode} to 3 (LIVE)"
+        f"🐋 Fetching whale activity for `{market_id}`...", parse_mode="Markdown"
     )
 
+    try:
+        from src.backend.polymarket.client import polymarket_client
 
-async def cmd_kill_switch(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Graceful kill switch — save checkpoints and pause swarm."""
+        fills = await polymarket_client.get_recent_fills(market_id, limit=10)
+
+        if not fills:
+            await update.message.reply_text("No recent fills found.")
+            return
+
+        lines = [f"🐋 *Whale Activity: {market_id}*\n"]
+        for fill in fills[:8]:
+            size = float(fill.get("size", 0))
+            price = float(fill.get("price", 0))
+            side = fill.get("side", "?")
+            value = round(size * price, 0)
+            wallet = str(fill.get("maker_address", ""))[:8]
+            lines.append(f"• {side.upper()} ${value:,.0f} @ {price:.2f} ({wallet}...)")
+
+        await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
+    except Exception as e:
+        await update.message.reply_text(f"❌ Whale fetch failed: {e}")
+
+
+async def cmd_scan_niches(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Scan for micro-niche opportunities."""
     await update.message.reply_text(
-        "☠️ *KILL SWITCH ACTIVATED*\n\nSaving checkpoints...\nPausing swarm operations...",
+        "📡 *Scanning micro-niches...*", parse_mode="Markdown"
+    )
+    try:
+        import src.backend.main as m
+        from src.backend.niche_scanner import scanner
+
+        opps = await scanner.scan_niches(m.POLYGOD_MODE)
+
+        if not opps:
+            await update.message.reply_text("No opportunities found.")
+            return
+
+        lines = [f"📡 *Found {len(opps)} micro-niche opportunities*\n"]
+        for opp in opps[:5]:
+            lines.append(
+                f"• `{opp.get('market_id', '?')[:20]}` | "
+                f"Edge: *{opp.get('edge', 0):.1%}* | "
+                f"Kelly: {opp.get('kelly_size', 0):.1%}"
+            )
+
+        await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
+    except Exception as e:
+        await update.message.reply_text(f"❌ Scan failed: {e}")
+
+
+# ── Memory Commands ───────────────────────────────────────────────────────────
+
+
+async def cmd_remember(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Store something in Mem0."""
+    if not context.args:
+        await update.message.reply_text("Usage: /remember <text to store>")
+        return
+
+    text = " ".join(context.args)
+    try:
+        from src.backend.polygod_graph import mem0_add
+
+        mem0_add(f"[OPERATOR NOTE via Telegram]: {text}", user_id="polygod")
+        await update.message.reply_text(
+            f"✅ *Stored to memory:*\n_{text}_", parse_mode="Markdown"
+        )
+    except Exception as e:
+        await update.message.reply_text(f"❌ Memory write failed: {e}")
+
+
+async def cmd_recall(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Search Mem0 trading memory."""
+    if not context.args:
+        await update.message.reply_text("Usage: /recall <search query>")
+        return
+
+    query = " ".join(context.args)
+    try:
+        from src.backend.polygod_graph import mem0_search
+
+        results = mem0_search(query, user_id="polygod")
+
+        if not results:
+            await update.message.reply_text("No memories found.")
+            return
+
+        await _send_long(
+            update, f"🧠 *Recall results for: {query}*\n\n{results[:2000]}"
+        )
+    except Exception as e:
+        await update.message.reply_text(f"❌ Recall failed: {e}")
+
+
+async def cmd_palace(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Search MemPalace project memory."""
+    if not context.args:
+        await update.message.reply_text("Usage: /palace <search query>")
+        return
+
+    query = " ".join(context.args)
+    try:
+        from src.backend.agents.mempalace_bridge import mempalace_bridge
+
+        results = await mempalace_bridge.search(query, top_k=3)
+
+        if not results:
+            await update.message.reply_text(
+                "No project memories found. Is MemPalace installed?"
+            )
+            return
+
+        lines = [f"🏛 *MemPalace results for: {query}*\n"]
+        for r in results:
+            content = str(r.get("content", ""))[:400]
+            wing = r.get("wing", "?")
+            lines.append(f"*[{wing}]*\n{content}\n")
+
+        await _send_long(update, "\n".join(lines))
+    except Exception as e:
+        await update.message.reply_text(f"❌ Palace search failed: {e}")
+
+
+# ── Skills Commands ───────────────────────────────────────────────────────────
+
+
+async def cmd_skills(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """List all available skills."""
+    try:
+        from src.backend.agents.skill_loader import list_available_skills
+
+        skills = list_available_skills()
+
+        lines = ["🛠 *Available Skills*\n"]
+        for skill in skills:
+            lines.append(f"• `{skill['name']}` — {skill['description']}")
+        lines.append("\nUse: /skill <name> to load one")
+
+        await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
+    except Exception as e:
+        await update.message.reply_text(f"❌ Skills list failed: {e}")
+
+
+async def cmd_skill(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Load and display a skill."""
+    if not context.args:
+        await update.message.reply_text(
+            "Usage: /skill <name>\nUse /skills to see available skills."
+        )
+        return
+
+    skill_name = context.args[0].lower()
+    try:
+        from src.backend.agents.skill_loader import load_skill
+
+        content = load_skill(skill_name)
+
+        if not content:
+            await update.message.reply_text(
+                f"❌ Skill '{skill_name}' not found. Use /skills to see available."
+            )
+            return
+
+        await _send_long(update, f"🛠 *Skill: {skill_name.upper()}*\n\n{content}")
+    except Exception as e:
+        await update.message.reply_text(f"❌ Skill load failed: {e}")
+
+
+# ── Agent Commands ────────────────────────────────────────────────────────────
+
+
+async def cmd_ask(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Ask the POLYGOD AI agent anything. Auto-loads relevant skills."""
+    if not context.args:
+        await update.message.reply_text("Usage: /ask <your question>")
+        return
+
+    question = " ".join(context.args)
+    await update.message.reply_text("🤖 *Thinking...*", parse_mode="Markdown")
+
+    try:
+        from src.backend.agents.polygod_brain import get_system_prompt
+        from src.backend.agents.skill_loader import load_skills_for_message
+        from src.backend.services.llm_concierge import concierge
+
+        # Auto-load relevant skills
+        skill_names, skill_content = load_skills_for_message(question)
+
+        system = get_system_prompt()
+        if skill_content:
+            system += f"\n\n{skill_content}"
+
+        response = await concierge.get_secure_completion(
+            messages=[
+                {"role": "system", "content": system},
+                {"role": "user", "content": question},
+            ],
+            max_tokens=1000,
+        )
+
+        # Extract text from response
+        if hasattr(response, "choices"):
+            answer = response.choices[0].message.content
+        elif hasattr(response, "content"):
+            answer = response.content
+        else:
+            answer = str(response)
+
+        skill_note = (
+            f"\n\n_Skills used: {', '.join(skill_names)}_" if skill_names else ""
+        )
+        await _send_long(update, f"🤖 *POLYGOD AI*\n\n{answer}{skill_note}")
+
+    except Exception as e:
+        await update.message.reply_text(f"❌ Agent call failed: {e}")
+
+
+async def cmd_fix(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Auto-fix an error using the self-healing engine.
+    Checks MemPalace first for known fixes, then uses AI.
+    """
+    if not context.args:
+        await update.message.reply_text(
+            "Usage: /fix <error message>\n"
+            "Example: /fix ModuleNotFoundError: No module named 'structlog'"
+        )
+        return
+
+    error_text = " ".join(context.args)
+    await update.message.reply_text(
+        f"🔧 *Auto-fix requested:*\n`{error_text[:200]}`\n\nChecking known fixes...",
         parse_mode="Markdown",
     )
 
     try:
-        from src.backend.polygod_graph import polygod_graph
+        # Check MemPalace for known fix first
+        from src.backend.agents.mempalace_bridge import mempalace_bridge
 
-        # Close checkpointer to save state
-        if hasattr(polygod_graph, "checkpointer") and polygod_graph.checkpointer:
-            await polygod_graph.checkpointer.close()
-            logger.info("Telegram: Checkpointer closed (state saved)")
+        known_fix = await mempalace_bridge.get_error_fix(error_text)
 
-        await update.message.reply_text(
-            "✅ *Checkpoints saved!*\n"
-            "Swarm paused. Use /mode to resume.\n\n"
-            "_Paper PnL summary will be in the next daily report._",
-            parse_mode="Markdown",
+        if known_fix:
+            await update.message.reply_text(
+                f"✅ *Known fix found in MemPalace:*\n\n{known_fix[:1500]}",
+                parse_mode="Markdown",
+            )
+            return
+
+        # No known fix — use AI with FIX_PYTHON skill
+        from src.backend.agents.polygod_brain import get_system_prompt
+        from src.backend.agents.skill_loader import load_skill
+        from src.backend.services.llm_concierge import concierge
+
+        fix_skill = load_skill("fix_python")
+        system = get_system_prompt() + f"\n\n{fix_skill}"
+
+        response = await concierge.get_secure_completion(
+            messages=[
+                {"role": "system", "content": system},
+                {
+                    "role": "user",
+                    "content": f"Fix this error in the POLYGOD codebase:\n\n{error_text}\n\n"
+                    f"Give me: 1) Root cause 2) Exact file+line to change 3) The fix code",
+                },
+            ],
+            max_tokens=1500,
         )
+
+        if hasattr(response, "choices"):
+            fix = response.choices[0].message.content
+        elif hasattr(response, "content"):
+            fix = response.content
+        else:
+            fix = str(response)
+
+        # Store the AI fix in MemPalace for next time
+        await mempalace_bridge.remember_error(
+            error=error_text,
+            fix=fix,
+            component="auto_detected",
+        )
+
+        await _send_long(
+            update, f"🔧 *AI Fix (stored to MemPalace for next time):*\n\n{fix}"
+        )
+
     except Exception as e:
-        logger.error(f"Kill switch failed: {e}")
-        await update.message.reply_text(
-            f"⚠️ Kill switch partially failed: {e}\nSwarm may still be running. Check logs."
-        )
+        await update.message.reply_text(f"❌ Fix failed: {e}")
+
+
+# ── Snapshot Commands (unchanged from before) ─────────────────────────────────
 
 
 async def cmd_snapshot(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Take a full code + state snapshot."""
-    await update.message.reply_text(
-        "📸 *Taking full snapshot...*\n\nCreating git commit + LangGraph checkpoint + Mem0 record",
-        parse_mode="Markdown",
-    )
-
+    await update.message.reply_text("📸 *Taking snapshot...*", parse_mode="Markdown")
     try:
         from src.backend.snapshot_engine import snapshot_engine
 
-        # Take snapshot with current state
-        state = {"verdict": "telegram_manual", "confidence": 100}
-        snap = await snapshot_engine.take_snapshot(state, "telegram")
-
+        snap = await snapshot_engine.take_snapshot(
+            {"verdict": "telegram_manual"}, "telegram"
+        )
         await update.message.reply_text(
-            f"📸 *Snapshot taken!*\n\n"
-            f"Commit SHA: `{snap['commit_sha'][:10]}`\n"
-            f"Checkpoint: `{snap.get('checkpoint_id', 'N/A')}`\n"
-            f"Timestamp: {snap['timestamp']}\n"
-            f"Label: `{snap['label']}`\n\n"
-            f"_Use /rollback <sha> to restore_",
+            f"📸 *Snapshot taken*\n`{snap['commit_sha'][:10]}`\n{snap['timestamp'][:19]}",
             parse_mode="Markdown",
         )
-        logger.info(f"Telegram: Snapshot taken: {snap['commit_sha'][:10]}")
     except Exception as e:
-        logger.error(f"Telegram snapshot failed: {e}")
         await update.message.reply_text(f"❌ Snapshot failed: {e}")
 
 
 async def cmd_rollback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Rollback to a previous snapshot."""
     if not context.args:
-        await update.message.reply_text(
-            "Usage: /rollback <commit_sha>\nUse /snapshots to list available snapshots",
-            parse_mode="Markdown",
-        )
+        await update.message.reply_text("Usage: /rollback <commit_sha>")
         return
-
     sha = context.args[0]
-
-    await update.message.reply_text(
-        f"🔄 *Rolling back to {sha[:10]}...*",
-        parse_mode="Markdown",
-    )
-
     try:
         from src.backend.snapshot_engine import snapshot_engine
 
         result = await snapshot_engine.rollback_to_snapshot(sha)
-
         if result["status"] == "success":
             await update.message.reply_text(
-                f"✅ *Rollback complete!*\n\n"
-                f"Reverted to: `{result['commit_sha'][:10]}`\n"
-                f"Message: {result['message']}\n\n"
-                "_Note: You may need to restart the server for changes to take effect._",
-                parse_mode="Markdown",
+                f"✅ *Rolled back to* `{sha[:10]}`", parse_mode="Markdown"
             )
-            logger.info(f"Telegram: Rolled back to {result['commit_sha'][:10]}")
         else:
-            await update.message.reply_text(
-                f"❌ Rollback failed: {result['message']}",
-                parse_mode="Markdown",
-            )
+            await update.message.reply_text(f"❌ {result['message']}")
     except Exception as e:
-        logger.error(f"Telegram rollback failed: {e}")
         await update.message.reply_text(f"❌ Rollback failed: {e}")
 
 
 async def cmd_list_snapshots(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """List recent snapshots."""
     try:
         from src.backend.snapshot_engine import snapshot_engine
 
-        snapshots = await snapshot_engine.list_snapshots(limit=5)
-
-        if snapshots:
-            text = "📸 *Recent Snapshots:*\n\n"
-            for snap in snapshots:
-                text += f"• `{snap['short_sha']}` — {snap['message'][:50]}\n"
-                text += f"  {snap['timestamp'][:19]}\n\n"
-        else:
-            text = "No snapshots found yet."
-
-        await update.message.reply_text(text, parse_mode="Markdown")
+        snaps = await snapshot_engine.list_snapshots(limit=5)
+        if not snaps:
+            await update.message.reply_text("No snapshots found.")
+            return
+        lines = ["📸 *Recent Snapshots*\n"]
+        for s in snaps:
+            lines.append(
+                f"• `{s['short_sha']}` — {s['message'][:50]}\n  {s['timestamp'][:19]}"
+            )
+        await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
     except Exception as e:
-        logger.error(f"Telegram list_snapshots failed: {e}")
-        await update.message.reply_text(f"❌ Failed to list snapshots: {e}")
+        await update.message.reply_text(f"❌ Failed: {e}")
 
 
-# ─── Bot Setup ───────────────────────────────────────────────────────────────
+async def cmd_kill_switch(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "☠️ *KILL SWITCH ACTIVATED*\nSaving checkpoints...", parse_mode="Markdown"
+    )
+    try:
+        import src.backend.polygod_graph as pg
+
+        if hasattr(pg, "polygod_graph") and hasattr(pg.polygod_graph, "checkpointer"):
+            if pg.polygod_graph.checkpointer:
+                try:
+                    await pg.polygod_graph.checkpointer.aclose()
+                except Exception:
+                    pass
+        await update.message.reply_text(
+            "✅ *Kill switch complete. Use /mode to resume.*", parse_mode="Markdown"
+        )
+    except Exception as e:
+        await update.message.reply_text(f"⚠️ Partial kill: {e}")
+
+
+async def cmd_real_mode(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    import src.backend.main as m
+    import src.backend.polygod_graph as pg
+
+    old = pg.POLYGOD_MODE
+    pg.POLYGOD_MODE = 3
+    m.POLYGOD_MODE = 3
+    await update.message.reply_text(
+        f"🚀 *LIVE TRADING ENABLED*\nMode {old} → *3 (BEAST)*\n\n"
+        f"Guards active: 90% confidence + $5k liquidity\n"
+        f"Use /beast <market\\_id> to execute",
+        parse_mode="Markdown",
+    )
+
+
+# ── Registration ──────────────────────────────────────────────────────────────
 
 
 def build_telegram_app() -> Application:
-    """Build and configure the Telegram Application with all handlers."""
     global app_telegram
+    token = settings.TELEGRAM_BOT_TOKEN.get_secret_value()
+    if not token:
+        raise ValueError("TELEGRAM_BOT_TOKEN not set")
 
-    app_telegram = Application.builder().token(settings.TELEGRAM_BOT_TOKEN).build()
+    app_telegram = Application.builder().token(token).build()
 
-    # Register command handlers
-    app_telegram.add_handler(CommandHandler("start", cmd_start))
-    app_telegram.add_handler(CommandHandler("mode", cmd_switch_mode))
-    app_telegram.add_handler(CommandHandler("real", cmd_real_mode))
-    app_telegram.add_handler(CommandHandler("scan", cmd_scan_niches))
-    app_telegram.add_handler(CommandHandler("beast", cmd_beast_mode))
-    app_telegram.add_handler(CommandHandler("kill", cmd_kill_switch))
-    app_telegram.add_handler(CommandHandler("snapshot", cmd_snapshot))
-    app_telegram.add_handler(CommandHandler("rollback", cmd_rollback))
-    app_telegram.add_handler(CommandHandler("snapshots", cmd_list_snapshots))
+    handlers = [
+        # System
+        ("start", cmd_start),
+        ("status", cmd_status),
+        ("boot", cmd_boot),
+        ("mode", cmd_switch_mode),
+        ("real", cmd_real_mode),
+        ("kill", cmd_kill_switch),
+        # Trading
+        ("run", cmd_run),
+        ("debate", cmd_run),  # alias for now
+        ("scan", cmd_scan_niches),
+        ("whale", cmd_whale),
+        # Memory
+        ("remember", cmd_remember),
+        ("recall", cmd_recall),
+        ("palace", cmd_palace),
+        # Skills + Agent
+        ("skills", cmd_skills),
+        ("skill", cmd_skill),
+        ("ask", cmd_ask),
+        ("fix", cmd_fix),
+        # Snapshots
+        ("snapshot", cmd_snapshot),
+        ("rollback", cmd_rollback),
+        ("snapshots", cmd_list_snapshots),
+    ]
 
-    logger.info("Telegram bot handlers registered")
+    for name, handler in handlers:
+        app_telegram.add_handler(CommandHandler(name, handler))
+
+    logger.info(f"Telegram bot registered {len(handlers)} commands")
     return app_telegram
 
 
 async def run_telegram_bot():
-    """Background task to run the Telegram bot (called from main.py lifespan)."""
-    if not settings.TELEGRAM_BOT_TOKEN:
+    if not settings.TELEGRAM_BOT_TOKEN.get_secret_value():
         logger.warning("TELEGRAM_BOT_TOKEN not set — Telegram bot disabled")
         return
 
     app = build_telegram_app()
-
     await app.initialize()
     await app.start()
     await app.updater.start_polling()
+    logger.info("🚀 POLYGOD Telegram bot polling")
 
-    logger.info("🚀 POLYGOD Telegram bot is live and polling!")
-
-    # Keep running until shutdown
     try:
         await asyncio.Event().wait()
     except asyncio.CancelledError:

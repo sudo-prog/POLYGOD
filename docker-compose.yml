@@ -1,3 +1,5 @@
+version: "3.9"
+
 # POLYGOD Docker Compose — dev/staging stack
 #
 # Changes vs previous version:
@@ -11,6 +13,11 @@
 #               Qdrant ports also restricted to localhost.
 #   - ADDED:    backend depends_on postgres with condition: service_healthy so
 #               the app doesn't race against a starting database.
+#   - FIXED C1-DB: Made all DateTime columns timezone-aware to prevent
+#                  naive vs aware datetime errors during price history insert.
+#   - PROFILE:   polygod-swarm moved to optional 'swarm' profile to prevent
+#                automatic start with `docker compose up`. Use:
+#                `docker compose --profile swarm up -d polygod-swarm`
 
 services:
   postgres:
@@ -19,11 +26,11 @@ services:
     environment:
       POSTGRES_DB: polygod
       POSTGRES_USER: polygod
-      POSTGRES_PASSWORD: polygod_dev_password  # override in .env for staging/prod
+      POSTGRES_PASSWORD: polygod_dev_password
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
-      - "127.0.0.1:5432:5432"   # localhost only — not exposed to host network
+      - "127.0.0.1:5432:5432"
     networks:
       - pnet
     healthcheck:
@@ -78,7 +85,7 @@ services:
     volumes:
       - qdrant_data:/qdrant/storage
     ports:
-      - "127.0.0.1:6333:6333"   # localhost only
+      - "127.0.0.1:6333:6333"
       - "127.0.0.1:6334:6334"
     environment:
       - QDRANT__SERVICE__GRPC_PORT=6334
@@ -91,18 +98,15 @@ services:
       retries: 5
       start_period: 5s
 
-  # FIXED M6: polygod-swarm healthcheck was running a Python import on every
-  # POLYGOD Swarm — runs on-demand (not auto-started). Start manually via:
-  #   docker compose up -d polygod-swarm
-  # Or via the API endpoint /polygod/run which will auto-start the container.
-  # FIXED: Changed from restart:unless-stopped to restart:no to prevent
-  # runaway processes from consuming all CPU/memory. Now runs on-demand only.
+  # Polygod Swarm Agent — on-demand only.
+  # Requires explicit start: docker compose --profile swarm up -d polygod-swarm
   polygod-swarm:
     build:
       context: .
       dockerfile: Dockerfile.backend
     image: polygod-swarm:latest
-    restart: no  # ← Changed: on-demand only, not auto-started
+    restart: no
+    profiles: ["swarm"]  # OPTIONAL: requires --profile swarm to start
     command: uv run python -m src.backend.polygod_graph
     env_file:
       - .env
@@ -117,8 +121,6 @@ services:
       qdrant:
         condition: service_healthy
     healthcheck:
-      # pgrep -f matches against the full command line, so this matches the
-      # actual python process running polygod_graph.py
       test: ["CMD-SHELL", "pgrep -f 'python.*polygod_graph' || pgrep -f 'uvicorn'"]
       interval: 30s
       timeout: 5s
@@ -127,10 +129,10 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '2'      # Max 2 CPU cores
-          memory: 2G     # Max 2GB RAM
+          cpus: '2'
+          memory: 2G
         reservations:
-          memory: 1G     # Reserve 1GB
+          memory: 1G
     mem_limit: 2G
     memswap_limit: 2G
     cpus: 2.0
@@ -139,14 +141,14 @@ services:
     image: redis:7-alpine
     restart: unless-stopped
     ports:
-     - "127.0.0.1:6379:6379"   # localhost only — was 0.0.0.0 previously
+      - "127.0.0.1:6379:6379"
     networks:
-     - pnet
+      - pnet
     healthcheck:
-     test: ["CMD", "redis-cli", "ping"]
-     interval: 5s
-     timeout: 3s
-     retries: 3
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
 
 volumes:
   polygod_data:

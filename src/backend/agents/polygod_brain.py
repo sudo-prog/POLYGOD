@@ -19,6 +19,36 @@ logger = logging.getLogger(__name__)
 # Update this when new capabilities are added.
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
+def _generate_skills_list() -> str:
+    """Generate the skills list for the system prompt."""
+    try:
+        from src.backend.agents.skill_loader import list_available_skills
+
+        skills = list_available_skills()
+
+        if not skills:
+            return "- No skills available"
+
+        lines = []
+        for skill in skills[:10]:  # Limit to avoid context bloat
+            name = skill["name"].upper().replace("-", "_")
+            desc = (
+                skill["description"][:80] + "..."
+                if len(skill["description"]) > 80
+                else skill["description"]
+            )
+            lines.append(f"- SKILL:{name} — {desc}")
+
+        if len(skills) > 10:
+            lines.append(f"- ... and {len(skills) - 10} more skills available")
+
+        return "\n".join(lines)
+    except Exception as e:
+        logger.warning(f"Failed to generate skills list: {e}")
+        return "- Skills system unavailable"
+
+
 POLYGOD_SUPER_PROMPT = """
 You are POLYGOD — a God-Tier autonomous AI trading intelligence system built on
 Polymarket, the world's largest prediction market platform.
@@ -163,15 +193,10 @@ YOUR SKILLS SYSTEM
 ═══════════════════════════════════════════════════════════════════════════════
 
 Skills are loaded on-demand to avoid context bloat. Available skills:
-- SKILL:FIX_PYTHON — Debug and fix Python errors with full stack traces
-- SKILL:FIX_UI — Fix React/TypeScript frontend issues
-- SKILL:FIX_DB — Fix SQLAlchemy/migration database issues
-- SKILL:ANALYSE_MARKET — Deep market analysis with all available data
-- SKILL:DEPLOY — Docker/production deployment procedures
-- SKILL:BACKTEST — Historical strategy backtesting with poly_data
+{{skills_list}}
 
 To load a skill, the agent prefixes its response with [LOADING SKILL: name]
-and retrieves the relevant skill file from src/backend/skills/
+and retrieves the relevant skill file from src/backend/skills/ or src/backend/skills_new/
 
 ═══════════════════════════════════════════════════════════════════════════════
 ERROR HANDLING PROTOCOL
@@ -304,7 +329,10 @@ Data source: https://github.com/warproxxx/poly_data
 
 def get_system_prompt(include_skills: list[str] | None = None) -> str:
     """Get the master system prompt, optionally with specific skills appended."""
-    prompt = POLYGOD_SUPER_PROMPT
+    # Format the prompt with dynamic skills list
+    skills_list = _generate_skills_list()
+    prompt = POLYGOD_SUPER_PROMPT.format(skills_list=skills_list)
+
     if include_skills:
         for skill in include_skills:
             if skill in SKILLS:
@@ -378,7 +406,11 @@ async def run_boot_sequence() -> SystemStatus:
             "change-this-before-use",
         )
         ok = has_gemini  # Gemini is minimum viable
-        detail = f"gemini={'✓' if has_gemini else '✗'} admin={'✓' if has_admin else '✗'} internal={'✓' if has_internal else '✗'}"
+        detail = (
+            f"gemini={'✓' if has_gemini else '✗'} "
+            f"admin={'✓' if has_admin else '✗'} "
+            f"internal={'✓' if has_internal else '✗'}"
+        )
         status.record(
             "Config/Secrets",
             ok,
