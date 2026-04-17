@@ -124,19 +124,29 @@ services:
       timeout: 5s
       retries: 3
       start_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: '2'      # Max 2 CPU cores
+          memory: 2G     # Max 2GB RAM
+        reservations:
+          memory: 1G     # Reserve 1GB
+    mem_limit: 2G
+    memswap_limit: 2G
+    cpus: 2.0
 
   redis:
     image: redis:7-alpine
     restart: unless-stopped
     ports:
-      - "127.0.0.1:6379:6379"   # localhost only — was 0.0.0.0 previously
+     - "127.0.0.1:6379:6379"   # localhost only — was 0.0.0.0 previously
     networks:
-      - pnet
+     - pnet
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 3s
-      retries: 3
+     test: ["CMD", "redis-cli", "ping"]
+     interval: 5s
+     timeout: 3s
+     retries: 3
 
 volumes:
   polygod_data:
