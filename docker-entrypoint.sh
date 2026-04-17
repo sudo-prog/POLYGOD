@@ -47,4 +47,4 @@ fi
 
 echo "Starting uvicorn..."
 export PYTHONPATH=/app:$PYTHONPATH
-exec uv run uvicorn src.backend.main:app --host 0.0.0.0 --port 8000
+exec uv run uvicorn src.backend.main:app --host 0.0.0.0 --port 8000 --workers 4
