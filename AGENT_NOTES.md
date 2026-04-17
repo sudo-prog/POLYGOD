@@ -2,7 +2,7 @@
 
 | Date       | Agent  | Changes Made                                              |
 |------------|--------|-----------------------------------------------------------|
-| 2026-04-17 | Kilo (GOD TIER ENGINEER) | Fixed autoresearch_lab.py import error by removing invalid type hint, added curl to Dockerfile.backend for healthchecks, rebuilt backend image, and started Docker Compose services successfully. All services now healthy. |
+| 2026-04-17 | Kilo (GOD TIER ENGINEER) | Fixed autoresearch_lab.py import error (invalid type hint causing AttributeError), added curl to Dockerfile.backend for healthchecks, rebuilt backend image, and resolved Docker Compose startup failures. Applied resource limits (2 CPU cores, 2GB RAM max, 1GB reserved) to polygod-swarm container to prevent system freeze from unbounded parallel tournament simulations. All services now healthy and stable. Committed and pushed to GitHub. |
 |------------|-----------------------|-----------------------------------------------------------|
 | 2026-04-16 | Kilo (GOD TIER ENGINEER) | Added MemPalace and ChromaDB dependencies to pyproject.toml for project memory system |
 | 2026-04-16 | Kilo (GOD TIER ENGINEER) | Implemented full Telegram command surface: comprehensive control interface with 20+ commands for system, trading, memory, skills, and AI agent |
