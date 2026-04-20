@@ -3,19 +3,16 @@ SelfHealingEngine — POLYGOD's autonomous repair and web-search intelligence.
 
 Capabilities:
   1. ERROR SCANNER       — scans Python tracebacks / log output for known error patterns
-  2. WEB SEARCH          — uses Anthropic API with web_search tool to find solutions
-  3. PATCH PROPOSER      — generates code patches using Claude with full file context
+  2. WEB SEARCH          — uses LITELLM with free Groq model (no credit card required)
+  3. PATCH PROPOSER      — generates code patches using LLM with full file context
   4. PATCH APPLICATOR    — safely writes patches with backup + rollback
   5. BACKGROUND WATCHER  — asyncio task that monitors a shared error queue
 
 All activity is streamed to ThoughtStream so the frontend Thinking Window
 shows every step in real time.
 
-Architecture decision — why Anthropic API directly instead of LiteLLM router:
-  The self-heal agent MUST be able to search the web. The Anthropic API
-  natively supports `{"type": "web_search_20250305", "name": "web_search"}`
-  as a tool. LiteLLM's abstraction doesn't expose this cleanly. For the
-  agent that fixes the other agents, direct API control is the right call.
+Uses litellm with FREE Groq model (llama-3.3-70b-versatile) - no API key needed,
+falls back to Gemini or OpenRouter for code generation.
 """
 
 from __future__ import annotations
@@ -40,8 +37,8 @@ logger = logging.getLogger(__name__)
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 
-ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages"
-SELF_HEAL_MODEL = "claude-sonnet-4-6"  # best balance of speed + quality for self-repair
+# FREE models via litellm (Groq is completely free, no credit card)
+SELF_HEAL_MODEL = "groq/llama-3.3-70b-versatile"
 BACKUP_DIR = Path(".self_heal_backups")
 MAX_FILE_SIZE_BYTES = 150_000  # don't send >150KB files to the API
 
@@ -80,9 +77,7 @@ class ErrorEvent:
     label: str | None = None
     severity: str = "error"
     context: str = ""
-    timestamp: str = field(
-        default_factory=lambda: datetime.now(timezone.utc).isoformat()
-    )
+    timestamp: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 
 @dataclass
@@ -125,11 +120,16 @@ class SelfHealingEngine:
         BACKUP_DIR.mkdir(exist_ok=True)
 
     def _get_api_key(self) -> str:
-        """Lazy-load API key from env (not at import time)."""
+        """Lazy-load API key from env (not at import time).
+
+        Uses Groq (free), falls back to GROK_API_KEY or GEMINI_API_KEY.
+        """
         if not self._api_key:
-            # Try multiple possible env var names
-            self._api_key = os.getenv("ANTHROPIC_API_KEY", "") or os.getenv(
-                "CLAUDE_API_KEY", ""
+            # Try free models first, then paid fallbacks
+            self._api_key = (
+                os.getenv("GROQ_API_KEY", "")
+                or os.getenv("GROK_API_KEY", "")
+                or os.getenv("GEMINI_API_KEY", "")
             )
         return self._api_key
 
@@ -153,9 +153,7 @@ class SelfHealingEngine:
 
         Returns a result dict with all findings.
         """
-        await thought_stream.thinking(
-            "Received error event — classifying...", agent="SelfHeal"
-        )
+        await thought_stream.thinking("Received error event — classifying...", agent="SelfHeal")
 
         event = self._classify_error(error_text, context_file)
 
@@ -169,9 +167,7 @@ class SelfHealingEngine:
         try:
             self._error_queue.put_nowait(event)
         except asyncio.QueueFull:
-            await thought_stream.warn(
-                "Error queue full — dropping oldest event", agent="SelfHeal"
-            )
+            await thought_stream.warn("Error queue full — dropping oldest event", agent="SelfHeal")
             try:
                 self._error_queue.get_nowait()
                 self._error_queue.put_nowait(event)
@@ -194,9 +190,7 @@ class SelfHealingEngine:
         Used by the /api/agent/think endpoint when the agent encounters
         something it doesn't know how to do.
         """
-        await thought_stream.thinking(
-            f"Researching: {question[:100]}", agent="SelfHeal"
-        )
+        await thought_stream.thinking(f"Researching: {question[:100]}", agent="SelfHeal")
 
         file_context = ""
         if context_files:
@@ -211,9 +205,7 @@ class SelfHealingEngine:
         else:
             answer = await self._call_claude(question, file_context)
 
-        await thought_stream.decision(
-            f"Research complete: {answer[:150]}...", agent="SelfHeal"
-        )
+        await thought_stream.decision(f"Research complete: {answer[:150]}...", agent="SelfHeal")
         return {"question": question, "answer": answer, "searched": search}
 
     async def scan_codebase(self, path: str = "src/backend") -> list[dict]:
@@ -221,21 +213,15 @@ class SelfHealingEngine:
         Static scan of Python files for common issues (no API call needed).
         Fast heuristic check — runs in < 1s on a typical backend.
         """
-        await thought_stream.thinking(
-            f"Scanning codebase at {path}...", agent="SelfHeal"
-        )
+        await thought_stream.thinking(f"Scanning codebase at {path}...", agent="SelfHeal")
         issues = []
         root = Path(path)
         if not root.exists():
-            await thought_stream.warn(
-                f"Scan path {path} does not exist", agent="SelfHeal"
-            )
+            await thought_stream.warn(f"Scan path {path} does not exist", agent="SelfHeal")
             return issues
 
         py_files = list(root.rglob("*.py"))
-        await thought_stream.info(
-            f"Scanning {len(py_files)} Python files", agent="SelfHeal"
-        )
+        await thought_stream.info(f"Scanning {len(py_files)} Python files", agent="SelfHeal")
 
         for pyfile in py_files:
             try:
@@ -285,9 +271,7 @@ class SelfHealingEngine:
 
     # ── Internal processing ─────────────────────────────────────────────────
 
-    async def _process_error(
-        self, event: ErrorEvent, auto_fix: bool = True
-    ) -> dict[str, Any]:
+    async def _process_error(self, event: ErrorEvent, auto_fix: bool = True) -> dict[str, Any]:
         api_key = self._get_api_key()
         if not api_key:
             await thought_stream.warn(
@@ -354,9 +338,7 @@ Line: {event.line_number or "unknown"}
 
         return result
 
-    async def _generate_and_apply_patch(
-        self, event: ErrorEvent, solution: str
-    ) -> PatchResult:
+    async def _generate_and_apply_patch(self, event: ErrorEvent, solution: str) -> PatchResult:
         """Ask Claude to generate a minimal patch, then apply it."""
         file_path = event.file_path
         if not file_path:
@@ -472,8 +454,7 @@ Make the smallest possible change that fixes the error.
             "messages": [
                 {
                     "role": "user",
-                    "content": question
-                    + (f"\n\n{file_context}" if file_context else ""),
+                    "content": question + (f"\n\n{file_context}" if file_context else ""),
                 }
             ],
             "system": (
@@ -551,9 +532,7 @@ Make the smallest possible change that fixes the error.
                 )
                 resp.raise_for_status()
                 data = resp.json()
-            return " ".join(
-                b["text"] for b in data.get("content", []) if b.get("type") == "text"
-            )
+            return " ".join(b["text"] for b in data.get("content", []) if b.get("type") == "text")
         except Exception as exc:
             return f"Claude call failed: {exc}"
 

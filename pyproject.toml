@@ -85,6 +85,12 @@ dependencies = [
     "structlog>=25.0.0",
     # ADDED: MCP client for Playwright browser automation
     "mcp>=1.0.0",
+    # ADDED: Kronos/Chronos-T5 time-series forecasting + HF streaming
+    "polars>=1.22.0",
+    "datasets>=3.0.0",
+    "huggingface_hub>=0.28.0",
+    "chronos-forecasting>=1.4.0",
+    "pyarrow>=16.0.0",
 ]
 
 [project.optional-dependencies]

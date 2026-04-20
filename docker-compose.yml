@@ -50,6 +50,7 @@ services:
       - .env
     volumes:
       - polygod_data:/app/data
+      - hf_cache:/root/.cache/huggingface   # ADDED: Persists Chronos model weights (~1.5 GB) across restarts
     ports:
       - "127.0.0.1:8000:8000"
     networks:
@@ -154,6 +155,7 @@ volumes:
   polygod_data:
   qdrant_data:
   postgres_data:
+  hf_cache:        # ADDED: Persists Chronos model weights (~1.5 GB) across restarts
 
 networks:
   pnet:

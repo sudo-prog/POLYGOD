@@ -433,9 +433,9 @@ async def statistics_agent(state: AgentState) -> AgentState:
             kronos = enrichment.get("kronos_forecast", {})
             if kronos:
                 kronos_context = (
-                    f"\nKronos Forecast: {kronos.get('forecast')}% in 24h "
-                    f"(signal: {kronos.get('signal')}, "
-                    f"trend: {kronos.get('trend')})"
+                    f"\nKronos Forecast: {kronos.get('forecast')}% in {kronos.get('horizon_candles')} candles "
+                    f"(signal: {kronos.get('signal')}, trend: {kronos.get('trend')}, "
+                    f"Δ{kronos.get('delta_pct')}% | 80% CI: {kronos.get('lower_80')}–{kronos.get('upper_80')}%)"
                 )
             else:
                 kronos_context = ""

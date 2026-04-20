@@ -23,20 +23,21 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, TypeVar
 
-import httpx
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from src.backend.agents.self_healing import self_healing_engine
 from src.backend.agents.thought_stream import thought_stream
 from src.backend.auth import verify_api_key
+from src.backend.services.llm_concierge import concierge
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["agent"])
 
-ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages"
-AGENT_MODEL = "claude-sonnet-4-6"
+# Use litellm for free model routing (Groq is free, no credit card required)
+# Priority: Groq → Gemini → OpenRouter (all have free tiers)
+AGENT_MODEL = "groq/llama-3.3-70b-versatile"
 
 # ── Request / Response models ─────────────────────────────────────────────────
 
@@ -50,7 +51,7 @@ class ChatRequest(BaseModel):
     messages: list[ChatMessage]
     context_files: list[str] = Field(default_factory=list)
     search: bool = False  # enable web search tool (via Playwright MCP)
-    model: str = AGENT_MODEL
+    model: str = "groq/llama-3.3-70b-versatile"  # Free model - Groq
 
 
 class ThinkRequest(BaseModel):
@@ -149,33 +150,18 @@ Be direct, technical, and precise. You ARE the system — speak from that author
 @router.post("/chat")
 async def chat(req: ChatRequest, _: str = Depends(verify_api_key)):
     """
-    Streamed chat with optional web search.
-    Emits SSE chunks. Frontend reads them with EventSource or fetch reader.
+    Streamed chat using litellm with free Groq model.
+    Grq: llama-3.3-70b-versatile is FREE (no credit card needed)
+    Falls back to Gemini or OpenRouter if Groq unavailable.
     """
-    api_key = _get_anthropic_key()
-    if not api_key:
-        raise HTTPException(
-            status_code=503,
-            detail="ANTHROPIC_API_KEY not configured — add it to .env",
-        )
+    from litellm import astream_completion
 
     file_context = _read_context_files(req.context_files)
     messages = [{"role": m.role, "content": m.content} for m in req.messages]
 
     if file_context:
-        # Inject file context into the last user message
         if messages and messages[-1]["role"] == "user":
             messages[-1]["content"] += f"\n\n---\nCODEBASE CONTEXT:\n{file_context}"
-
-    # Note: web_search_20250305 tool removed - using Playwright MCP instead
-    # For web search, use the /api/agent/think endpoint which uses browser automation
-    payload: dict[str, Any] = {
-        "model": req.model,
-        "max_tokens": 4096,
-        "stream": True,
-        "system": _system_prompt(),
-        "messages": messages,
-    }
 
     # Log to thought stream
     last_user_msg = next(
@@ -186,68 +172,45 @@ async def chat(req: ChatRequest, _: str = Depends(verify_api_key)):
 
     async def event_generator():
         try:
-            async with httpx.AsyncClient(timeout=120.0) as client:
-                async with client.stream(
-                    "POST",
-                    ANTHROPIC_API_URL,
-                    headers={
-                        "x-api-key": api_key,
-                        "anthropic-version": "2023-06-01",
-                        "content-type": "application/json",
-                    },
-                    json=payload,
-                ) as resp:
-                    if resp.status_code != 200:
-                        body = await resp.aread()
-                        err_msg = body.decode()[:200]
-                        yield f"data: {json.dumps({'type': 'error', 'content': err_msg})}\n\n"
-                        return
+            # Try free models via litellm
+            model = req.model or "groq/llama-3.3-70b-versatile"
 
-                    full_text = ""
-                    async for line in resp.aiter_lines():
-                        if not line.startswith("data: "):
-                            continue
-                        data_str = line[6:]
-                        if data_str == "[DONE]":
-                            break
-                        try:
-                            event = json.loads(data_str)
-                            etype = event.get("type", "")
+            full_text = ""
+            try:
+                async for chunk in astream_completion(
+                    model=model,
+                    messages=[{"role": "system", "content": _system_prompt()}]
+                    + messages,
+                    max_tokens=4096,
+                    api_key=os.getenv("GROQ_API_KEY", ""),
+                ):
+                    delta = chunk.choices[0].delta.content or ""
+                    if delta:
+                        full_text += delta
+                        data = json.dumps({"type": "text", "content": delta})
+                        yield f"data: {data}\n\n"
+            except Exception as e:
+                # Fallback: try concierge (Gemini -> OpenRouter)
+                try:
+                    resp = await concierge.get_secure_completion(
+                        messages=[{"role": "system", "content": _system_prompt()}]
+                        + messages
+                    )
+                    content = resp.choices[0].message.content
+                    # Stream it in chunks
+                    for i in range(0, len(content), 50):
+                        chunk = content[i : i + 50]
+                        data = json.dumps({"type": "text", "content": chunk})
+                        yield f"data: {data}\n\n"
+                    full_text = content
+                except Exception as e2:
+                    yield f"data: {json.dumps({'type': 'error', 'content': f'All LLMs failed. Groq: {e}, Concierge: {e2}'})}\n\n"
+                    return
 
-                            if etype == "content_block_delta":
-                                delta = event.get("delta", {})
-                                if delta.get("type") == "text_delta":
-                                    chunk = delta.get("text", "")
-                                    full_text += chunk
-                                    data = json.dumps(
-                                        {"type": "text", "content": chunk}
-                                    )
-                                    yield f"data: {data}\n\n"
-
-                            elif etype == "content_block_start":
-                                block = event.get("content_block", {})
-                                if block.get("type") == "tool_use":
-                                    tool_input = block.get("input", {})
-                                    query = tool_input.get("query", "searching...")
-                                    await thought_stream.searching(
-                                        query, agent="POLYGOD"
-                                    )
-                                    data = json.dumps(
-                                        {
-                                            "type": "tool_use",
-                                            "name": "web_search",
-                                            "query": query,
-                                        }
-                                    )
-                                    yield f"data: {data}\n\n"
-
-                        except json.JSONDecodeError:
-                            pass
-
-                    if full_text:
-                        await thought_stream.decision(
-                            f"Response: {full_text[:120]}...", agent="POLYGOD"
-                        )
+            if full_text:
+                await thought_stream.decision(
+                    f"Response: {full_text[:120]}...", agent="POLYGOD"
+                )
 
         except Exception as exc:
             await thought_stream.error(f"Chat stream error: {exc}", agent="POLYGOD")

@@ -44,6 +44,8 @@ class Settings(BaseSettings):
     # EVM private key for signing CLOB orders (live trading only)
     POLYMARKET_PRIVATE_KEY: SecretStr = Field(default=SecretStr(""))
     GEMINI_API_KEY: SecretStr = Field(default=SecretStr(""))
+    # Groq - completely FREE model provider (no credit card)
+    GROQ_API_KEY: SecretStr = Field(default=SecretStr(""))
     GROK_API_KEY: SecretStr = Field(default=SecretStr(""))
     TAVILY_API_KEY: SecretStr = Field(default=SecretStr(""))
     # RESTORED: Used by llm_router.py GodTierLLMRouter
@@ -52,6 +54,15 @@ class Settings(BaseSettings):
     X_BEARER_TOKEN: SecretStr = Field(default=SecretStr(""))
     LANGSMITH_API_KEY: SecretStr = Field(default=SecretStr(""))
     LIGHTNING_AI_TOKEN: SecretStr = Field(default=SecretStr(""))
+
+    # ── Kronos / HuggingFace ─────────────────────────────────────────────────────
+    HF_TOKEN: SecretStr = Field(default=SecretStr(""))
+    # Use "amazon/chronos-t5-small" for CPU, "amazon/chronos-t5-large" for GPU
+    KRONOS_MODEL_NAME: str = Field(default="amazon/chronos-t5-small")
+    # Hard cap on candles streamed per call to prevent OOM in 2 GB swarm container
+    KRONOS_MAX_CANDLES: int = Field(default=5000)
+    # Timeout in seconds for HF streaming calls
+    KRONOS_STREAM_TIMEOUT: int = Field(default=30)
 
     # ── Server ───────────────────────────────────────────────────────────────
     CORS_ORIGINS: str = Field(default="http://localhost:5173,https://yourdomain.com")

@@ -6,9 +6,9 @@ import math
 from typing import Annotated, Any, Dict, List, Optional, TypedDict
 
 from dotenv import load_dotenv
-from langchain_community.tools.tavily_search import TavilySearchResults
 from langchain_core.messages import BaseMessage, HumanMessage
 from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_tavily import TavilySearch
 from langgraph.graph import END, StateGraph
 from langgraph.graph.message import add_messages
 
@@ -47,7 +47,7 @@ llm = ChatGoogleGenerativeAI(
     max_retries=2,
 )
 
-tavily_tool = TavilySearchResults(
+tavily_tool = TavilySearch(
     max_results=3,
     search_depth="advanced",
     include_answer=True,
@@ -131,7 +131,9 @@ def calculate_implied_probability(yes_price: float) -> Dict[str, Any]:
     }
 
 
-def calculate_kelly_criterion(yes_price: float, estimated_prob: float) -> Dict[str, Any]:
+def calculate_kelly_criterion(
+    yes_price: float, estimated_prob: float
+) -> Dict[str, Any]:
     """
     Calculate Kelly Criterion for optimal bet sizing.
 
@@ -360,7 +362,9 @@ def compute_support_resistance(prices: List[float]) -> Dict[str, Any]:
     }
 
 
-def calculate_time_decay_metrics(end_date_str: str, current_price: float) -> Dict[str, Any]:
+def calculate_time_decay_metrics(
+    end_date_str: str, current_price: float
+) -> Dict[str, Any]:
     """
     Calculate time decay metrics for a prediction market.
 
@@ -382,7 +386,9 @@ def calculate_time_decay_metrics(end_date_str: str, current_price: float) -> Dic
                 "%Y-%m-%dT%H:%M:%SZ",
             ]:
                 try:
-                    end_date = datetime.datetime.strptime(str(end_date_str).split(".")[0], fmt)
+                    end_date = datetime.datetime.strptime(
+                        str(end_date_str).split(".")[0], fmt
+                    )
                     break
                 except ValueError:
                     continue
@@ -434,12 +440,16 @@ def calculate_time_decay_metrics(end_date_str: str, current_price: float) -> Dic
         # Markets at extreme prices with little time = likely priced correctly
         # Markets at 40-60% with little time = high uncertainty, volatile
         price_uncertainty = 1 - abs(current_price - 50) / 50  # 0 at extremes, 1 at 50%
-        time_pressure = min(1, 7 / max(days_remaining, 0.1))  # 1 if <7 days, lower if more
+        time_pressure = min(
+            1, 7 / max(days_remaining, 0.1)
+        )  # 1 if <7 days, lower if more
 
         volatility_risk = price_uncertainty * time_pressure
 
         if volatility_risk > 0.7:
-            vol_assessment = "HIGH - Uncertain outcome with little time = expect large swings"
+            vol_assessment = (
+                "HIGH - Uncertain outcome with little time = expect large swings"
+            )
         elif volatility_risk > 0.4:
             vol_assessment = "MODERATE - Some price movement expected"
         else:
@@ -451,9 +461,13 @@ def calculate_time_decay_metrics(end_date_str: str, current_price: float) -> Dic
         elif current_price < 20 and days_remaining < 7:
             theta_advice = "Time favors NO holders - market pricing in low likelihood"
         elif 40 < current_price < 60 and days_remaining < 3:
-            theta_advice = "Coin flip with clock ticking - high risk, wait for clarity or avoid"
+            theta_advice = (
+                "Coin flip with clock ticking - high risk, wait for clarity or avoid"
+            )
         elif days_remaining > 30:
-            theta_advice = "Plenty of time for information to emerge - patience may be rewarded"
+            theta_advice = (
+                "Plenty of time for information to emerge - patience may be rewarded"
+            )
         else:
             theta_advice = "Monitor for catalysts that could accelerate price discovery"
 
@@ -526,7 +540,9 @@ def statistics_expert(state: DebateState):
         # 5. Expected Value calculation
         # Use current price as baseline estimate (assume market efficiency)
         # Then show what EV would be at different probability estimates
-        ev_bullish = calculate_expected_value(current_price, min(95, current_price + 10))
+        ev_bullish = calculate_expected_value(
+            current_price, min(95, current_price + 10)
+        )
         ev_bearish = calculate_expected_value(current_price, max(5, current_price - 10))
 
         # 6. Kelly Criterion (if there's perceived edge from momentum)
@@ -613,7 +629,9 @@ def statistics_expert(state: DebateState):
         response = llm.invoke([HumanMessage(content=prompt)])
 
         # Combine computed stats with LLM synthesis
-        full_response = f"{stats_report}\n\n---\n\n### Expert Interpretation\n\n{response.content}"
+        full_response = (
+            f"{stats_report}\n\n---\n\n### Expert Interpretation\n\n{response.content}"
+        )
 
         return {
             "messages": [
@@ -677,12 +695,18 @@ def top_traders_analyst(state: DebateState):
             outcome_index = trader.get("outcome_index")
 
             pnl_text = format_usd(pnl) if isinstance(pnl, (int, float)) else "N/A"
-            balance_text = format_usd(balance) if isinstance(balance, (int, float)) else "N/A"
+            balance_text = (
+                format_usd(balance) if isinstance(balance, (int, float)) else "N/A"
+            )
 
             if source == "holders":
-                side = "YES" if outcome_index == 0 else "NO" if outcome_index == 1 else "?"
+                side = (
+                    "YES" if outcome_index == 0 else "NO" if outcome_index == 1 else "?"
+                )
                 shares = (
-                    float(position_amount) if isinstance(position_amount, (int, float)) else 0.0
+                    float(position_amount)
+                    if isinstance(position_amount, (int, float))
+                    else 0.0
                 )
                 trader_lines.append(
                     f"- **{name}** (`{address[:6]}…{address[-4:]}`) | "
@@ -780,7 +804,9 @@ def generalist_expert(state: DebateState):
         """
         try:
             queries_response = get_llm().invoke([HumanMessage(content=query_prompt)])
-            queries = [q.strip() for q in queries_response.content.split("\n") if q.strip()][:3]
+            queries = [
+                q.strip() for q in queries_response.content.split("\n") if q.strip()
+            ][:3]
             logger.info(f"Generated search queries: {queries}")
         except Exception as e:
             logger.warning(f"Failed to generate queries, falling back to default: {e}")
@@ -850,7 +876,9 @@ def devils_advocate(state: DebateState):
         question = state.get("market_question", "")
 
         # Extract previous arguments
-        context = "\n".join([m.content for m in messages if isinstance(m, HumanMessage)])
+        context = "\n".join(
+            [m.content for m in messages if isinstance(m, HumanMessage)]
+        )
         if not context:
             context = "No previous arguments provided."
 
@@ -955,13 +983,9 @@ def time_decay_analyst(state: DebateState):
         if prices_24h and len(prices_24h) >= 2:
             recent_change = prices_24h[-1] - prices_24h[0]
             if abs(recent_change) > 5:
-                velocity_analysis = (
-                    f"Price moved {recent_change:+.1f}% in last 24h - active information flow"
-                )
+                velocity_analysis = f"Price moved {recent_change:+.1f}% in last 24h - active information flow"
             else:
-                velocity_analysis = (
-                    f"Price stable (Δ{recent_change:+.1f}%) - market in wait-and-see mode"
-                )
+                velocity_analysis = f"Price stable (Δ{recent_change:+.1f}%) - market in wait-and-see mode"
         else:
             velocity_analysis = "Insufficient price data for velocity analysis"
 
@@ -1042,7 +1066,9 @@ Proceed with caution and rely on other signals.
         logger.info("Time Decay Analyst computed report, invoking LLM for synthesis...")
         response = llm.invoke([HumanMessage(content=prompt)])
 
-        full_response = f"{time_report}\n\n---\n\n### Expert Interpretation\n\n{response.content}"
+        full_response = (
+            f"{time_report}\n\n---\n\n### Expert Interpretation\n\n{response.content}"
+        )
 
         return {
             "messages": [
@@ -1070,7 +1096,9 @@ def moderator(state: DebateState):
         messages = state.get("messages", [])
         question = state.get("market_question", "")
 
-        context = "\n".join([str(m.content) for m in messages if isinstance(m, HumanMessage)])
+        context = "\n".join(
+            [str(m.content) for m in messages if isinstance(m, HumanMessage)]
+        )
         if not context:
             context = "No arguments presented."
 
@@ -1096,7 +1124,9 @@ def moderator(state: DebateState):
         response = llm.invoke([HumanMessage(content=prompt)])
         return {
             "messages": [
-                HumanMessage(content=f"**Moderator**: {response.content}", name="Moderator")
+                HumanMessage(
+                    content=f"**Moderator**: {response.content}", name="Moderator"
+                )
             ],
             "verdict": response.content,
         }

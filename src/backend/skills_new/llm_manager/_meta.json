@@ -1,0 +1,8 @@
+{
+  "name": "llm_manager",
+  "version": "1.0.0",
+  "description": "Manage LLM providers - list, switch, add, track usage",
+  "skills": ["llm_manager"],
+  "env_vars_required": [],
+  "env_vars_optional": ["GROQ_API_KEY", "GEMINI_API_KEY", "OPENROUTER_API_KEY", "OPENAI_API_KEY"]
+}

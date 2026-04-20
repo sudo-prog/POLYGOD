@@ -7,7 +7,7 @@ Provides endpoints for fetching top 50 markets, individual market details, and p
 import asyncio
 import json
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -17,6 +17,7 @@ from slowapi.util import get_remote_address
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.backend.auth import verify_api_key
 from src.backend.cache import user_stats_cache
 from src.backend.database import get_db
 from src.backend.db_models import AppState, Market
@@ -26,6 +27,7 @@ from src.backend.polymarket.schemas import (
     MarketOut,
     MarketStatusResponse,
 )
+from src.backend.tools.kronos_polydata import enrich_with_kronos_and_polydata
 
 logger = logging.getLogger(__name__)
 
@@ -698,6 +700,48 @@ async def get_market_stats(market_id: str, db: AsyncSession = Depends(get_db)) -
         overall_strength=overall_strength,
         signals=signals,
     )
+
+
+# ── Kronos Forecast Endpoint ──────────────────────────────────────────────────
+
+
+class KronosForecastRequest(BaseModel):
+    market_id: str
+    timeframe: str = "5m"
+    horizon: int = 12
+
+
+@router.post("/{market_id}/kronos", tags=["markets"])
+async def get_kronos_forecast(
+    market_id: str,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    _: str = Depends(verify_api_key),
+) -> dict:
+    """
+    Run Chronos-T5 forecast using streamed Polymarket historical trades.
+    Requires X-API-Key header. Returns structured forecast dict.
+    """
+    result = await db.execute(select(Market).where(Market.id == market_id))
+    market = result.scalar_one_or_none()
+    if not market:
+        result = await db.execute(select(Market).where(Market.slug == market_id))
+        market = result.scalar_one_or_none()
+    if not market:
+        raise HTTPException(status_code=404, detail="Market not found")
+
+    enrichment = await enrich_with_kronos_and_polydata(
+        market_id=market.slug or market_id,
+        prices=[],
+        timeframe="5m",
+        horizon=12,
+    )
+    return {
+        "market_id": market_id,
+        "title": market.title,
+        "current_price": market.yes_percentage,
+        **enrichment,
+    }
 
 
 @router.get("/{market_id}", response_model=MarketOut)
