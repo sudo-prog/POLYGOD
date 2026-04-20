@@ -77,7 +77,9 @@ class ErrorEvent:
     label: str | None = None
     severity: str = "error"
     context: str = ""
-    timestamp: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    timestamp: str = field(
+        default_factory=lambda: datetime.now(timezone.utc).isoformat()
+    )
 
 
 @dataclass
@@ -153,7 +155,9 @@ class SelfHealingEngine:
 
         Returns a result dict with all findings.
         """
-        await thought_stream.thinking("Received error event — classifying...", agent="SelfHeal")
+        await thought_stream.thinking(
+            "Received error event — classifying...", agent="SelfHeal"
+        )
 
         event = self._classify_error(error_text, context_file)
 
@@ -167,7 +171,9 @@ class SelfHealingEngine:
         try:
             self._error_queue.put_nowait(event)
         except asyncio.QueueFull:
-            await thought_stream.warn("Error queue full — dropping oldest event", agent="SelfHeal")
+            await thought_stream.warn(
+                "Error queue full — dropping oldest event", agent="SelfHeal"
+            )
             try:
                 self._error_queue.get_nowait()
                 self._error_queue.put_nowait(event)
@@ -190,7 +196,9 @@ class SelfHealingEngine:
         Used by the /api/agent/think endpoint when the agent encounters
         something it doesn't know how to do.
         """
-        await thought_stream.thinking(f"Researching: {question[:100]}", agent="SelfHeal")
+        await thought_stream.thinking(
+            f"Researching: {question[:100]}", agent="SelfHeal"
+        )
 
         file_context = ""
         if context_files:
@@ -205,7 +213,9 @@ class SelfHealingEngine:
         else:
             answer = await self._call_claude(question, file_context)
 
-        await thought_stream.decision(f"Research complete: {answer[:150]}...", agent="SelfHeal")
+        await thought_stream.decision(
+            f"Research complete: {answer[:150]}...", agent="SelfHeal"
+        )
         return {"question": question, "answer": answer, "searched": search}
 
     async def scan_codebase(self, path: str = "src/backend") -> list[dict]:
@@ -213,15 +223,21 @@ class SelfHealingEngine:
         Static scan of Python files for common issues (no API call needed).
         Fast heuristic check — runs in < 1s on a typical backend.
         """
-        await thought_stream.thinking(f"Scanning codebase at {path}...", agent="SelfHeal")
+        await thought_stream.thinking(
+            f"Scanning codebase at {path}...", agent="SelfHeal"
+        )
         issues = []
         root = Path(path)
         if not root.exists():
-            await thought_stream.warn(f"Scan path {path} does not exist", agent="SelfHeal")
+            await thought_stream.warn(
+                f"Scan path {path} does not exist", agent="SelfHeal"
+            )
             return issues
 
         py_files = list(root.rglob("*.py"))
-        await thought_stream.info(f"Scanning {len(py_files)} Python files", agent="SelfHeal")
+        await thought_stream.info(
+            f"Scanning {len(py_files)} Python files", agent="SelfHeal"
+        )
 
         for pyfile in py_files:
             try:
@@ -271,7 +287,9 @@ class SelfHealingEngine:
 
     # ── Internal processing ─────────────────────────────────────────────────
 
-    async def _process_error(self, event: ErrorEvent, auto_fix: bool = True) -> dict[str, Any]:
+    async def _process_error(
+        self, event: ErrorEvent, auto_fix: bool = True
+    ) -> dict[str, Any]:
         api_key = self._get_api_key()
         if not api_key:
             await thought_stream.warn(
@@ -338,7 +356,9 @@ Line: {event.line_number or "unknown"}
 
         return result
 
-    async def _generate_and_apply_patch(self, event: ErrorEvent, solution: str) -> PatchResult:
+    async def _generate_and_apply_patch(
+        self, event: ErrorEvent, solution: str
+    ) -> PatchResult:
         """Ask Claude to generate a minimal patch, then apply it."""
         file_path = event.file_path
         if not file_path:
@@ -454,7 +474,8 @@ Make the smallest possible change that fixes the error.
             "messages": [
                 {
                     "role": "user",
-                    "content": question + (f"\n\n{file_context}" if file_context else ""),
+                    "content": question
+                    + (f"\n\n{file_context}" if file_context else ""),
                 }
             ],
             "system": (
@@ -532,7 +553,9 @@ Make the smallest possible change that fixes the error.
                 )
                 resp.raise_for_status()
                 data = resp.json()
-            return " ".join(b["text"] for b in data.get("content", []) if b.get("type") == "text")
+            return " ".join(
+                b["text"] for b in data.get("content", []) if b.get("type") == "text"
+            )
         except Exception as exc:
             return f"Claude call failed: {exc}"
 

@@ -10,8 +10,10 @@ Wired to Polymarket via LangGraph cyclic swarm:
 5. Darwinian decision: keep if sharpe > 2.0 AND pnl > 0, else git reset
 """
 
+import asyncio
 import logging
 import os
+from datetime import datetime, timezone
 from typing import Dict
 
 try:
@@ -119,9 +121,7 @@ class AutoResearchLab:
             logger.info("Git not available — skipping commit")
             return False
         try:
-            self.repo.index.add(
-                [os.path.relpath(self.strategy_file, self.repo.working_dir)]
-            )
+            self.repo.index.add([os.path.relpath(self.strategy_file, self.repo.working_dir)])
             self.repo.index.commit(f"AutoResearch mutation: {mutation_summary[:80]}")
             logger.info(f"Git commit: {mutation_summary[:80]}")
             return True
@@ -203,9 +203,7 @@ Propose your mutation:"""
             idx = current_code.index(mutation_marker)
             # Find the end of the marker line
             newline_idx = (
-                current_code.index("\n", idx)
-                if "\n" in current_code[idx:]
-                else len(current_code)
+                current_code.index("\n", idx) if "\n" in current_code[idx:] else len(current_code)
             )
             header = current_code[: newline_idx + 1]
             new_code = header + "\n" + mutation_clean
@@ -285,17 +283,13 @@ Propose your mutation:"""
         final_decision = state.get("final_decision", {})
         tournament_best_pnl = final_decision.get("tournament_best_pnl", 0)
         evolution_best = state.get("evolution_best", {})
-        sharpe = evolution_best.get(
-            "score", 0
-        )  # Using tournament score as proxy for sharpe
+        sharpe = evolution_best.get("score", 0)  # Using tournament score as proxy for sharpe
 
         # Also check decision dict for pnl
         pnl = tournament_best_pnl or final_decision.get("pnl", 0)
 
         logger.info(f"Darwinian decision: sharpe={sharpe:.3f}, pnl={pnl:.2f}")
-        logger.info(
-            f"Thresholds: sharpe > {self.SHARPE_THRESHOLD}, pnl > {self.PNL_THRESHOLD}"
-        )
+        logger.info(f"Thresholds: sharpe > {self.SHARPE_THRESHOLD}, pnl > {self.PNL_THRESHOLD}")
 
         if sharpe > self.SHARPE_THRESHOLD and pnl > self.PNL_THRESHOLD:
             # Winner — keep mutation
@@ -331,6 +325,245 @@ Propose your mutation:"""
 
         logger.info("AUTORESEARCH LAB: Karpathy loop complete")
         return state
+
+    async def run_weekly_backtest(self) -> dict:
+        """
+        Self-evolving weekly backtest loop.
+
+        Steps:
+        1. Pull top 10 tracked markets from DB
+        2. Stream last 30 days of candles for each (Polars + HF streaming)
+        3. Run Chronos forecast at the T-7d point (hindcast)
+        4. Compare forecast to actual T+0 outcome
+        5. Score accuracy per market category
+        6. Write accuracy scores to Mem0 → notebooklm_reflection picks them up Sunday night
+           and auto-generates mutation instructions to improve category-specific sizing
+        """
+        logger.info("=" * 60)
+        logger.info("AUTORESEARCH BACKTEST: Starting weekly accuracy sweep")
+        logger.info("=" * 60)
+
+        import numpy as np
+        import torch
+        from sqlalchemy import select
+
+        from src.backend.database import async_session_factory
+        from src.backend.db_models import Market
+        from src.backend.tools.kronos_polydata import (
+            _build_candles_from_batches,
+            _get_chronos_pipeline,
+            _stream_hf_batches,
+        )
+
+        results = []
+        category_scores: dict[str, list[float]] = {}
+
+        # ── Pull top 10 markets ──────────────────────────────────────────────
+        async with async_session_factory() as db:
+            result = await db.execute(
+                select(Market)
+                .where(Market.is_active == True)  # noqa: E712
+                .order_by(Market.volume_7d.desc())
+                .limit(10)
+            )
+            markets = result.scalars().all()
+
+        if not markets:
+            logger.warning("Backtest: no active markets found, skipping")
+            return {"status": "skipped", "reason": "no_markets"}
+
+        pipeline = await _get_chronos_pipeline()
+        if pipeline is None:
+            logger.warning("Backtest: Chronos pipeline unavailable, skipping")
+            return {"status": "skipped", "reason": "chronos_unavailable"}
+
+        for market in markets:
+            market_slug = market.slug or market.id
+            # Infer category from title keywords (extends as needed)
+            title_lower = market.title.lower()
+            if any(
+                k in title_lower for k in ["btc", "eth", "crypto", "bitcoin", "ethereum", "sol"]
+            ):
+                category = "crypto"
+            elif any(
+                k in title_lower
+                for k in ["election", "president", "senate", "vote", "trump", "biden"]
+            ):
+                category = "politics"
+            elif any(
+                k in title_lower for k in ["nba", "nfl", "soccer", "championship", "league", "cup"]
+            ):
+                category = "sports"
+            elif any(k in title_lower for k in ["fed", "rate", "gdp", "inflation", "economy"]):
+                category = "macro"
+            else:
+                category = "other"
+
+            try:
+                logger.info("Backtest: processing %s (category=%s)", market_slug, category)
+
+                # Stream 30 days of candles
+                batches = await _stream_hf_batches(
+                    market_slug=market_slug,
+                    timeout_seconds=45,
+                    max_batches=500,  # larger window for 30-day backtest
+                )
+                candles = _build_candles_from_batches(
+                    batches,
+                    market_slug=market_slug,
+                    timeframe="1h",
+                    max_candles=720,  # 30 days × 24 hours
+                )
+
+                if len(candles) < 50:
+                    logger.info(
+                        "Backtest: insufficient history for %s (%d candles)",
+                        market_slug,
+                        len(candles),
+                    )
+                    continue
+
+                close_prices = candles["close"].to_list()
+
+                # Split: use first 23 days as context, last 7 days as ground truth
+                # This simulates a T-7d forecast vs T+0 actual
+                split_idx = max(10, len(close_prices) - 168)  # 168 = 7 days × 24h
+                context_prices = close_prices[:split_idx]
+                actual_prices = close_prices[split_idx:]
+
+                if len(context_prices) < 10 or len(actual_prices) < 1:
+                    continue
+
+                # Run Chronos hindcast
+                context_tensor = torch.tensor(context_prices[-512:], dtype=torch.float32).unsqueeze(
+                    0
+                )
+                raw_forecast = await asyncio.to_thread(
+                    pipeline.predict,
+                    context_tensor,
+                    len(actual_prices),
+                )
+
+                forecast_median = np.median(raw_forecast[0].numpy(), axis=0)
+                actual_array = np.array(actual_prices)
+
+                # Score: mean absolute error, direction accuracy, calibration
+                mae = float(np.mean(np.abs(forecast_median - actual_array)))
+                direction_correct = int(
+                    np.sign(forecast_median[-1] - context_prices[-1])
+                    == np.sign(actual_prices[-1] - context_prices[-1])
+                )
+                # Calibration: was actual within ±0.05 of median forecast?
+                within_5pct = int(abs(float(forecast_median[-1]) - float(actual_prices[-1])) < 0.05)
+
+                accuracy_score = (
+                    (direction_correct * 0.5)
+                    + (within_5pct * 0.3)
+                    + max(0.0, (1.0 - mae * 10) * 0.2)
+                )
+                accuracy_score = round(min(1.0, max(0.0, accuracy_score)), 4)
+
+                market_result = {
+                    "market_id": market.id,
+                    "market_slug": market_slug,
+                    "category": category,
+                    "candles_used": len(close_prices),
+                    "mae": round(mae, 4),
+                    "direction_correct": bool(direction_correct),
+                    "within_5pct": bool(within_5pct),
+                    "accuracy_score": accuracy_score,
+                }
+                results.append(market_result)
+
+                if category not in category_scores:
+                    category_scores[category] = []
+                category_scores[category].append(accuracy_score)
+
+                logger.info(
+                    "Backtest %s: score=%.3f MAE=%.4f direction=%s",
+                    market_slug,
+                    accuracy_score,
+                    mae,
+                    bool(direction_correct),
+                )
+
+            except Exception as exc:
+                logger.warning("Backtest: failed for %s: %s", market_slug, exc)
+                continue
+
+        if not results:
+            return {"status": "complete", "markets_scored": 0}
+
+        # ── Compute category-level summary ───────────────────────────────────
+        category_summary = {
+            cat: {
+                "avg_accuracy": round(sum(scores) / len(scores), 4),
+                "n_markets": len(scores),
+                "best": round(max(scores), 4),
+                "worst": round(min(scores), 4),
+            }
+            for cat, scores in category_scores.items()
+        }
+
+        overall_accuracy = round(sum(r["accuracy_score"] for r in results) / len(results), 4)
+
+        backtest_summary = {
+            "run_date": datetime.now(timezone.utc).isoformat(),
+            "markets_scored": len(results),
+            "overall_accuracy": overall_accuracy,
+            "by_category": category_summary,
+            "detail": results,
+        }
+
+        logger.info(
+            "BACKTEST COMPLETE: %d markets, overall_accuracy=%.3f",
+            len(results),
+            overall_accuracy,
+        )
+        logger.info("Category breakdown: %s", category_summary)
+
+        # ── Write to Mem0 so notebooklm_reflection picks it up Sunday ────────
+        # notebooklm_reflection already searches mem0 for "all" — these records
+        # will surface in the Sunday podcast and generate mutation instructions
+        self._mem0_add(
+            f"BACKTEST RESULTS {backtest_summary['run_date']}: "
+            f"overall_accuracy={overall_accuracy:.3f} | "
+            f"by_category={category_summary} | "
+            f"Recommend: increase Kelly fraction for categories accuracy > 0.7, "
+            f"reduce for categories accuracy < 0.4",
+            user_id="evolution_lab",
+        )
+
+        # Write a separate record per low-performing category so the LLM
+        # gets explicit, actionable mutation targets
+        for cat, stats in category_summary.items():
+            avg = stats["avg_accuracy"]
+            if avg < 0.4:
+                self._mem0_add(
+                    f"BACKTEST LOW ACCURACY: category={cat} avg={avg:.3f} "
+                    f"— MUTATION INSTRUCTION: reduce position sizing for {cat} markets "
+                    f"by 30%, widen confidence thresholds, add contrarian signal weight",
+                    user_id="evolution_lab",
+                )
+            elif avg > 0.7:
+                self._mem0_add(
+                    f"BACKTEST HIGH ACCURACY: category={cat} avg={avg:.3f} "
+                    f"— MUTATION INSTRUCTION: increase Kelly fraction for {cat} markets "
+                    f"by 15%, tighten entry threshold, trust Kronos signal more",
+                    user_id="evolution_lab",
+                )
+
+        return backtest_summary
+
+    def _mem0_add(self, content: str, user_id: str = "autoresearch_lab") -> None:
+        """Helper method to add to Mem0 with graceful fallback."""
+        try:
+            if mem0_instance:
+                mem0_instance.add(content, user_id=user_id)
+            else:
+                logger.debug("Mem0 unavailable, skipping: %s", content[:100])
+        except Exception as e:
+            logger.warning("Mem0 write failed: %s", e)
 
 
 # Singleton instance

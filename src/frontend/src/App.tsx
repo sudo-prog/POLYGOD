@@ -33,6 +33,7 @@ import { HamburgerMenu } from './components/HamburgerMenu';
 import { SettingsScreen } from './components/SettingsScreen';
 import { SpotlightSearch } from './components/SpotlightSearch';
 import { NotificationCentre } from './components/NotificationCentre';
+import { KronosForecastCard } from './components/KronosForecastCard';
 
 interface PolyGodData {
   mode?: number;
@@ -368,6 +369,20 @@ function App() {
                 </div>
                 <PriceChart />
               </section>
+
+              {/* Kronos AI Forecast Section */}
+              {selectedMarket && (
+                <KronosForecastCard
+                  marketId={selectedMarket.id}
+                  currentPrice={
+                    (selectedMarket.yes_percentage ?? 0) ||
+                    (selectedMarket.yes_price ? selectedMarket.yes_price * 100 : 0) ||
+                    (selectedMarket.outcomes?.[0]?.price
+                      ? selectedMarket.outcomes[0].price * 100
+                      : 50)
+                  }
+                />
+              )}
 
               {/* News & Whales Section */}
               <section className="ios-card rounded-2xl p-4 lg:p-6">

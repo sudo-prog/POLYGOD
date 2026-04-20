@@ -11,6 +11,7 @@ export function usePolyGodWS() {
   const [isConnected, setIsConnected] = useState(false);
   const [data, setData] = useState<Record<string, unknown> | null>(null);
   const [lastAlert, setLastAlert] = useState<string | null>(null);
+  const [lastMessage, setLastMessage] = useState<string | null>(null);
   // FIX H1: useRef for reconnectAttempts to avoid stale closure
   const reconnectAttemptsRef = useRef(0);
   const wsRef = useRef<WebSocket | null>(null);
@@ -33,6 +34,7 @@ export function usePolyGodWS() {
       wsRef.current.onmessage = (event) => {
         if (!isMountedRef.current) return;
         try {
+          setLastMessage(event.data); // Store raw message for Kronos hook
           const messageData = JSON.parse(event.data);
           setData(messageData);
           useMarketStore.getState().updatePolyGod(messageData);
@@ -118,6 +120,7 @@ export function usePolyGodWS() {
     isConnected,
     data,
     lastAlert,
+    lastMessage,
     reconnectAttempts: reconnectAttemptsRef.current,
     maxReconnectAttempts: MAX_RECONNECT_ATTEMPTS,
   };

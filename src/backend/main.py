@@ -7,6 +7,7 @@ import os
 import secrets
 import socket
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 
 import structlog  # ADDED: Structured logging
 import uvicorn
@@ -24,6 +25,7 @@ from starlette.websockets import WebSocketDisconnect
 from src.backend.agents.self_healing import SelfHealLogHandler, self_healing_engine
 from src.backend.agents.thought_stream import thought_stream
 from src.backend.auth import verify_api_key
+from src.backend.autoresearch_lab import autoresearch_lab
 from src.backend.config import settings
 from src.backend.database import close_db, init_db
 from src.backend.middleware.auth import admin_required
@@ -116,6 +118,10 @@ _WHALE_ALERTS = [
     "High-volume trade alert — POLYGOD AI evaluating market impact",
 ]
 _whale_cycle = itertools.cycle(_WHALE_ALERTS)
+
+# Kronos forecast cache — keyed by market_id, updated by background task
+# Shape: { market_id: { "forecast": float, "signal": str, "trend": str, "delta_pct": float, ... } }
+_kronos_cache: dict[str, dict] = {}
 
 POLYGOD_MODE = settings.POLYGOD_MODE
 AUTODOG_ENABLED = True  # Controls daily digest auto-reporting
@@ -393,6 +399,71 @@ async def lifespan(app: FastAPI):
     # Wire ERROR/CRITICAL log events directly into the self-heal queue
     logging.getLogger().addHandler(SelfHealLogHandler())
 
+    # Background Kronos refresh — update forecasts for top markets every 15 minutes
+    async def _kronos_background_refresh():
+        """
+        Background task: refresh Kronos forecasts for the top 10 markets every 15 minutes.
+        Results are stored in _kronos_cache and pushed to all connected WebSocket clients
+        on the next /ws/polygod tick.
+        """
+        from src.backend.tools.kronos_polydata import enrich_with_kronos_and_polydata
+
+        while True:
+            try:
+                await asyncio.sleep(900)  # 15 minutes
+
+                # Pull top markets from DB (already cached in memory by update_top_markets)
+                from sqlalchemy import select
+
+                from src.backend.database import async_session_factory
+                from src.backend.db_models import Market
+
+                async with async_session_factory() as db:
+                    result = await db.execute(
+                        select(Market)
+                        .where(Market.is_active == True)  # noqa: E712
+                        .order_by(Market.volume_7d.desc())
+                        .limit(10)
+                    )
+                    top_markets = result.scalars().all()
+
+                for market in top_markets:
+                    try:
+                        enrichment = await enrich_with_kronos_and_polydata(
+                            market_id=market.slug or market.id,
+                            prices=[],
+                            timeframe="15m",
+                            horizon=8,
+                        )
+                        forecast = enrichment.get("kronos_forecast", {})
+                        if forecast and forecast.get("signal") not in (
+                            "insufficient_data",
+                            "model_error",
+                            None,
+                        ):
+                            _kronos_cache[market.id] = {
+                                **forecast,
+                                "market_id": market.id,
+                                "title": market.title,
+                                "updated_at": datetime.now(timezone.utc).isoformat(),
+                            }
+                            logger.info(
+                                "Kronos cache updated: %s signal=%s forecast=%.1f%%",
+                                market.slug,
+                                forecast.get("signal"),
+                                forecast.get("forecast", 0),
+                            )
+                    except Exception as exc:
+                        logger.debug("Kronos refresh failed for %s: %s", market.id, exc)
+
+            except asyncio.CancelledError:
+                break
+            except Exception as exc:
+                logger.error("Kronos background refresh error: %s", exc)
+                await asyncio.sleep(60)
+
+    asyncio.create_task(_kronos_background_refresh())
+
     await thought_stream.info(
         "POLYGOD online — self-heal watcher active", agent="POLYGOD"
     )
@@ -421,6 +492,14 @@ async def lifespan(app: FastAPI):
         day_of_week="sun",
         hour=23,
         minute=30,
+    )
+    _add_job(
+        autoresearch_lab.run_weekly_backtest,
+        trigger="cron",
+        day_of_week="sun",
+        hour=0,
+        minute=0,
+        timezone="Australia/Sydney",
     )
     _add_job(forgetting_engine.prune, trigger=IntervalTrigger(hours=6))
     _add_job(
@@ -529,6 +608,8 @@ async def polygod_ws(websocket: WebSocket):
                     "mode": POLYGOD_MODE,
                     "evolution_score": 0.95,
                     "whale_alert": next(_whale_cycle),
+                    # Kronos: send the full cache so frontend can pick the relevant market
+                    "kronos_forecasts": _kronos_cache,
                 }
             )
             await asyncio.sleep(2)
