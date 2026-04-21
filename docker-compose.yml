@@ -1,5 +1,3 @@
-version: "3.9"
-
 # POLYGOD Docker Compose — dev/staging stack
 #
 # Changes vs previous version:

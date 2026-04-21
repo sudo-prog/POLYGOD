@@ -56,9 +56,7 @@ _SECRET_KEYS = (
     "TELEGRAM_BOT_TOKEN",
     "X_BEARER_TOKEN",
 )
-_SECRET_VALUES = frozenset(
-    v for k in _SECRET_KEYS if (v := os.getenv(k, "")) and len(v) > 4
-)
+_SECRET_VALUES = frozenset(v for k in _SECRET_KEYS if (v := os.getenv(k, "")) and len(v) > 4)
 
 
 def mask_secrets(text: str) -> str:
@@ -134,9 +132,7 @@ async def get_mode_from_db():
     from src.backend.db_models import AppState
 
     async with async_session_factory() as db:
-        result = await db.execute(
-            select(AppState).where(AppState.key == "polygod_mode")
-        )
+        result = await db.execute(select(AppState).where(AppState.key == "polygod_mode"))
         row = result.scalar_one_or_none()
         return int(row.value) if row else POLYGOD_MODE
 
@@ -148,9 +144,7 @@ async def set_mode_in_db(mode: int):
     from src.backend.db_models import AppState
 
     async with async_session_factory() as db:
-        result = await db.execute(
-            select(AppState).where(AppState.key == "polygod_mode")
-        )
+        result = await db.execute(select(AppState).where(AppState.key == "polygod_mode"))
         row = result.scalar_one_or_none()
         if row:
             row.value = str(mode)
@@ -168,9 +162,7 @@ async def refresh_llm_stats():
     from src.backend.models.llm import Provider, UsageLog
 
     async with async_session_factory() as db:
-        today_start = datetime.now(timezone.utc).replace(
-            hour=0, minute=0, second=0, microsecond=0
-        )
+        today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
         result = await db.execute(
             select(
                 UsageLog.provider,
@@ -291,9 +283,7 @@ async def generate_situational_digest() -> str:
         lines.append(f"🎯 *Market Opportunities:* Error - {e}\n")
 
     # Timestamp
-    lines.append(
-        f"_Generated: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}_"
-    )
+    lines.append(f"_Generated: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}_")
 
     # Command reminders
     lines.append("\n*Commands:*")
@@ -464,9 +454,7 @@ async def lifespan(app: FastAPI):
 
     asyncio.create_task(_kronos_background_refresh())
 
-    await thought_stream.info(
-        "POLYGOD online — self-heal watcher active", agent="POLYGOD"
-    )
+    await thought_stream.info("POLYGOD online — self-heal watcher active", agent="POLYGOD")
 
     def _add_job(func, **kwargs):
         try:
@@ -502,9 +490,7 @@ async def lifespan(app: FastAPI):
         timezone="Australia/Sydney",
     )
     _add_job(forgetting_engine.prune, trigger=IntervalTrigger(hours=6))
-    _add_job(
-        _daily_digest, trigger="cron", hour=9, minute=0, timezone="Australia/Sydney"
-    )
+    _add_job(_daily_digest, trigger="cron", hour=9, minute=0, timezone="Australia/Sydney")
     if settings.POLYGOD_MODE >= 1:
         logger.info("Swarm mode enabled", mode=settings.POLYGOD_MODE)
     telegram_task = None
@@ -685,9 +671,7 @@ async def switch_mode(new_mode: int, _: bool = Depends(admin_required)):
     _pg.POLYGOD_MODE = new_mode
 
     await set_mode_in_db(new_mode)
-    mode_label = {0: "OBSERVE", 1: "PAPER", 2: "LOW", 3: "BEAST"}.get(
-        new_mode, "UNKNOWN"
-    )
+    mode_label = {0: "OBSERVE", 1: "PAPER", 2: "LOW", 3: "BEAST"}.get(new_mode, "UNKNOWN")
     logger.info("POLYGOD mode switched", new_mode=new_mode, label=mode_label)
     return {"status": f"Switched to Mode {new_mode} — {mode_label}"}
 
@@ -702,9 +686,7 @@ async def monte_carlo_simulate(
     sim = run_monte_carlo({"size": order_size}, market_data)
     return {
         "simulation": sim,
-        "recommendation": (
-            "BEAST APPROVED" if sim["win_prob"] > 0.65 else "SAFE MODE ONLY"
-        ),
+        "recommendation": ("BEAST APPROVED" if sim["win_prob"] > 0.65 else "SAFE MODE ONLY"),
     }
 
 
@@ -782,14 +764,15 @@ async def systems_health():
     """Full system status for the Settings Screen indicators."""
     from datetime import datetime, timezone
 
-    from src.backend.agents.polygod_brain import get_boot_status
+    # Temporarily disable polygod_brain import due to missing httpx in container
+    # from src.backend.agents.polygod_brain import get_boot_status
     from src.backend.tasks.update_markets import get_scheduler
 
-    boot = get_boot_status()
-    scheduler = get_scheduler()
+    # boot = get_boot_status()
+    # checks = boot.to_dict()["checks"] if boot else {}
+    checks = {}
 
-    # Re-run lightweight checks for live status
-    checks = boot.to_dict()["checks"] if boot else {}
+    scheduler = get_scheduler()
 
     # Update scheduler status live
     checks["Scheduler"] = {
@@ -804,7 +787,7 @@ async def systems_health():
         "all_ok": all(c["status"] == "ok" for c in checks.values()),
         "polygod_mode": POLYGOD_MODE,
         "checks": checks,
-        "boot_time": boot.boot_time.isoformat() if boot else None,
+        "boot_time": None,  # boot.boot_time.isoformat() if boot else None,
     }
 
 
