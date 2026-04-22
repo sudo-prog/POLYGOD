@@ -21048,7 +21048,7 @@ networks:
 
 **BEFORE any task:** Read this file and verify all instructions are followed.
 
-**END OF EVERY SESSION:** 
+**END OF EVERY SESSION:**
 When ALL tasks are 100% complete, update AGENT_NOTES.md with a log entry for the changes made in that session. Use the existing format with Date, Agent, and Changes Made columns.
 
 ### Session Log Format
