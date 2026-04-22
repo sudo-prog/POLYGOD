@@ -6,8 +6,8 @@ WORKDIR /app
 # Copy frontend source
 COPY src/frontend/package.json src/frontend/package-lock.json* ./
 
-# Install dependencies
-RUN npm ci
+# Install dependencies (use install instead of ci to handle lock sync)
+RUN npm install
 
 # Copy source code
 COPY src/frontend/ ./
