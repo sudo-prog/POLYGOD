@@ -14,7 +14,6 @@ function usePersistedMessages(initial: Message[]) {
         localStorage.removeItem(STORAGE_KEY);
         return initial;
       }
-      // Re-hydrate Date objects
       return stored.map((m: Message) => ({
         ...m,
         timestamp: new Date(m.timestamp),
@@ -89,7 +88,6 @@ function extractShells(text: string): ShellAction[] {
   return shells;
 }
 
-// Strip action JSON blocks from display text
 function cleanContent(text: string): string {
   return text
     .replace(/```json\s*\{[^`]*"type":\s*"patch"[^`]*\}\s*```/gs, '')
@@ -98,14 +96,22 @@ function cleanContent(text: string): string {
     .trim();
 }
 
-export default function AgentWidget() {
-  const [open, setOpen] = useState(false);
+interface AgentWidgetProps {
+  isOpen?: boolean;
+  onClose?: () => void;
+}
+
+export default function AgentWidget({ isOpen: controlledIsOpen, onClose }: AgentWidgetProps) {
+  const [internalOpen, setInternalOpen] = useState(false);
+  const isControlled = controlledIsOpen !== undefined;
+  const open = isControlled ? controlledIsOpen : internalOpen;
+  const setOpen = isControlled ? (onClose || (() => {})) : setInternalOpen;
+  
   const [messages, setMessages] = usePersistedMessages([
     {
       id: 'init',
       role: 'assistant',
-      content:
-        'POLYGOD Agent online. I have full codebase context + memory of past fixes. Ask me anything — paste errors, describe issues, or ask for architecture advice.',
+      content: 'POLYGOD Agent online. I have full codebase context + memory of past fixes. Ask me anything — paste errors, describe issues, or ask for architecture advice.',
       timestamp: new Date(),
     },
   ]);
@@ -116,10 +122,6 @@ export default function AgentWidget() {
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
-
-  useEffect(() => {
     fetch(`${API_BASE}/api/agent/context`, {
       headers: { 'X-API-Key': API_KEY },
     })
@@ -127,6 +129,10 @@ export default function AgentWidget() {
       .then((d) => setMemoryActive(d.memory_available))
       .catch(() => {});
   }, []);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
 
   const sendMessage = useCallback(async () => {
     const text = input.trim();
@@ -156,7 +162,6 @@ export default function AgentWidget() {
 
     const payload = { messages: allMsgs, include_codebase: true };
 
-    // Try SSE first, fall back to WebSocket
     const useSse = async () => {
       const res = await fetch(`${API_BASE}/api/agent/chat`, {
         method: 'POST',
@@ -292,433 +297,388 @@ export default function AgentWidget() {
     }
   }, []);
 
+  if (!open) return null;
+
   return (
-    <>
-      {/* Floating trigger button */}
-      <button
-        onClick={() => setOpen((o) => !o)}
+    <div
+      style={{
+        position: 'fixed',
+        bottom: '88px',
+        right: '24px',
+        width: '420px',
+        maxWidth: 'calc(100vw - 48px)',
+        height: '600px',
+        maxHeight: 'calc(100vh - 120px)',
+        background: 'var(--color-background-primary)',
+        border: '0.5px solid var(--color-border-secondary)',
+        borderRadius: '12px',
+        display: 'flex',
+        flexDirection: 'column',
+        zIndex: 9999,
+        overflow: 'hidden',
+      }}
+      role="dialog"
+      aria-label="POLYGOD AI Agent"
+    >
+      {/* Header */}
+      <div
         style={{
-          position: 'fixed',
-          bottom: '24px',
-          right: '24px',
-          width: '52px',
-          height: '52px',
-          borderRadius: '50%',
-          background: 'var(--color-background-primary)',
-          border: '1.5px solid var(--color-border-primary)',
-          cursor: 'pointer',
+          padding: '12px 16px',
+          borderBottom: '0.5px solid var(--color-border-tertiary)',
           display: 'flex',
           alignItems: 'center',
-          justifyContent: 'center',
-          boxShadow: '0 2px 12px rgba(0,0,0,0.12)',
-          zIndex: 9998,
-          fontSize: '20px',
-          transition: 'transform 0.15s',
+          justifyContent: 'space-between',
+          background: 'var(--color-background-secondary)',
+          flexShrink: 0,
         }}
-        title="Open POLYGOD Agent"
-        aria-label="Open AI Agent"
       >
-        {open ? '✕' : '⚡'}
-        {memoryActive && (
-          <span
-            style={{
-              position: 'absolute',
-              top: '4px',
-              right: '4px',
-              width: '8px',
-              height: '8px',
-              borderRadius: '50%',
-              background: '#1D9E75',
-              border: '1.5px solid var(--color-background-primary)',
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <span style={{ fontSize: '16px' }}>⚡</span>
+          <div>
+            <p
+              style={{
+                margin: 0,
+                fontSize: '14px',
+                fontWeight: 500,
+                color: 'var(--color-text-primary)',
+              }}
+            >
+              POLYGOD Agent
+            </p>
+            <p
+              style={{
+                margin: 0,
+                fontSize: '11px',
+                color: 'var(--color-text-secondary)',
+              }}
+            >
+              {memoryActive ? 'Memory active · ' : ''}
+              {streaming ? 'thinking...' : 'Codebase context loaded'}
+            </p>
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: '4px' }}>
+          <button
+            onClick={() => {
+              localStorage.removeItem(STORAGE_KEY);
+              setMessages([
+                {
+                  id: 'init',
+                  role: 'assistant',
+                  content: 'POLYGOD Agent online. History cleared.',
+                  timestamp: new Date(),
+                },
+              ]);
             }}
-            title="Memory active"
-          />
-        )}
-      </button>
-
-      {/* Chat panel */}
-      {open && (
-        <div
-          style={{
-            position: 'fixed',
-            bottom: '88px',
-            right: '24px',
-            width: '420px',
-            maxWidth: 'calc(100vw - 48px)',
-            height: '600px',
-            maxHeight: 'calc(100vh - 120px)',
-            background: 'var(--color-background-primary)',
-            border: '0.5px solid var(--color-border-secondary)',
-            borderRadius: '12px',
-            display: 'flex',
-            flexDirection: 'column',
-            zIndex: 9999,
-            overflow: 'hidden',
-          }}
-          role="dialog"
-          aria-label="POLYGOD AI Agent"
-        >
-          {/* Header */}
-          <div
             style={{
-              padding: '12px 16px',
-              borderBottom: '0.5px solid var(--color-border-tertiary)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              background: 'var(--color-background-secondary)',
-              flexShrink: 0,
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              color: 'var(--color-text-tertiary)',
+              fontSize: '11px',
+              padding: '4px 8px',
+            }}
+            title="Clear history"
+          >
+            Clear
+          </button>
+          <button
+            onClick={onClose || (() => {})}
+            style={{
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              color: 'var(--color-text-secondary)',
+              fontSize: '16px',
+              padding: '4px',
             }}
           >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span style={{ fontSize: '16px' }}>⚡</span>
-              <div>
-                <p
-                  style={{
-                    margin: 0,
-                    fontSize: '14px',
-                    fontWeight: 500,
-                    color: 'var(--color-text-primary)',
-                  }}
-                >
-                  POLYGOD Agent
-                </p>
-                <p
-                  style={{
-                    margin: 0,
-                    fontSize: '11px',
-                    color: 'var(--color-text-secondary)',
-                  }}
-                >
-                  {memoryActive ? 'Memory active · ' : ''}
-                  {streaming ? 'thinking...' : 'Codebase context loaded'}
-                </p>
-              </div>
-            </div>
-            <div style={{ display: 'flex', gap: '4px' }}>
-              <button
-                onClick={() => {
-                  localStorage.removeItem(STORAGE_KEY);
-                  setMessages([
-                    {
-                      id: 'init',
-                      role: 'assistant',
-                      content: 'POLYGOD Agent online. History cleared.',
-                      timestamp: new Date(),
-                    },
-                  ]);
-                }}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  cursor: 'pointer',
-                  color: 'var(--color-text-tertiary)',
-                  fontSize: '11px',
-                  padding: '4px 8px',
-                }}
-                title="Clear history"
-              >
-                Clear
-              </button>
-              <button
-                onClick={() => setOpen(false)}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  cursor: 'pointer',
-                  color: 'var(--color-text-secondary)',
-                  fontSize: '16px',
-                  padding: '4px',
-                }}
-              >
-                ✕
-              </button>
-            </div>
-          </div>
+            ✕
+          </button>
+        </div>
+      </div>
 
-          {/* Messages */}
+      {/* Messages */}
+      <div
+        style={{
+          flex: 1,
+          overflowY: 'auto',
+          padding: '12px 16px',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '12px',
+        }}
+      >
+        {messages.map((msg) => (
           <div
+            key={msg.id}
             style={{
-              flex: 1,
-              overflowY: 'auto',
-              padding: '12px 16px',
               display: 'flex',
               flexDirection: 'column',
-              gap: '12px',
+              alignItems: msg.role === 'user' ? 'flex-end' : 'flex-start',
+              gap: '4px',
             }}
           >
-            {messages.map((msg) => (
+            <div
+              style={{
+                maxWidth: '88%',
+                padding: '8px 12px',
+                borderRadius: msg.role === 'user' ? '12px 12px 2px 12px' : '12px 12px 12px 2px',
+                background:
+                  msg.role === 'user'
+                    ? 'var(--color-background-info)'
+                    : 'var(--color-background-secondary)',
+                border: '0.5px solid var(--color-border-tertiary)',
+                fontSize: '13px',
+                lineHeight: '1.6',
+                color: 'var(--color-text-primary)',
+                whiteSpace: 'pre-wrap',
+                wordBreak: 'break-word',
+              }}
+            >
+              {cleanContent(msg.content)}
+              {streaming &&
+                msg.role === 'assistant' &&
+                msg.id === messages[messages.length - 1].id && (
+                  <span
+                    style={{
+                      display: 'inline-block',
+                      width: '6px',
+                      height: '12px',
+                      background: 'var(--color-text-secondary)',
+                      marginLeft: '2px',
+                      animation: 'blink 1s step-end infinite',
+                    }}
+                  />
+                )}
+            </div>
+
+            {/* Patch action cards */}
+            {msg.patches?.map((patch, idx) => (
               <div
-                key={msg.id}
+                key={idx}
                 style={{
+                  maxWidth: '96%',
+                  width: '100%',
+                  background: 'var(--color-background-secondary)',
+                  border: '0.5px solid var(--color-border-success)',
+                  borderRadius: '8px',
+                  padding: '10px 12px',
+                  fontSize: '12px',
                   display: 'flex',
                   flexDirection: 'column',
-                  alignItems: msg.role === 'user' ? 'flex-end' : 'flex-start',
-                  gap: '4px',
+                  gap: '8px',
                 }}
               >
                 <div
                   style={{
-                    maxWidth: '88%',
-                    padding: '8px 12px',
-                    borderRadius: msg.role === 'user' ? '12px 12px 2px 12px' : '12px 12px 12px 2px',
-                    background:
-                      msg.role === 'user'
-                        ? 'var(--color-background-info)'
-                        : 'var(--color-background-secondary)',
-                    border: '0.5px solid var(--color-border-tertiary)',
-                    fontSize: '13px',
-                    lineHeight: '1.6',
-                    color: 'var(--color-text-primary)',
-                    whiteSpace: 'pre-wrap',
-                    wordBreak: 'break-word',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
                   }}
                 >
-                  {cleanContent(msg.content)}
-                  {streaming &&
-                    msg.role === 'assistant' &&
-                    msg.id === messages[messages.length - 1].id && (
-                      <span
-                        style={{
-                          display: 'inline-block',
-                          width: '6px',
-                          height: '12px',
-                          background: 'var(--color-text-secondary)',
-                          marginLeft: '2px',
-                          animation: 'blink 1s step-end infinite',
-                        }}
-                      />
-                    )}
+                  <p style={{ margin: 0, fontWeight: 500, color: 'var(--color-text-primary)' }}>
+                    {patch.description}
+                  </p>
+                  {patch.applied ? (
+                    <span style={{ color: '#1D9E75', fontSize: '12px' }}>✓ Applied</span>
+                  ) : (
+                    <button
+                      onClick={() => applyPatch(msg.id, patch, idx)}
+                      style={{
+                        fontSize: '12px',
+                        padding: '4px 12px',
+                        borderRadius: '6px',
+                        border: '0.5px solid var(--color-border-success)',
+                        background: 'var(--color-background-primary)',
+                        cursor: 'pointer',
+                        color: 'var(--color-text-success)',
+                      }}
+                    >
+                      Apply fix
+                    </button>
+                  )}
                 </div>
-
-                {/* Patch action cards */}
-                {msg.patches?.map((patch, idx) => (
-                  <div
-                    key={idx}
-                    style={{
-                      maxWidth: '96%',
-                      width: '100%',
-                      background: 'var(--color-background-secondary)',
-                      border: '0.5px solid var(--color-border-success)',
-                      borderRadius: '8px',
-                      padding: '10px 12px',
-                      fontSize: '12px',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: '8px',
-                    }}
-                  >
-                    <div
-                      style={{
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                      }}
-                    >
-                      <p style={{ margin: 0, fontWeight: 500, color: 'var(--color-text-primary)' }}>
-                        {patch.description}
-                      </p>
-                      {patch.applied ? (
-                        <span style={{ color: '#1D9E75', fontSize: '12px' }}>✓ Applied</span>
-                      ) : (
-                        <button
-                          onClick={() => applyPatch(msg.id, patch, idx)}
-                          style={{
-                            fontSize: '12px',
-                            padding: '4px 12px',
-                            borderRadius: '6px',
-                            border: '0.5px solid var(--color-border-success)',
-                            background: 'var(--color-background-primary)',
-                            cursor: 'pointer',
-                            color: 'var(--color-text-success)',
-                          }}
-                        >
-                          Apply fix
-                        </button>
-                      )}
-                    </div>
-                    <DiffViewer
-                      oldCode={patch.old_code}
-                      newCode={patch.new_code}
-                      filename={patch.file}
-                    />
-                  </div>
-                ))}
-
-                {/* Shell action cards */}
-                {msg.shells?.map((shell, idx) => (
-                  <div
-                    key={idx}
-                    style={{
-                      maxWidth: '88%',
-                      background: 'var(--color-background-secondary)',
-                      border: '0.5px solid var(--color-border-tertiary)',
-                      borderRadius: '8px',
-                      padding: '8px 12px',
-                      fontSize: '12px',
-                    }}
-                  >
-                    <p
-                      style={{
-                        margin: '0 0 4px',
-                        fontWeight: 500,
-                        color: 'var(--color-text-primary)',
-                      }}
-                    >
-                      {shell.description}
-                    </p>
-                    <code
-                      style={{
-                        display: 'block',
-                        fontFamily: 'var(--font-mono)',
-                        fontSize: '11px',
-                        color: 'var(--color-text-secondary)',
-                        marginBottom: '6px',
-                      }}
-                    >
-                      $ {shell.command}
-                    </code>
-                    {shell.output ? (
-                      <pre
-                        style={{
-                          margin: 0,
-                          fontSize: '11px',
-                          fontFamily: 'var(--font-mono)',
-                          background: 'var(--color-background-tertiary)',
-                          padding: '6px',
-                          borderRadius: '4px',
-                          overflowX: 'auto',
-                          maxHeight: '120px',
-                          color: 'var(--color-text-primary)',
-                        }}
-                      >
-                        {shell.output}
-                      </pre>
-                    ) : (
-                      <button
-                        onClick={() => runShell(msg.id, shell, idx)}
-                        style={{
-                          fontSize: '12px',
-                          padding: '4px 10px',
-                          borderRadius: '6px',
-                          border: '0.5px solid var(--color-border-secondary)',
-                          background: 'var(--color-background-primary)',
-                          cursor: 'pointer',
-                          color: 'var(--color-text-primary)',
-                        }}
-                      >
-                        Run
-                      </button>
-                    )}
-                  </div>
-                ))}
+                <DiffViewer
+                  oldCode={patch.old_code}
+                  newCode={patch.new_code}
+                  filename={patch.file}
+                />
               </div>
             ))}
-            <div ref={bottomRef} />
-          </div>
 
-          {/* Quick prompts */}
-          {messages.length <= 1 && (
-            <div
-              style={{
-                padding: '0 16px 8px',
-                display: 'flex',
-                gap: '6px',
-                flexWrap: 'wrap',
-                flexShrink: 0,
-              }}
-            >
-              {[
-                'Find all security issues',
-                'Why is the scheduler not running?',
-                'Audit the debate endpoint',
-                'Show me N+1 queries',
-              ].map((suggestion) => (
-                <button
-                  key={suggestion}
-                  onClick={() => setInput(suggestion)}
+            {/* Shell action cards */}
+            {msg.shells?.map((shell, idx) => (
+              <div
+                key={idx}
+                style={{
+                  maxWidth: '88%',
+                  background: 'var(--color-background-secondary)',
+                  border: '0.5px solid var(--color-border-tertiary)',
+                  borderRadius: '8px',
+                  padding: '8px 12px',
+                  fontSize: '12px',
+                }}
+              >
+                <p
                   style={{
-                    fontSize: '11px',
-                    padding: '4px 8px',
-                    borderRadius: '6px',
-                    border: '0.5px solid var(--color-border-tertiary)',
-                    background: 'var(--color-background-secondary)',
-                    cursor: 'pointer',
-                    color: 'var(--color-text-secondary)',
+                    margin: '0 0 4px',
+                    fontWeight: 500,
+                    color: 'var(--color-text-primary)',
                   }}
                 >
-                  {suggestion}
-                </button>
-              ))}
-            </div>
-          )}
+                  {shell.description}
+                </p>
+                <code
+                  style={{
+                    display: 'block',
+                    fontFamily: 'var(--font-mono)',
+                    fontSize: '11px',
+                    color: 'var(--color-text-secondary)',
+                    marginBottom: '6px',
+                  }}
+                >
+                  $ {shell.command}
+                </code>
+                {shell.output ? (
+                  <pre
+                    style={{
+                      margin: 0,
+                      fontSize: '11px',
+                      fontFamily: 'var(--font-mono)',
+                      background: 'var(--color-background-tertiary)',
+                      padding: '6px',
+                      borderRadius: '4px',
+                      overflowX: 'auto',
+                      maxHeight: '120px',
+                      color: 'var(--color-text-primary)',
+                    }}
+                  >
+                    {shell.output}
+                  </pre>
+                ) : (
+                  <button
+                    onClick={() => runShell(msg.id, shell, idx)}
+                    style={{
+                      fontSize: '12px',
+                      padding: '4px 10px',
+                      borderRadius: '6px',
+                      border: '0.5px solid var(--color-border-secondary)',
+                      background: 'var(--color-background-primary)',
+                      cursor: 'pointer',
+                      color: 'var(--color-text-primary)',
+                    }}
+                  >
+                    Run
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        ))}
+        <div ref={bottomRef} />
+      </div>
 
-          {/* Input area */}
-          <div
-            style={{
-              padding: '12px 16px',
-              borderTop: '0.5px solid var(--color-border-tertiary)',
-              display: 'flex',
-              gap: '8px',
-              alignItems: 'flex-end',
-              flexShrink: 0,
-              background: 'var(--color-background-secondary)',
-            }}
-          >
-            <textarea
-              ref={inputRef}
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault();
-                  sendMessage();
-                }
-              }}
-              placeholder="Ask about code, paste errors, request fixes..."
-              disabled={streaming}
-              rows={1}
-              style={{
-                flex: 1,
-                resize: 'none',
-                fontSize: '13px',
-                padding: '8px 10px',
-                borderRadius: '8px',
-                border: '0.5px solid var(--color-border-secondary)',
-                background: 'var(--color-background-primary)',
-                color: 'var(--color-text-primary)',
-                outline: 'none',
-                lineHeight: '1.5',
-                maxHeight: '96px',
-                overflowY: 'auto',
-              }}
-            />
+      {/* Quick prompts */}
+      {messages.length <= 1 && (
+        <div
+          style={{
+            padding: '0 16px 8px',
+            display: 'flex',
+            gap: '6px',
+            flexWrap: 'wrap',
+            flexShrink: 0,
+          }}
+        >
+          {[
+            'Find all security issues',
+            'Why is the scheduler not running?',
+            'Audit the debate endpoint',
+            'Show me N+1 queries',
+          ].map((suggestion) => (
             <button
-              onClick={sendMessage}
-              disabled={streaming || !input.trim()}
+              key={suggestion}
+              onClick={() => setInput(suggestion)}
               style={{
-                width: '36px',
-                height: '36px',
-                borderRadius: '8px',
-                border: '0.5px solid var(--color-border-secondary)',
-                background: streaming
-                  ? 'var(--color-background-secondary)'
-                  : 'var(--color-background-primary)',
-                cursor: streaming ? 'not-allowed' : 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontSize: '16px',
-                flexShrink: 0,
-                color: 'var(--color-text-primary)',
-                opacity: streaming || !input.trim() ? 0.4 : 1,
+                fontSize: '11px',
+                padding: '4px 8px',
+                borderRadius: '6px',
+                border: '0.5px solid var(--color-border-tertiary)',
+                background: 'var(--color-background-secondary)',
+                cursor: 'pointer',
+                color: 'var(--color-text-secondary)',
               }}
             >
-              ↑
+              {suggestion}
             </button>
-          </div>
+          ))}
         </div>
       )}
+
+      {/* Input area */}
+      <div
+        style={{
+          padding: '12px 16px',
+          borderTop: '0.5px solid var(--color-border-tertiary)',
+          display: 'flex',
+          gap: '8px',
+          alignItems: 'flex-end',
+          flexShrink: 0,
+          background: 'var(--color-background-secondary)',
+        }}
+      >
+        <textarea
+          ref={inputRef}
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault();
+              sendMessage();
+            }
+          }}
+          placeholder="Ask about code, paste errors, request fixes..."
+          disabled={streaming}
+          rows={1}
+          style={{
+            flex: 1,
+            resize: 'none',
+            fontSize: '13px',
+            padding: '8px 10px',
+            borderRadius: '8px',
+            border: '0.5px solid var(--color-border-secondary)',
+            background: 'var(--color-background-primary)',
+            color: 'var(--color-text-primary)',
+            outline: 'none',
+            lineHeight: '1.5',
+            maxHeight: '96px',
+            overflowY: 'auto',
+          }}
+        />
+        <button
+          onClick={sendMessage}
+          disabled={streaming || !input.trim()}
+          style={{
+            width: '36px',
+            height: '36px',
+            borderRadius: '8px',
+            border: '0.5px solid var(--color-border-secondary)',
+            background: streaming
+              ? 'var(--color-background-secondary)'
+              : 'var(--color-background-primary)',
+            cursor: streaming ? 'not-allowed' : 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: '16px',
+            flexShrink: 0,
+            color: 'var(--color-text-primary)',
+            opacity: streaming || !input.trim() ? 0.4 : 1,
+          }}
+        >
+          ↑
+        </button>
+      </div>
 
       <style>{`
         @keyframes blink {

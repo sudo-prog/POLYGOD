@@ -1,6 +1,7 @@
 # Agent Implementation Notes - POLYGOD Critical Fixes & Test Suite
 
 | Date       | Agent  | Changes Made                                              |
+| 2026-04-22 | Kilo (GOD TIER ENGINEER) | Fixed AgentWidget UI integration: changed from floating bottom-right button to controlled component triggered by the main header POLYGOD button (Brain icon). Updated App.tsx to pass isOpen/onClose props, modified AgentWidget to support controlled mode. The AI chat now opens when clicking the POLYGOD status indicator in the header. Added Escape key handler to close chat. |
 |------------|--------|-----------------------------------------------------------|
 | 2026-04-22 | Kilo (GOD TIER ENGINEER) | Successfully spun up POLYGOD for testing: All Docker services (postgres, qdrant, redis, backend, frontend) running and healthy. Backend API responding with 223 markets loaded, scheduler running. Frontend serving on port 5173. Markets API returning data (152KB response). System ready for live testing. Added POLYGOD AI Agent chat widget to frontend - floating chat interface with full AI brain access, patch application, shell command execution, and conversation persistence.
 | 2026-04-21 | Kilo (GOD TIER ENGINEER) | Updated agent notes and generated v2 backend audit export: Added system health verification session details to AGENT_NOTES.md. Generated updated backend_audit_2026-04-21_v2.txt with latest code state including /api/health/systems fix and docker-compose version removal. Committed and pushed all changes to git despite mypy warnings (system fully functional). |

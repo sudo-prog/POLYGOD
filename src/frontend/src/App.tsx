@@ -61,6 +61,7 @@ function App() {
   );
   const [activeView, setActiveView] = useState<'markets' | 'user' | 'llm'>('markets');
   const [tickerHeight, setTickerHeight] = useState(33); // Dynamic ticker height
+  const [agentOpen, setAgentOpen] = useState(false);
   const { data: marketsData } = useMarkets();
 
   // Safely parse polyGodData with proper type checking
@@ -135,7 +136,7 @@ function App() {
         event.preventDefault();
         setSpotlightOpen(true);
       }
-      // Escape: Close panels in priority order (spotlight > settings > hamburger > editMode)
+      // Escape: Close panels in priority order (spotlight > settings > hamburger > editMode > agent)
       else if (event.key === 'Escape') {
         if (spotlightOpen) {
           setSpotlightOpen(false);
@@ -145,6 +146,8 @@ function App() {
           setHamburgerOpen(false);
         } else if (isEditMode) {
           setEditMode(false);
+        } else if (agentOpen) {
+          setAgentOpen(false);
         }
       }
     };
@@ -155,6 +158,7 @@ function App() {
     isEditMode,
     settingsOpen,
     spotlightOpen,
+    agentOpen,
     setEditMode,
     toggleSettings,
     setHamburgerOpen,
@@ -209,8 +213,11 @@ function App() {
           </div>
 
           <div className="flex-1 flex flex-col md:flex-row items-center justify-end gap-3 w-full">
-            {/* GOD TIER POLYGOD STATUS */}
-            <div className="flex items-center gap-2 bg-surface-900/70 border border-white/10 rounded-xl px-3 py-2">
+            {/* GOD TIER POLYGOD STATUS - CLICKABLE TO OPEN AI CHAT */}
+            <button
+              onClick={() => setAgentOpen(true)}
+              className="flex items-center gap-2 bg-surface-900/70 border border-white/10 rounded-xl px-3 py-2 hover:border-primary-500/50 transition-colors cursor-pointer"
+            >
               <Brain className={`w-4 h-4 ${isConnected ? 'text-emerald-400' : 'text-red-400'}`} />
               <span className="text-xs font-semibold text-surface-200">POLYGOD</span>
               {polyGodData && hasValidPolyGodData(polyGodData) && (
@@ -244,35 +251,13 @@ function App() {
                       style={{ width: `${Math.min(100, (polyGodData.paper_pnl ?? 0) * 20)}%` }}
                     ></div>
                   </div>
-                  <button
-                    onClick={async () => {
-                      try {
-                        const marketId = selectedMarket?.id || 'default';
-                        const response = await fetch(
-                          `/api/polygod/simulate?market_id=${marketId}&order_size=1000`,
-                          {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                          }
-                        );
-                        const data = await response.json();
-                        alert(
-                          `Monte-Carlo: ${data.recommendation}\nWin Prob: ${(
-                            data.simulation.win_prob * 100
-                          ).toFixed(1)}%\nExpected PnL: $${data.simulation.expected_pnl.toFixed(2)}`
-                        );
-                      } catch (err) {
-                        alert('Monte-Carlo simulation failed — check backend logs');
-                      }
-                    }}
-                    className="text-[10px] px-2 py-1 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 rounded-lg flex items-center gap-1"
-                  >
-                    <Zap className="w-3 h-3" /> SIM
-                  </button>
+                  <span className="text-[10px] px-2 py-1 bg-primary-500/10 text-primary-400 rounded-lg flex items-center gap-1">
+                    <MessageSquare className="w-3 h-3" /> CHAT
+                  </span>
                 </>
               )}
               {!isConnected && <Zap className="w-3 h-3 text-yellow-400 animate-pulse" />}
-            </div>
+            </button>
 
             <div className="ios-segmented">
               <button
@@ -523,8 +508,8 @@ function App() {
       {/* Settings Button */}
       <SettingsButton />
 
-      {/* POLYGOD AI Agent Widget */}
-      <AgentWidget />
+      {/* POLYGOD AI Agent Widget - controlled by agentOpen state */}
+      {agentOpen && <AgentWidget isOpen={agentOpen} onClose={() => setAgentOpen(false)} />}
 
       {/* Footer */}
       <footer className="glass border-t border-white/10 mt-auto">
