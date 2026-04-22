@@ -686,6 +686,6 @@ export default function AgentWidget({ isOpen: controlledIsOpen, onClose }: Agent
           50% { opacity: 0; }
         }
       `}</style>
-    </>
+    </div>
   );
 }
