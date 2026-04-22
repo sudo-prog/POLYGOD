@@ -34,6 +34,7 @@ import { SettingsScreen } from './components/SettingsScreen';
 import { SpotlightSearch } from './components/SpotlightSearch';
 import { NotificationCentre } from './components/NotificationCentre';
 import { KronosForecastCard } from './components/KronosForecastCard';
+import AgentWidget from './components/AgentWidget';
 
 interface PolyGodData {
   mode?: number;
@@ -521,6 +522,9 @@ function App() {
 
       {/* Settings Button */}
       <SettingsButton />
+
+      {/* POLYGOD AI Agent Widget */}
+      <AgentWidget />
 
       {/* Footer */}
       <footer className="glass border-t border-white/10 mt-auto">
