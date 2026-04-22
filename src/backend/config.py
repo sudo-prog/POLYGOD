@@ -41,6 +41,7 @@ class Settings(BaseSettings):
     POLYMARKET_API_KEY: SecretStr = Field(default=SecretStr(""))
     POLYMARKET_SECRET: SecretStr = Field(default=SecretStr(""))
     POLYMARKET_PASSPHRASE: SecretStr = Field(default=SecretStr(""))
+    POLYMARKET_BUILDER_CODE: str = Field(default="")
     # EVM private key for signing CLOB orders (live trading only)
     POLYMARKET_PRIVATE_KEY: SecretStr = Field(default=SecretStr(""))
     GEMINI_API_KEY: SecretStr = Field(default=SecretStr(""))
@@ -167,6 +168,15 @@ class Settings(BaseSettings):
             )
         return v
 
+    @field_validator("POLYMARKET_PRIVATE_KEY")
+    @classmethod
+    def validate_private_key(cls, v: SecretStr, info) -> SecretStr:
+        if not info.data.get("DEBUG", False) and not v.get_secret_value():
+            raise ValueError(
+                "POLYMARKET_PRIVATE_KEY required in production for trading"
+            )
+        return v
+
     @model_validator(mode="after")
     def validate_security_posture(self) -> "Settings":
         """
@@ -190,6 +200,17 @@ class Settings(BaseSettings):
                     "This is only acceptable in local development (DEBUG=True). "
                     "Never deploy to staging/production with this value."
                 )
+
+        # ADDITIONAL SECURITY: Validate CORS origins are reasonable
+        for origin in self.cors_origins_list:
+            if origin.startswith("http://") and not origin.startswith(
+                "http://localhost"
+            ):
+                _logger.warning(
+                    f"CORS origin '{origin}' allows HTTP in production. "
+                    "Consider HTTPS-only origins for security."
+                )
+
         return self
 
     # ── Computed Properties ───────────────────────────────────────────────────

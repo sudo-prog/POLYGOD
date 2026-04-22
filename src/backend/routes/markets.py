@@ -19,8 +19,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.backend.auth import verify_api_key
 from src.backend.cache import user_stats_cache
-from src.backend.database import get_db
+from src.backend.database import get_db, utcnow
 from src.backend.db_models import AppState, Market
+from src.backend.middleware.rate_limit import limiter
 from src.backend.polymarket.client import polymarket_client
 from src.backend.polymarket.schemas import (
     MarketListResponse,
@@ -210,7 +211,7 @@ def _compute_global_stats(
 
 
 @router.get("/top50", response_model=MarketListResponse)
-@limiter.limit("10/minute")
+@limiter.limit("20/minute")
 async def get_top_50_markets(
     request: Request,  # required by slowapi rate limiter
     db: AsyncSession = Depends(get_db),
@@ -882,7 +883,7 @@ async def get_market(market_id: str, db: AsyncSession = Depends(get_db)) -> Mark
                     end_date=end_date,
                     image_url=api_market.image or api_market.icon,
                     clob_token_ids=api_market.clob_token_ids,
-                    last_updated=datetime.utcnow(),
+                    last_updated=utcnow(),
                 )
 
                 # Save to database so subsequent calls (history, stats) work
@@ -912,7 +913,7 @@ async def get_market(market_id: str, db: AsyncSession = Depends(get_db)) -> Mark
                             end_date=end_date,
                             image_url=api_market.image or api_market.icon,
                             clob_token_ids=api_market.clob_token_ids,
-                            last_updated=datetime.utcnow(),
+                            last_updated=utcnow(),
                         )
         except Exception as e:
             logger.error(f"Error serving market from API fallback: {e}")
@@ -952,7 +953,7 @@ async def get_market(market_id: str, db: AsyncSession = Depends(get_db)) -> Mark
             market.volume_24h = volume_24h_val
             market.volume_7d = volume_7d_val
             market.liquidity = liquidity_val
-            market.last_updated = datetime.utcnow()
+            market.last_updated = utcnow()
 
             # Commit updates
             await db.commit()
@@ -972,6 +973,7 @@ async def get_market(market_id: str, db: AsyncSession = Depends(get_db)) -> Mark
 
 
 @router.get("/{market_id}/trades")
+@limiter.limit("15/minute")
 async def get_market_trades(
     market_id: str,
     min_volume: float = 100.0,
@@ -1071,7 +1073,7 @@ async def get_market_trades(
 
         whale_trades = []
         seen_trade_keys: set[str] = set()
-        cutoff = datetime.utcnow() - timedelta(days=days)
+        cutoff = utcnow() - timedelta(days=days)
 
         for trade in trades:
             try:
@@ -1080,6 +1082,35 @@ async def get_market_trades(
 
                 # Filter by market identifiers when present
                 if not trade_matches_market(trade):
+                    continue
+
+                # Parse timestamp with bounds checking
+                ts_val = trade.get("timestamp")
+                if not ts_val:
+                    continue
+
+                from datetime import timezone as _tz
+
+                trade_time = None
+                if isinstance(ts_val, (int, float)):
+                    ts_int = int(ts_val)
+                    if ts_int > 10**12:
+                        ts_int = ts_int // 1000
+                    # SECURITY: Reject timestamps outside reasonable bounds
+                    if not (1_600_000_000 < ts_int < 2_000_000_000):  # 2020-2033
+                        continue
+                    trade_time = datetime.fromtimestamp(ts_int, tz=_tz.utc)
+                else:
+                    try:
+                        ts_str = str(ts_val).replace("Z", "+00:00")
+                        trade_time = datetime.fromisoformat(ts_str)
+                        # SECURITY: Reject future timestamps (beyond 2030)
+                        if trade_time > datetime(2030, 1, 1, tzinfo=_tz.utc):
+                            continue
+                    except ValueError:
+                        continue
+
+                if trade_time < cutoff:
                     continue
 
                 # Parse timestamp
@@ -1116,6 +1147,9 @@ async def get_market_trades(
                 try:
                     size = float(trade.get("size", 0))
                     price = float(trade.get("price", 0))
+                    # SECURITY: Reject unreasonable trade sizes/prices
+                    if not (0 < size < 1_000_000) or not (0 < price < 1_000_000):
+                        continue
                 except (ValueError, TypeError):
                     continue
 
@@ -1278,8 +1312,15 @@ async def get_market_trades(
                                 "total_balance": total_balance,
                             }
 
+                        # SECURITY: Limit concurrent API calls with semaphore
+                        semaphore = asyncio.Semaphore(5)  # Max 5 concurrent calls
+
+                        async def fetch_with_limit(address: str):
+                            async with semaphore:
+                                return await fetch_user_stats(address)
+
                         fresh_results = await asyncio.gather(
-                            *[fetch_user_stats(addr) for addr in uncached_addresses]
+                            *[fetch_with_limit(addr) for addr in uncached_addresses]
                         )
                         for addr, stats in fresh_results:
                             stats_map[addr] = stats
@@ -1294,6 +1335,7 @@ async def get_market_trades(
         # Sort by timestamp (newest first)
         whale_trades.sort(key=lambda x: x["timestamp"], reverse=True)
 
+        # SECURITY: Hard cap return size to prevent DoS
         return whale_trades[:50]
 
     except HTTPException:
@@ -1304,6 +1346,7 @@ async def get_market_trades(
 
 
 @router.get("/{market_id}/holders")
+@limiter.limit("10/minute")
 async def get_market_holders(market_id: str, db: AsyncSession = Depends(get_db)):
     """
     Get top holders for a market with PnL and ROI data.
@@ -1334,17 +1377,19 @@ async def get_market_holders(market_id: str, db: AsyncSession = Depends(get_db))
                 return {"yes_holders": [], "no_holders": []}
 
             data = response.json()
-
-            # Extract unique addresses to fetch specific stats
-            # We focus on the top holders to minimize API calls
             all_holders = []
             for token_data in data:
                 token_holders = token_data.get("holders", [])
+                # SECURITY: Limit holders per token to prevent DoS
+                token_holders = token_holders[:50]  # Cap at 50 holders per token
                 # FIX M8: Use correct API field for outcomeIndex
                 outcome_idx = token_data.get("outcomeIndex", token_data.get("index", 0))
                 for h in token_holders:
                     h["outcomeIndex"] = outcome_idx  # correctly propagate from parent
                     all_holders.append(h)
+
+                # SECURITY: Global cap on total holders processed
+                all_holders = all_holders[:200]  # Max 200 holders total
 
             # Deduplicate by address for fetching stats, but keep references
             unique_addresses = {
@@ -1363,10 +1408,14 @@ async def get_market_holders(market_id: str, db: AsyncSession = Depends(get_db))
                 for addr, entry in cached_map.items()
             }
 
+            # SECURITY: Limit API calls to prevent fan-out attacks
             # We always need positions for market-specific PnL, so fetch
             # positions for ALL addresses, but only fetch closed-positions
             # and value for uncached ones (those are only needed for global stats).
             user_positions_map: dict[str, list] = {}
+
+            # Limit concurrent API calls
+            addresses = list(all_addresses)[:50]  # Hard cap at 50 addresses
 
             async def fetch_positions_only(address: str):
                 """Lightweight call — only /positions (for market PnL)."""

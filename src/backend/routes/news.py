@@ -93,6 +93,7 @@ async def get_news_for_market(
 
 
 @router.post("/{market_id}/refresh")
+@limiter.limit("5/minute")
 async def refresh_news_for_market(
     market_id: str,
     limit: int = Query(default=20, ge=1, le=100),

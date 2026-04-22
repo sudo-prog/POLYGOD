@@ -530,6 +530,7 @@ def _compute_metrics(
 
 
 @router.get("/analytics", response_model=UserAnalyticsResponse)
+@limiter.limit("5/minute")
 async def get_user_analytics(
     query: str = Query(..., min_length=2),
     limit: int = Query(500, ge=1, le=2000),

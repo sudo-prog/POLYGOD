@@ -15,6 +15,7 @@ from sqlalchemy import Date, cast, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.backend.database import get_db
+from src.backend.middleware.rate_limit import limiter
 from src.backend.models.llm import AgentConfig, Provider, UsageLog
 
 logger = logging.getLogger(__name__)
@@ -130,6 +131,7 @@ async def get_providers(db: AsyncSession = Depends(get_db)) -> list[ProviderOut]
 
 
 @router.post("/providers", response_model=ProviderOut, status_code=201)
+@limiter.limit("2/minute")
 async def create_or_update_provider(
     payload: ProviderCreate,
     db: AsyncSession = Depends(get_db),
@@ -192,6 +194,7 @@ async def delete_provider(
 
 
 @router.post("/providers/test", response_model=ProviderTestResult)
+@limiter.limit("1/minute")
 async def test_provider_health(
     provider_id: int,
     db: AsyncSession = Depends(get_db),
@@ -248,6 +251,7 @@ async def get_agent_configs(
 
 
 @router.post("/agents", response_model=AgentConfigOut, status_code=201)
+@limiter.limit("5/minute")
 async def create_or_update_agent(
     payload: AgentConfigCreate,
     db: AsyncSession = Depends(get_db),
@@ -302,6 +306,7 @@ async def delete_agent(
 
 
 @router.get("/usage", response_model=list[UsageLogOut])
+@limiter.limit("10/minute")
 async def get_usage_logs(
     agent_name: str | None = Query(default=None),
     provider: str | None = Query(default=None),
@@ -332,6 +337,7 @@ async def get_usage_logs(
 
 
 @router.get("/heatmap", response_model=list[HeatmapEntry])
+@limiter.limit("5/minute")
 async def get_usage_heatmap(
     days: int = Query(default=7, ge=1, le=30),
     db: AsyncSession = Depends(get_db),

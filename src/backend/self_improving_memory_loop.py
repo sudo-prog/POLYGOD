@@ -12,6 +12,8 @@ import logging
 from datetime import datetime, timedelta
 from typing import Any
 
+from src.backend.database import utcnow
+
 try:
     from mem0 import Memory as _Mem0Memory  # mem0ai package exports Memory, not Mem0
 
@@ -76,7 +78,7 @@ class SelfImprovingMemoryLoop:
 
             # God-tier memory format: includes WhaleContext for pattern recognition
             memory_text = (
-                f"[{datetime.utcnow().isoformat()}] "
+                f"[{utcnow().isoformat()}] "
                 f"Node: {node_name} | "
                 f"Market: {state.get('market_id')} | "
                 f"Verdict: {verdict[:200]} | "
@@ -154,7 +156,7 @@ class SelfImprovingMemoryLoop:
             memories = mem0.search("all", user_id=self.user_id, limit=100)
             logger.info(f"NotebookLM reflection: {len(memories)} memories loaded")
 
-            week_str = datetime.utcnow().strftime("%Y-%m-%d")
+            week_str = utcnow().strftime("%Y-%m-%d")
             prompt = (
                 f"Act as NotebookLM. Generate a 2-minute podcast episode: "
                 f'"POLYGOD Weekly Evolution - {week_str}". '
@@ -277,9 +279,7 @@ class ForgettingEngine:
                     ttl = self.ttl_tiers.get(tier, timedelta(days=7))
 
                     # Check if should prune (low score OR TTL expired)
-                    should_prune = (
-                        score < 0.3 or (mem_timestamp + ttl) < datetime.utcnow()
-                    )
+                    should_prune = score < 0.3 or (mem_timestamp + ttl) < utcnow()
 
                     if should_prune:
                         mem0.delete(mem["id"], user_id="polygod_swarm")
@@ -318,7 +318,7 @@ class ForgettingEngine:
                 return 0.0
 
             mem_timestamp = datetime.fromisoformat(mem_timestamp_str)
-            days_ago = (datetime.utcnow() - mem_timestamp).days
+            days_ago = (utcnow() - mem_timestamp).days
             recency = 1.0 / (1.0 + days_ago)
 
             # Utility factor: PnL + confidence

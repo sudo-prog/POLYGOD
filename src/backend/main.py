@@ -56,7 +56,9 @@ _SECRET_KEYS = (
     "TELEGRAM_BOT_TOKEN",
     "X_BEARER_TOKEN",
 )
-_SECRET_VALUES = frozenset(v for k in _SECRET_KEYS if (v := os.getenv(k, "")) and len(v) > 4)
+_SECRET_VALUES = frozenset(
+    v for k in _SECRET_KEYS if (v := os.getenv(k, "")) and len(v) > 4
+)
 
 
 def mask_secrets(text: str) -> str:
@@ -132,7 +134,9 @@ async def get_mode_from_db():
     from src.backend.db_models import AppState
 
     async with async_session_factory() as db:
-        result = await db.execute(select(AppState).where(AppState.key == "polygod_mode"))
+        result = await db.execute(
+            select(AppState).where(AppState.key == "polygod_mode")
+        )
         row = result.scalar_one_or_none()
         return int(row.value) if row else POLYGOD_MODE
 
@@ -144,7 +148,9 @@ async def set_mode_in_db(mode: int):
     from src.backend.db_models import AppState
 
     async with async_session_factory() as db:
-        result = await db.execute(select(AppState).where(AppState.key == "polygod_mode"))
+        result = await db.execute(
+            select(AppState).where(AppState.key == "polygod_mode")
+        )
         row = result.scalar_one_or_none()
         if row:
             row.value = str(mode)
@@ -162,7 +168,9 @@ async def refresh_llm_stats():
     from src.backend.models.llm import Provider, UsageLog
 
     async with async_session_factory() as db:
-        today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+        today_start = datetime.now(timezone.utc).replace(
+            hour=0, minute=0, second=0, microsecond=0
+        )
         result = await db.execute(
             select(
                 UsageLog.provider,
@@ -283,7 +291,9 @@ async def generate_situational_digest() -> str:
         lines.append(f"🎯 *Market Opportunities:* Error - {e}\n")
 
     # Timestamp
-    lines.append(f"_Generated: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}_")
+    lines.append(
+        f"_Generated: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}_"
+    )
 
     # Command reminders
     lines.append("\n*Commands:*")
@@ -309,28 +319,42 @@ async def lifespan(app: FastAPI):
         admin_token = settings.POLYGOD_ADMIN_TOKEN.get_secret_value()
         if not admin_token or admin_token == "change-this-before-use":
             raise RuntimeError("POLYGOD_ADMIN_TOKEN required in production")
-    try:
-        await init_db()
-        # In lifespan(), after await init_db():
-        # Temporarily disabled boot sequence for debugging
-        # from src.backend.agents.polygod_brain import run_boot_sequence, set_boot_status
-        # boot_status = await run_boot_sequence()
-        # set_boot_status(boot_status)
-        # if not boot_status.all_ok:
-        #     logger.warning(
-        #         "Boot completed with failures",
-        #         failed=boot_status.failed,
-        #         detail=boot_status.to_dict(),
-        #     )
-        global POLYGOD_MODE
-        db_mode = await get_mode_from_db()
-        if db_mode != POLYGOD_MODE:
-            POLYGOD_MODE = db_mode
-    except Exception as exc:
-        if settings.ALLOW_IN_MEMORY_DB_FALLBACK or settings.DEBUG:
-            logger.error("DB init failed", error=str(exc))
-        else:
-            raise
+        try:
+            await init_db()
+            # In lifespan(), after await init_db():
+            # Temporarily disabled boot sequence for debugging
+            # from src.backend.agents.polygod_brain import run_boot_sequence, set_boot_status
+            # boot_status = await run_boot_sequence()
+            # set_boot_status(boot_status)
+            # if not boot_status.all_ok:
+            #     logger.warning(
+            #         "Boot completed with failures",
+            #         failed=boot_status.failed,
+            #         detail=boot_status.to_dict(),
+            #     )
+            global POLYGOD_MODE
+            db_mode = await get_mode_from_db()
+            if db_mode != POLYGOD_MODE:
+                POLYGOD_MODE = db_mode
+        except Exception as exc:
+            if settings.ALLOW_IN_MEMORY_DB_FALLBACK or settings.DEBUG:
+                logger.error("DB init failed", error=str(exc))
+            else:
+                raise
+
+        # SECURITY: Validate critical secrets are set in production
+        if not settings.DEBUG:
+            critical_secrets = [
+                (
+                    "POLYGOD_ADMIN_TOKEN",
+                    settings.POLYGOD_ADMIN_TOKEN.get_secret_value(),
+                ),
+                ("INTERNAL_API_KEY", settings.INTERNAL_API_KEY.get_secret_value()),
+                ("ENCRYPTION_KEY", settings.ENCRYPTION_KEY.get_secret_value()),
+            ]
+            for name, value in critical_secrets:
+                if not value or value in ("change-this-before-use", ""):
+                    raise RuntimeError(f"CRITICAL: {name} not set in production mode")
     try:
         await update_top_markets()
     except Exception as exc:
@@ -454,7 +478,9 @@ async def lifespan(app: FastAPI):
 
     asyncio.create_task(_kronos_background_refresh())
 
-    await thought_stream.info("POLYGOD online — self-heal watcher active", agent="POLYGOD")
+    await thought_stream.info(
+        "POLYGOD online — self-heal watcher active", agent="POLYGOD"
+    )
 
     def _add_job(func, **kwargs):
         try:
@@ -490,7 +516,9 @@ async def lifespan(app: FastAPI):
         timezone="Australia/Sydney",
     )
     _add_job(forgetting_engine.prune, trigger=IntervalTrigger(hours=6))
-    _add_job(_daily_digest, trigger="cron", hour=9, minute=0, timezone="Australia/Sydney")
+    _add_job(
+        _daily_digest, trigger="cron", hour=9, minute=0, timezone="Australia/Sydney"
+    )
     if settings.POLYGOD_MODE >= 1:
         logger.info("Swarm mode enabled", mode=settings.POLYGOD_MODE)
     telegram_task = None
@@ -531,7 +559,11 @@ Instrumentator().instrument(app).expose(app)
 @app.exception_handler(Exception)
 async def global_exception_handler(request, exc):
     detail = mask_secrets(str(exc))
-    logger.error("Unhandled exception", error=detail)
+    # SECURITY: Log full error in debug mode only, sanitized in production
+    if settings.DEBUG:
+        logger.error("Unhandled exception", error=detail, exc_info=True)
+    else:
+        logger.error("Unhandled exception", error=f"[{type(exc).__name__}] {detail}")
     return JSONResponse(status_code=500, content={"detail": "Internal server error"})
 
 
@@ -654,6 +686,7 @@ async def websocket_live_trades(websocket: WebSocket):
 
 
 @app.post("/polygod/switch-mode")
+@limiter.limit("1/minute")
 async def switch_mode(new_mode: int, _: bool = Depends(admin_required)):
     """
     Switch POLYGOD operating mode.
@@ -671,12 +704,15 @@ async def switch_mode(new_mode: int, _: bool = Depends(admin_required)):
     _pg.POLYGOD_MODE = new_mode
 
     await set_mode_in_db(new_mode)
-    mode_label = {0: "OBSERVE", 1: "PAPER", 2: "LOW", 3: "BEAST"}.get(new_mode, "UNKNOWN")
+    mode_label = {0: "OBSERVE", 1: "PAPER", 2: "LOW", 3: "BEAST"}.get(
+        new_mode, "UNKNOWN"
+    )
     logger.info("POLYGOD mode switched", new_mode=new_mode, label=mode_label)
     return {"status": f"Switched to Mode {new_mode} — {mode_label}"}
 
 
 @app.post("/polygod/simulate")
+@limiter.limit("5/minute")
 async def monte_carlo_simulate(
     market_id: str, order_size: float = 1000, _: bool = Depends(admin_required)
 ):
@@ -686,12 +722,14 @@ async def monte_carlo_simulate(
     sim = run_monte_carlo({"size": order_size}, market_data)
     return {
         "simulation": sim,
-        "recommendation": ("BEAST APPROVED" if sim["win_prob"] > 0.65 else "SAFE MODE ONLY"),
+        "recommendation": (
+            "BEAST APPROVED" if sim["win_prob"] > 0.65 else "SAFE MODE ONLY"
+        ),
     }
 
 
 @app.post("/api/scan-niches")
-@limiter.limit("5/minute")
+@limiter.limit("2/minute")
 async def scan_niches(
     request: Request,  # required by slowapi rate limiter
     mode: int = 0,
@@ -713,6 +751,7 @@ async def scan_niches(
 
 
 @app.post("/polygod/run")
+@limiter.limit("1/minute")
 async def polygod_run(
     market_id: str, mode: int = 0, question: str = "", _: bool = Depends(admin_required)
 ):
